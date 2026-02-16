@@ -15,9 +15,6 @@ node_modules
 # Testing
 coverage
 
-# Turbo
-.turbo
-
 # Vercel
 .vercel
 
@@ -36,3 +33,10 @@ yarn-error.log*
 # Misc
 .DS_Store
 *.pem
+
+
+
+# NX
+.nx/cache
+.nx/workspace-data
+nx-graph.html
