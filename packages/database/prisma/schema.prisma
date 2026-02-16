@@ -1,0 +1,168 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User model with SUI wallet support
+model User {
+  id        String   @id @default(cuid())
+  username  String   @unique
+  email     String?  @unique
+  bio       String?
+  avatar    String?
+
+  // SUI wallet address (primary auth method)
+  walletAddress String? @unique
+
+  // Traditional auth (optional, for email-based accounts)
+  passwordHash String?
+
+  // Metadata
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  lastActiveAt DateTime @default(now())
+
+  // Trust & Safety
+  isVerified Boolean @default(false)
+  isBanned   Boolean @default(false)
+  reputation Int     @default(0)
+
+  // Relations
+  posts      Post[]
+  comments   Comment[]
+  likes      Like[]
+  follows    Follow[] @relation("UserFollows")
+  followers  Follow[] @relation("UserFollowers")
+  nfts       NFT[]
+
+  @@index([walletAddress])
+  @@index([username])
+}
+
+// Posts (music, performances, content)
+model Post {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  content     String
+  mediaUrls   String[] // S3 URLs for images/videos/audio
+  mediaType   MediaType @default(TEXT)
+
+  // Metadata
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Engagement
+  likesCount  Int      @default(0)
+  commentsCount Int    @default(0)
+
+  // Trust & Safety
+  isHidden    Boolean  @default(false)
+  reportCount Int      @default(0)
+
+  // Relations
+  comments    Comment[]
+  likes       Like[]
+  nft         NFT?
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+enum MediaType {
+  TEXT
+  IMAGE
+  VIDEO
+  AUDIO
+  PERFORMANCE
+}
+
+// Comments on posts
+model Comment {
+  id        String   @id @default(cuid())
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Trust & Safety
+  isHidden  Boolean  @default(false)
+
+  @@index([postId])
+  @@index([userId])
+}
+
+// Likes on posts
+model Like {
+  id        String   @id @default(cuid())
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([postId, userId])
+  @@index([postId])
+  @@index([userId])
+}
+
+// Follow relationships
+model Follow {
+  id          String   @id @default(cuid())
+  followerId  String
+  follower    User     @relation("UserFollows", fields: [followerId], references: [id], onDelete: Cascade)
+  followingId String
+  following   User     @relation("UserFollowers", fields: [followingId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@unique([followerId, followingId])
+  @@index([followerId])
+  @@index([followingId])
+}
+
+// NFTs (minted content on SUI)
+model NFT {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  postId       String?  @unique
+  post         Post?    @relation(fields: [postId], references: [id], onDelete: SetNull)
+
+  // SUI blockchain data
+  objectId     String   @unique // SUI object ID
+  packageId    String   // Smart contract package ID
+  moduleId     String   // Module within package
+  type         NFTType
+
+  // NFT metadata
+  name         String
+  description  String?
+  imageUrl     String
+  metadataUri  String
+
+  // Pricing (if listed for sale)
+  isListed     Boolean  @default(false)
+  price        String?  // In SUI tokens (stored as string to avoid precision loss)
+
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
+  @@index([objectId])
+}
+
+enum NFTType {
+  MUSIC
+  PERFORMANCE
+  ART
+  COLLECTIBLE
+}
