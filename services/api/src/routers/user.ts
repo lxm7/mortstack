@@ -104,6 +104,19 @@ export const userRouter = router({
         });
       }
 
+      const existing = await ctx.prisma.follow.findUnique({
+        where: {
+          followerId_followingId: {
+            followerId: ctx.user.id,
+            followingId: input.userId,
+          },
+        },
+      });
+
+      if (existing) {
+        throw new TRPCError({ code: 'CONFLICT', message: 'Already following' });
+      }
+
       await ctx.prisma.follow.create({
         data: {
           followerId: ctx.user.id,
