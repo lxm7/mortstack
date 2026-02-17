@@ -12,6 +12,7 @@
   "dependencies": {
     "@repo/auth": "*",
     "@repo/database": "*",
+    "@repo/identity": "*",
     "@trpc/server": "^11.0.0",
     "zod": "^3.24.1"
   },

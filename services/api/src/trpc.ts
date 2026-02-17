@@ -1,8 +1,9 @@
 import { initTRPC, TRPCError } from '@trpc/server';
 import type { CreateAWSLambdaContextOptions } from '@trpc/server/adapters/aws-lambda';
 import type { APIGatewayProxyEventV2 } from 'aws-lambda';
-import { prisma } from '@repo/database';
+import { prisma, type IdentityTier } from '@repo/database';
 import { verifyAccessToken } from '@repo/auth';
+import { hasPermission } from '@repo/identity';
 
 // Context type
 export interface Context {
@@ -10,6 +11,7 @@ export interface Context {
   user: {
     id: string;
     walletAddress?: string;
+    identityTier: IdentityTier;
   } | null;
 }
 
@@ -25,9 +27,15 @@ export async function createContext({
     const token = authHeader.substring(7);
     try {
       const payload = verifyAccessToken(token);
+      // Fetch identity tier from DB - needed for permission checks downstream
+      const dbUser = await prisma.user.findUnique({
+        where: { id: payload.userId },
+        select: { identityTier: true },
+      });
       user = {
         id: payload.userId,
         walletAddress: payload.walletAddress,
+        identityTier: dbUser?.identityTier ?? 'NONE',
       };
     } catch (error) {
       // Invalid token, proceed without user
@@ -58,9 +66,21 @@ export const protectedProcedure = t.procedure.use(async ({ ctx, next }) => {
   }
 
   return next({
-    ctx: {
-      ...ctx,
-      user: ctx.user,
-    },
+    ctx: { ...ctx, user: ctx.user },
   });
 });
+
+// Identity-gated procedure factory
+// Usage: tierProcedure('canUploadVideo') - throws if user lacks that permission
+export function tierProcedure(permission: Parameters<typeof hasPermission>[1]) {
+  return protectedProcedure.use(async ({ ctx, next }) => {
+    if (!hasPermission(ctx.user!.identityTier, permission)) {
+      throw new TRPCError({
+        code: 'FORBIDDEN',
+        message: `Your account needs verification to perform this action. Required permission: ${permission}`,
+        cause: { requiredPermission: permission, currentTier: ctx.user!.identityTier },
+      });
+    }
+    return next({ ctx });
+  });
+}

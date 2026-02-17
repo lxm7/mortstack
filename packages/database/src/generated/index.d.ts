@@ -19,6 +19,11 @@ export type PrismaPromise<T> = $Public.PrismaPromise<T>
  */
 export type User = $Result.DefaultSelection<Prisma.$UserPayload>
 /**
+ * Model IdentityCheck
+ * 
+ */
+export type IdentityCheck = $Result.DefaultSelection<Prisma.$IdentityCheckPayload>
+/**
  * Model Post
  * 
  */
@@ -48,7 +53,27 @@ export type NFT = $Result.DefaultSelection<Prisma.$NFTPayload>
  * Enums
  */
 export namespace $Enums {
-  export const MediaType: {
+  export const IdentityTier: {
+  NONE: 'NONE',
+  BASIC: 'BASIC',
+  CREATOR: 'CREATOR',
+  ARTIST: 'ARTIST'
+};
+
+export type IdentityTier = (typeof IdentityTier)[keyof typeof IdentityTier]
+
+
+export const IdentityCheckStatus: {
+  PENDING: 'PENDING',
+  APPROVED: 'APPROVED',
+  REJECTED: 'REJECTED',
+  EXPIRED: 'EXPIRED'
+};
+
+export type IdentityCheckStatus = (typeof IdentityCheckStatus)[keyof typeof IdentityCheckStatus]
+
+
+export const MediaType: {
   TEXT: 'TEXT',
   IMAGE: 'IMAGE',
   VIDEO: 'VIDEO',
@@ -69,6 +94,14 @@ export const NFTType: {
 export type NFTType = (typeof NFTType)[keyof typeof NFTType]
 
 }
+
+export type IdentityTier = $Enums.IdentityTier
+
+export const IdentityTier: typeof $Enums.IdentityTier
+
+export type IdentityCheckStatus = $Enums.IdentityCheckStatus
+
+export const IdentityCheckStatus: typeof $Enums.IdentityCheckStatus
 
 export type MediaType = $Enums.MediaType
 
@@ -205,6 +238,16 @@ export class PrismaClient<
     * ```
     */
   get user(): Prisma.UserDelegate<ExtArgs, ClientOptions>;
+
+  /**
+   * `prisma.identityCheck`: Exposes CRUD operations for the **IdentityCheck** model.
+    * Example usage:
+    * ```ts
+    * // Fetch zero or more IdentityChecks
+    * const identityChecks = await prisma.identityCheck.findMany()
+    * ```
+    */
+  get identityCheck(): Prisma.IdentityCheckDelegate<ExtArgs, ClientOptions>;
 
   /**
    * `prisma.post`: Exposes CRUD operations for the **Post** model.
@@ -697,6 +740,7 @@ export namespace Prisma {
 
   export const ModelName: {
     User: 'User',
+    IdentityCheck: 'IdentityCheck',
     Post: 'Post',
     Comment: 'Comment',
     Like: 'Like',
@@ -720,7 +764,7 @@ export namespace Prisma {
       omit: GlobalOmitOptions
     }
     meta: {
-      modelProps: "user" | "post" | "comment" | "like" | "follow" | "nFT"
+      modelProps: "user" | "identityCheck" | "post" | "comment" | "like" | "follow" | "nFT"
       txIsolationLevel: Prisma.TransactionIsolationLevel
     }
     model: {
@@ -795,6 +839,80 @@ export namespace Prisma {
           count: {
             args: Prisma.UserCountArgs<ExtArgs>
             result: $Utils.Optional<UserCountAggregateOutputType> | number
+          }
+        }
+      }
+      IdentityCheck: {
+        payload: Prisma.$IdentityCheckPayload<ExtArgs>
+        fields: Prisma.IdentityCheckFieldRefs
+        operations: {
+          findUnique: {
+            args: Prisma.IdentityCheckFindUniqueArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$IdentityCheckPayload> | null
+          }
+          findUniqueOrThrow: {
+            args: Prisma.IdentityCheckFindUniqueOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$IdentityCheckPayload>
+          }
+          findFirst: {
+            args: Prisma.IdentityCheckFindFirstArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$IdentityCheckPayload> | null
+          }
+          findFirstOrThrow: {
+            args: Prisma.IdentityCheckFindFirstOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$IdentityCheckPayload>
+          }
+          findMany: {
+            args: Prisma.IdentityCheckFindManyArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$IdentityCheckPayload>[]
+          }
+          create: {
+            args: Prisma.IdentityCheckCreateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$IdentityCheckPayload>
+          }
+          createMany: {
+            args: Prisma.IdentityCheckCreateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          createManyAndReturn: {
+            args: Prisma.IdentityCheckCreateManyAndReturnArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$IdentityCheckPayload>[]
+          }
+          delete: {
+            args: Prisma.IdentityCheckDeleteArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$IdentityCheckPayload>
+          }
+          update: {
+            args: Prisma.IdentityCheckUpdateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$IdentityCheckPayload>
+          }
+          deleteMany: {
+            args: Prisma.IdentityCheckDeleteManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          updateMany: {
+            args: Prisma.IdentityCheckUpdateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          updateManyAndReturn: {
+            args: Prisma.IdentityCheckUpdateManyAndReturnArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$IdentityCheckPayload>[]
+          }
+          upsert: {
+            args: Prisma.IdentityCheckUpsertArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$IdentityCheckPayload>
+          }
+          aggregate: {
+            args: Prisma.IdentityCheckAggregateArgs<ExtArgs>
+            result: $Utils.Optional<AggregateIdentityCheck>
+          }
+          groupBy: {
+            args: Prisma.IdentityCheckGroupByArgs<ExtArgs>
+            result: $Utils.Optional<IdentityCheckGroupByOutputType>[]
+          }
+          count: {
+            args: Prisma.IdentityCheckCountArgs<ExtArgs>
+            result: $Utils.Optional<IdentityCheckCountAggregateOutputType> | number
           }
         }
       }
@@ -1265,6 +1383,7 @@ export namespace Prisma {
   }
   export type GlobalOmitConfig = {
     user?: UserOmit
+    identityCheck?: IdentityCheckOmit
     post?: PostOmit
     comment?: CommentOmit
     like?: LikeOmit
@@ -1356,6 +1475,7 @@ export namespace Prisma {
     follows: number
     followers: number
     nfts: number
+    identityChecks: number
   }
 
   export type UserCountOutputTypeSelect<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
@@ -1365,6 +1485,7 @@ export namespace Prisma {
     follows?: boolean | UserCountOutputTypeCountFollowsArgs
     followers?: boolean | UserCountOutputTypeCountFollowersArgs
     nfts?: boolean | UserCountOutputTypeCountNftsArgs
+    identityChecks?: boolean | UserCountOutputTypeCountIdentityChecksArgs
   }
 
   // Custom InputTypes
@@ -1418,6 +1539,13 @@ export namespace Prisma {
    */
   export type UserCountOutputTypeCountNftsArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     where?: NFTWhereInput
+  }
+
+  /**
+   * UserCountOutputType without action
+   */
+  export type UserCountOutputTypeCountIdentityChecksArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    where?: IdentityCheckWhereInput
   }
 
 
@@ -1499,6 +1627,8 @@ export namespace Prisma {
     isVerified: boolean | null
     isBanned: boolean | null
     reputation: number | null
+    identityTier: $Enums.IdentityTier | null
+    identityVerifiedAt: Date | null
   }
 
   export type UserMaxAggregateOutputType = {
@@ -1515,6 +1645,8 @@ export namespace Prisma {
     isVerified: boolean | null
     isBanned: boolean | null
     reputation: number | null
+    identityTier: $Enums.IdentityTier | null
+    identityVerifiedAt: Date | null
   }
 
   export type UserCountAggregateOutputType = {
@@ -1531,6 +1663,8 @@ export namespace Prisma {
     isVerified: number
     isBanned: number
     reputation: number
+    identityTier: number
+    identityVerifiedAt: number
     _all: number
   }
 
@@ -1557,6 +1691,8 @@ export namespace Prisma {
     isVerified?: true
     isBanned?: true
     reputation?: true
+    identityTier?: true
+    identityVerifiedAt?: true
   }
 
   export type UserMaxAggregateInputType = {
@@ -1573,6 +1709,8 @@ export namespace Prisma {
     isVerified?: true
     isBanned?: true
     reputation?: true
+    identityTier?: true
+    identityVerifiedAt?: true
   }
 
   export type UserCountAggregateInputType = {
@@ -1589,6 +1727,8 @@ export namespace Prisma {
     isVerified?: true
     isBanned?: true
     reputation?: true
+    identityTier?: true
+    identityVerifiedAt?: true
     _all?: true
   }
 
@@ -1692,6 +1832,8 @@ export namespace Prisma {
     isVerified: boolean
     isBanned: boolean
     reputation: number
+    identityTier: $Enums.IdentityTier
+    identityVerifiedAt: Date | null
     _count: UserCountAggregateOutputType | null
     _avg: UserAvgAggregateOutputType | null
     _sum: UserSumAggregateOutputType | null
@@ -1727,12 +1869,15 @@ export namespace Prisma {
     isVerified?: boolean
     isBanned?: boolean
     reputation?: boolean
+    identityTier?: boolean
+    identityVerifiedAt?: boolean
     posts?: boolean | User$postsArgs<ExtArgs>
     comments?: boolean | User$commentsArgs<ExtArgs>
     likes?: boolean | User$likesArgs<ExtArgs>
     follows?: boolean | User$followsArgs<ExtArgs>
     followers?: boolean | User$followersArgs<ExtArgs>
     nfts?: boolean | User$nftsArgs<ExtArgs>
+    identityChecks?: boolean | User$identityChecksArgs<ExtArgs>
     _count?: boolean | UserCountOutputTypeDefaultArgs<ExtArgs>
   }, ExtArgs["result"]["user"]>
 
@@ -1750,6 +1895,8 @@ export namespace Prisma {
     isVerified?: boolean
     isBanned?: boolean
     reputation?: boolean
+    identityTier?: boolean
+    identityVerifiedAt?: boolean
   }, ExtArgs["result"]["user"]>
 
   export type UserSelectUpdateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
@@ -1766,6 +1913,8 @@ export namespace Prisma {
     isVerified?: boolean
     isBanned?: boolean
     reputation?: boolean
+    identityTier?: boolean
+    identityVerifiedAt?: boolean
   }, ExtArgs["result"]["user"]>
 
   export type UserSelectScalar = {
@@ -1782,9 +1931,11 @@ export namespace Prisma {
     isVerified?: boolean
     isBanned?: boolean
     reputation?: boolean
+    identityTier?: boolean
+    identityVerifiedAt?: boolean
   }
 
-  export type UserOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "username" | "email" | "bio" | "avatar" | "walletAddress" | "passwordHash" | "createdAt" | "updatedAt" | "lastActiveAt" | "isVerified" | "isBanned" | "reputation", ExtArgs["result"]["user"]>
+  export type UserOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "username" | "email" | "bio" | "avatar" | "walletAddress" | "passwordHash" | "createdAt" | "updatedAt" | "lastActiveAt" | "isVerified" | "isBanned" | "reputation" | "identityTier" | "identityVerifiedAt", ExtArgs["result"]["user"]>
   export type UserInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     posts?: boolean | User$postsArgs<ExtArgs>
     comments?: boolean | User$commentsArgs<ExtArgs>
@@ -1792,6 +1943,7 @@ export namespace Prisma {
     follows?: boolean | User$followsArgs<ExtArgs>
     followers?: boolean | User$followersArgs<ExtArgs>
     nfts?: boolean | User$nftsArgs<ExtArgs>
+    identityChecks?: boolean | User$identityChecksArgs<ExtArgs>
     _count?: boolean | UserCountOutputTypeDefaultArgs<ExtArgs>
   }
   export type UserIncludeCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {}
@@ -1806,6 +1958,7 @@ export namespace Prisma {
       follows: Prisma.$FollowPayload<ExtArgs>[]
       followers: Prisma.$FollowPayload<ExtArgs>[]
       nfts: Prisma.$NFTPayload<ExtArgs>[]
+      identityChecks: Prisma.$IdentityCheckPayload<ExtArgs>[]
     }
     scalars: $Extensions.GetPayloadResult<{
       id: string
@@ -1821,6 +1974,8 @@ export namespace Prisma {
       isVerified: boolean
       isBanned: boolean
       reputation: number
+      identityTier: $Enums.IdentityTier
+      identityVerifiedAt: Date | null
     }, ExtArgs["result"]["user"]>
     composites: {}
   }
@@ -2221,6 +2376,7 @@ export namespace Prisma {
     follows<T extends User$followsArgs<ExtArgs> = {}>(args?: Subset<T, User$followsArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$FollowPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
     followers<T extends User$followersArgs<ExtArgs> = {}>(args?: Subset<T, User$followersArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$FollowPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
     nfts<T extends User$nftsArgs<ExtArgs> = {}>(args?: Subset<T, User$nftsArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$NFTPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
+    identityChecks<T extends User$identityChecksArgs<ExtArgs> = {}>(args?: Subset<T, User$identityChecksArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$IdentityCheckPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
     /**
      * Attaches callbacks for the resolution and/or rejection of the Promise.
      * @param onfulfilled The callback to execute when the Promise is resolved.
@@ -2263,6 +2419,8 @@ export namespace Prisma {
     readonly isVerified: FieldRef<"User", 'Boolean'>
     readonly isBanned: FieldRef<"User", 'Boolean'>
     readonly reputation: FieldRef<"User", 'Int'>
+    readonly identityTier: FieldRef<"User", 'IdentityTier'>
+    readonly identityVerifiedAt: FieldRef<"User", 'DateTime'>
   }
     
 
@@ -2795,6 +2953,30 @@ export namespace Prisma {
   }
 
   /**
+   * User.identityChecks
+   */
+  export type User$identityChecksArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the IdentityCheck
+     */
+    select?: IdentityCheckSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the IdentityCheck
+     */
+    omit?: IdentityCheckOmit<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: IdentityCheckInclude<ExtArgs> | null
+    where?: IdentityCheckWhereInput
+    orderBy?: IdentityCheckOrderByWithRelationInput | IdentityCheckOrderByWithRelationInput[]
+    cursor?: IdentityCheckWhereUniqueInput
+    take?: number
+    skip?: number
+    distinct?: IdentityCheckScalarFieldEnum | IdentityCheckScalarFieldEnum[]
+  }
+
+  /**
    * User without action
    */
   export type UserDefaultArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
@@ -2810,6 +2992,1125 @@ export namespace Prisma {
      * Choose, which related nodes to fetch as well
      */
     include?: UserInclude<ExtArgs> | null
+  }
+
+
+  /**
+   * Model IdentityCheck
+   */
+
+  export type AggregateIdentityCheck = {
+    _count: IdentityCheckCountAggregateOutputType | null
+    _min: IdentityCheckMinAggregateOutputType | null
+    _max: IdentityCheckMaxAggregateOutputType | null
+  }
+
+  export type IdentityCheckMinAggregateOutputType = {
+    id: string | null
+    userId: string | null
+    provider: string | null
+    externalId: string | null
+    tier: $Enums.IdentityTier | null
+    status: $Enums.IdentityCheckStatus | null
+    initiatedAt: Date | null
+    resolvedAt: Date | null
+    expiresAt: Date | null
+  }
+
+  export type IdentityCheckMaxAggregateOutputType = {
+    id: string | null
+    userId: string | null
+    provider: string | null
+    externalId: string | null
+    tier: $Enums.IdentityTier | null
+    status: $Enums.IdentityCheckStatus | null
+    initiatedAt: Date | null
+    resolvedAt: Date | null
+    expiresAt: Date | null
+  }
+
+  export type IdentityCheckCountAggregateOutputType = {
+    id: number
+    userId: number
+    provider: number
+    externalId: number
+    tier: number
+    status: number
+    initiatedAt: number
+    resolvedAt: number
+    expiresAt: number
+    providerPayload: number
+    _all: number
+  }
+
+
+  export type IdentityCheckMinAggregateInputType = {
+    id?: true
+    userId?: true
+    provider?: true
+    externalId?: true
+    tier?: true
+    status?: true
+    initiatedAt?: true
+    resolvedAt?: true
+    expiresAt?: true
+  }
+
+  export type IdentityCheckMaxAggregateInputType = {
+    id?: true
+    userId?: true
+    provider?: true
+    externalId?: true
+    tier?: true
+    status?: true
+    initiatedAt?: true
+    resolvedAt?: true
+    expiresAt?: true
+  }
+
+  export type IdentityCheckCountAggregateInputType = {
+    id?: true
+    userId?: true
+    provider?: true
+    externalId?: true
+    tier?: true
+    status?: true
+    initiatedAt?: true
+    resolvedAt?: true
+    expiresAt?: true
+    providerPayload?: true
+    _all?: true
+  }
+
+  export type IdentityCheckAggregateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which IdentityCheck to aggregate.
+     */
+    where?: IdentityCheckWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of IdentityChecks to fetch.
+     */
+    orderBy?: IdentityCheckOrderByWithRelationInput | IdentityCheckOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the start position
+     */
+    cursor?: IdentityCheckWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` IdentityChecks from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` IdentityChecks.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Count returned IdentityChecks
+    **/
+    _count?: true | IdentityCheckCountAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the minimum value
+    **/
+    _min?: IdentityCheckMinAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the maximum value
+    **/
+    _max?: IdentityCheckMaxAggregateInputType
+  }
+
+  export type GetIdentityCheckAggregateType<T extends IdentityCheckAggregateArgs> = {
+        [P in keyof T & keyof AggregateIdentityCheck]: P extends '_count' | 'count'
+      ? T[P] extends true
+        ? number
+        : GetScalarType<T[P], AggregateIdentityCheck[P]>
+      : GetScalarType<T[P], AggregateIdentityCheck[P]>
+  }
+
+
+
+
+  export type IdentityCheckGroupByArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    where?: IdentityCheckWhereInput
+    orderBy?: IdentityCheckOrderByWithAggregationInput | IdentityCheckOrderByWithAggregationInput[]
+    by: IdentityCheckScalarFieldEnum[] | IdentityCheckScalarFieldEnum
+    having?: IdentityCheckScalarWhereWithAggregatesInput
+    take?: number
+    skip?: number
+    _count?: IdentityCheckCountAggregateInputType | true
+    _min?: IdentityCheckMinAggregateInputType
+    _max?: IdentityCheckMaxAggregateInputType
+  }
+
+  export type IdentityCheckGroupByOutputType = {
+    id: string
+    userId: string
+    provider: string
+    externalId: string
+    tier: $Enums.IdentityTier
+    status: $Enums.IdentityCheckStatus
+    initiatedAt: Date
+    resolvedAt: Date | null
+    expiresAt: Date | null
+    providerPayload: JsonValue | null
+    _count: IdentityCheckCountAggregateOutputType | null
+    _min: IdentityCheckMinAggregateOutputType | null
+    _max: IdentityCheckMaxAggregateOutputType | null
+  }
+
+  type GetIdentityCheckGroupByPayload<T extends IdentityCheckGroupByArgs> = Prisma.PrismaPromise<
+    Array<
+      PickEnumerable<IdentityCheckGroupByOutputType, T['by']> &
+        {
+          [P in ((keyof T) & (keyof IdentityCheckGroupByOutputType))]: P extends '_count'
+            ? T[P] extends boolean
+              ? number
+              : GetScalarType<T[P], IdentityCheckGroupByOutputType[P]>
+            : GetScalarType<T[P], IdentityCheckGroupByOutputType[P]>
+        }
+      >
+    >
+
+
+  export type IdentityCheckSelect<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    userId?: boolean
+    provider?: boolean
+    externalId?: boolean
+    tier?: boolean
+    status?: boolean
+    initiatedAt?: boolean
+    resolvedAt?: boolean
+    expiresAt?: boolean
+    providerPayload?: boolean
+    user?: boolean | UserDefaultArgs<ExtArgs>
+  }, ExtArgs["result"]["identityCheck"]>
+
+  export type IdentityCheckSelectCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    userId?: boolean
+    provider?: boolean
+    externalId?: boolean
+    tier?: boolean
+    status?: boolean
+    initiatedAt?: boolean
+    resolvedAt?: boolean
+    expiresAt?: boolean
+    providerPayload?: boolean
+    user?: boolean | UserDefaultArgs<ExtArgs>
+  }, ExtArgs["result"]["identityCheck"]>
+
+  export type IdentityCheckSelectUpdateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    userId?: boolean
+    provider?: boolean
+    externalId?: boolean
+    tier?: boolean
+    status?: boolean
+    initiatedAt?: boolean
+    resolvedAt?: boolean
+    expiresAt?: boolean
+    providerPayload?: boolean
+    user?: boolean | UserDefaultArgs<ExtArgs>
+  }, ExtArgs["result"]["identityCheck"]>
+
+  export type IdentityCheckSelectScalar = {
+    id?: boolean
+    userId?: boolean
+    provider?: boolean
+    externalId?: boolean
+    tier?: boolean
+    status?: boolean
+    initiatedAt?: boolean
+    resolvedAt?: boolean
+    expiresAt?: boolean
+    providerPayload?: boolean
+  }
+
+  export type IdentityCheckOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "userId" | "provider" | "externalId" | "tier" | "status" | "initiatedAt" | "resolvedAt" | "expiresAt" | "providerPayload", ExtArgs["result"]["identityCheck"]>
+  export type IdentityCheckInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    user?: boolean | UserDefaultArgs<ExtArgs>
+  }
+  export type IdentityCheckIncludeCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    user?: boolean | UserDefaultArgs<ExtArgs>
+  }
+  export type IdentityCheckIncludeUpdateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    user?: boolean | UserDefaultArgs<ExtArgs>
+  }
+
+  export type $IdentityCheckPayload<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    name: "IdentityCheck"
+    objects: {
+      user: Prisma.$UserPayload<ExtArgs>
+    }
+    scalars: $Extensions.GetPayloadResult<{
+      id: string
+      userId: string
+      provider: string
+      externalId: string
+      tier: $Enums.IdentityTier
+      status: $Enums.IdentityCheckStatus
+      initiatedAt: Date
+      resolvedAt: Date | null
+      expiresAt: Date | null
+      providerPayload: Prisma.JsonValue | null
+    }, ExtArgs["result"]["identityCheck"]>
+    composites: {}
+  }
+
+  type IdentityCheckGetPayload<S extends boolean | null | undefined | IdentityCheckDefaultArgs> = $Result.GetResult<Prisma.$IdentityCheckPayload, S>
+
+  type IdentityCheckCountArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> =
+    Omit<IdentityCheckFindManyArgs, 'select' | 'include' | 'distinct' | 'omit'> & {
+      select?: IdentityCheckCountAggregateInputType | true
+    }
+
+  export interface IdentityCheckDelegate<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs, GlobalOmitOptions = {}> {
+    [K: symbol]: { types: Prisma.TypeMap<ExtArgs>['model']['IdentityCheck'], meta: { name: 'IdentityCheck' } }
+    /**
+     * Find zero or one IdentityCheck that matches the filter.
+     * @param {IdentityCheckFindUniqueArgs} args - Arguments to find a IdentityCheck
+     * @example
+     * // Get one IdentityCheck
+     * const identityCheck = await prisma.identityCheck.findUnique({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUnique<T extends IdentityCheckFindUniqueArgs>(args: SelectSubset<T, IdentityCheckFindUniqueArgs<ExtArgs>>): Prisma__IdentityCheckClient<$Result.GetResult<Prisma.$IdentityCheckPayload<ExtArgs>, T, "findUnique", GlobalOmitOptions> | null, null, ExtArgs, GlobalOmitOptions>
+
+    /**
+     * Find one IdentityCheck that matches the filter or throw an error with `error.code='P2025'`
+     * if no matches were found.
+     * @param {IdentityCheckFindUniqueOrThrowArgs} args - Arguments to find a IdentityCheck
+     * @example
+     * // Get one IdentityCheck
+     * const identityCheck = await prisma.identityCheck.findUniqueOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUniqueOrThrow<T extends IdentityCheckFindUniqueOrThrowArgs>(args: SelectSubset<T, IdentityCheckFindUniqueOrThrowArgs<ExtArgs>>): Prisma__IdentityCheckClient<$Result.GetResult<Prisma.$IdentityCheckPayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions>, never, ExtArgs, GlobalOmitOptions>
+
+    /**
+     * Find the first IdentityCheck that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {IdentityCheckFindFirstArgs} args - Arguments to find a IdentityCheck
+     * @example
+     * // Get one IdentityCheck
+     * const identityCheck = await prisma.identityCheck.findFirst({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirst<T extends IdentityCheckFindFirstArgs>(args?: SelectSubset<T, IdentityCheckFindFirstArgs<ExtArgs>>): Prisma__IdentityCheckClient<$Result.GetResult<Prisma.$IdentityCheckPayload<ExtArgs>, T, "findFirst", GlobalOmitOptions> | null, null, ExtArgs, GlobalOmitOptions>
+
+    /**
+     * Find the first IdentityCheck that matches the filter or
+     * throw `PrismaKnownClientError` with `P2025` code if no matches were found.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {IdentityCheckFindFirstOrThrowArgs} args - Arguments to find a IdentityCheck
+     * @example
+     * // Get one IdentityCheck
+     * const identityCheck = await prisma.identityCheck.findFirstOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirstOrThrow<T extends IdentityCheckFindFirstOrThrowArgs>(args?: SelectSubset<T, IdentityCheckFindFirstOrThrowArgs<ExtArgs>>): Prisma__IdentityCheckClient<$Result.GetResult<Prisma.$IdentityCheckPayload<ExtArgs>, T, "findFirstOrThrow", GlobalOmitOptions>, never, ExtArgs, GlobalOmitOptions>
+
+    /**
+     * Find zero or more IdentityChecks that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {IdentityCheckFindManyArgs} args - Arguments to filter and select certain fields only.
+     * @example
+     * // Get all IdentityChecks
+     * const identityChecks = await prisma.identityCheck.findMany()
+     * 
+     * // Get first 10 IdentityChecks
+     * const identityChecks = await prisma.identityCheck.findMany({ take: 10 })
+     * 
+     * // Only select the `id`
+     * const identityCheckWithIdOnly = await prisma.identityCheck.findMany({ select: { id: true } })
+     * 
+     */
+    findMany<T extends IdentityCheckFindManyArgs>(args?: SelectSubset<T, IdentityCheckFindManyArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$IdentityCheckPayload<ExtArgs>, T, "findMany", GlobalOmitOptions>>
+
+    /**
+     * Create a IdentityCheck.
+     * @param {IdentityCheckCreateArgs} args - Arguments to create a IdentityCheck.
+     * @example
+     * // Create one IdentityCheck
+     * const IdentityCheck = await prisma.identityCheck.create({
+     *   data: {
+     *     // ... data to create a IdentityCheck
+     *   }
+     * })
+     * 
+     */
+    create<T extends IdentityCheckCreateArgs>(args: SelectSubset<T, IdentityCheckCreateArgs<ExtArgs>>): Prisma__IdentityCheckClient<$Result.GetResult<Prisma.$IdentityCheckPayload<ExtArgs>, T, "create", GlobalOmitOptions>, never, ExtArgs, GlobalOmitOptions>
+
+    /**
+     * Create many IdentityChecks.
+     * @param {IdentityCheckCreateManyArgs} args - Arguments to create many IdentityChecks.
+     * @example
+     * // Create many IdentityChecks
+     * const identityCheck = await prisma.identityCheck.createMany({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     *     
+     */
+    createMany<T extends IdentityCheckCreateManyArgs>(args?: SelectSubset<T, IdentityCheckCreateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Create many IdentityChecks and returns the data saved in the database.
+     * @param {IdentityCheckCreateManyAndReturnArgs} args - Arguments to create many IdentityChecks.
+     * @example
+     * // Create many IdentityChecks
+     * const identityCheck = await prisma.identityCheck.createManyAndReturn({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * 
+     * // Create many IdentityChecks and only return the `id`
+     * const identityCheckWithIdOnly = await prisma.identityCheck.createManyAndReturn({
+     *   select: { id: true },
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * 
+     */
+    createManyAndReturn<T extends IdentityCheckCreateManyAndReturnArgs>(args?: SelectSubset<T, IdentityCheckCreateManyAndReturnArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$IdentityCheckPayload<ExtArgs>, T, "createManyAndReturn", GlobalOmitOptions>>
+
+    /**
+     * Delete a IdentityCheck.
+     * @param {IdentityCheckDeleteArgs} args - Arguments to delete one IdentityCheck.
+     * @example
+     * // Delete one IdentityCheck
+     * const IdentityCheck = await prisma.identityCheck.delete({
+     *   where: {
+     *     // ... filter to delete one IdentityCheck
+     *   }
+     * })
+     * 
+     */
+    delete<T extends IdentityCheckDeleteArgs>(args: SelectSubset<T, IdentityCheckDeleteArgs<ExtArgs>>): Prisma__IdentityCheckClient<$Result.GetResult<Prisma.$IdentityCheckPayload<ExtArgs>, T, "delete", GlobalOmitOptions>, never, ExtArgs, GlobalOmitOptions>
+
+    /**
+     * Update one IdentityCheck.
+     * @param {IdentityCheckUpdateArgs} args - Arguments to update one IdentityCheck.
+     * @example
+     * // Update one IdentityCheck
+     * const identityCheck = await prisma.identityCheck.update({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    update<T extends IdentityCheckUpdateArgs>(args: SelectSubset<T, IdentityCheckUpdateArgs<ExtArgs>>): Prisma__IdentityCheckClient<$Result.GetResult<Prisma.$IdentityCheckPayload<ExtArgs>, T, "update", GlobalOmitOptions>, never, ExtArgs, GlobalOmitOptions>
+
+    /**
+     * Delete zero or more IdentityChecks.
+     * @param {IdentityCheckDeleteManyArgs} args - Arguments to filter IdentityChecks to delete.
+     * @example
+     * // Delete a few IdentityChecks
+     * const { count } = await prisma.identityCheck.deleteMany({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     * 
+     */
+    deleteMany<T extends IdentityCheckDeleteManyArgs>(args?: SelectSubset<T, IdentityCheckDeleteManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Update zero or more IdentityChecks.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {IdentityCheckUpdateManyArgs} args - Arguments to update one or more rows.
+     * @example
+     * // Update many IdentityChecks
+     * const identityCheck = await prisma.identityCheck.updateMany({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    updateMany<T extends IdentityCheckUpdateManyArgs>(args: SelectSubset<T, IdentityCheckUpdateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Update zero or more IdentityChecks and returns the data updated in the database.
+     * @param {IdentityCheckUpdateManyAndReturnArgs} args - Arguments to update many IdentityChecks.
+     * @example
+     * // Update many IdentityChecks
+     * const identityCheck = await prisma.identityCheck.updateManyAndReturn({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * 
+     * // Update zero or more IdentityChecks and only return the `id`
+     * const identityCheckWithIdOnly = await prisma.identityCheck.updateManyAndReturn({
+     *   select: { id: true },
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * 
+     */
+    updateManyAndReturn<T extends IdentityCheckUpdateManyAndReturnArgs>(args: SelectSubset<T, IdentityCheckUpdateManyAndReturnArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$IdentityCheckPayload<ExtArgs>, T, "updateManyAndReturn", GlobalOmitOptions>>
+
+    /**
+     * Create or update one IdentityCheck.
+     * @param {IdentityCheckUpsertArgs} args - Arguments to update or create a IdentityCheck.
+     * @example
+     * // Update or create a IdentityCheck
+     * const identityCheck = await prisma.identityCheck.upsert({
+     *   create: {
+     *     // ... data to create a IdentityCheck
+     *   },
+     *   update: {
+     *     // ... in case it already exists, update
+     *   },
+     *   where: {
+     *     // ... the filter for the IdentityCheck we want to update
+     *   }
+     * })
+     */
+    upsert<T extends IdentityCheckUpsertArgs>(args: SelectSubset<T, IdentityCheckUpsertArgs<ExtArgs>>): Prisma__IdentityCheckClient<$Result.GetResult<Prisma.$IdentityCheckPayload<ExtArgs>, T, "upsert", GlobalOmitOptions>, never, ExtArgs, GlobalOmitOptions>
+
+
+    /**
+     * Count the number of IdentityChecks.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {IdentityCheckCountArgs} args - Arguments to filter IdentityChecks to count.
+     * @example
+     * // Count the number of IdentityChecks
+     * const count = await prisma.identityCheck.count({
+     *   where: {
+     *     // ... the filter for the IdentityChecks we want to count
+     *   }
+     * })
+    **/
+    count<T extends IdentityCheckCountArgs>(
+      args?: Subset<T, IdentityCheckCountArgs>,
+    ): Prisma.PrismaPromise<
+      T extends $Utils.Record<'select', any>
+        ? T['select'] extends true
+          ? number
+          : GetScalarType<T['select'], IdentityCheckCountAggregateOutputType>
+        : number
+    >
+
+    /**
+     * Allows you to perform aggregations operations on a IdentityCheck.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {IdentityCheckAggregateArgs} args - Select which aggregations you would like to apply and on what fields.
+     * @example
+     * // Ordered by age ascending
+     * // Where email contains prisma.io
+     * // Limited to the 10 users
+     * const aggregations = await prisma.user.aggregate({
+     *   _avg: {
+     *     age: true,
+     *   },
+     *   where: {
+     *     email: {
+     *       contains: "prisma.io",
+     *     },
+     *   },
+     *   orderBy: {
+     *     age: "asc",
+     *   },
+     *   take: 10,
+     * })
+    **/
+    aggregate<T extends IdentityCheckAggregateArgs>(args: Subset<T, IdentityCheckAggregateArgs>): Prisma.PrismaPromise<GetIdentityCheckAggregateType<T>>
+
+    /**
+     * Group by IdentityCheck.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {IdentityCheckGroupByArgs} args - Group by arguments.
+     * @example
+     * // Group by city, order by createdAt, get count
+     * const result = await prisma.user.groupBy({
+     *   by: ['city', 'createdAt'],
+     *   orderBy: {
+     *     createdAt: true
+     *   },
+     *   _count: {
+     *     _all: true
+     *   },
+     * })
+     * 
+    **/
+    groupBy<
+      T extends IdentityCheckGroupByArgs,
+      HasSelectOrTake extends Or<
+        Extends<'skip', Keys<T>>,
+        Extends<'take', Keys<T>>
+      >,
+      OrderByArg extends True extends HasSelectOrTake
+        ? { orderBy: IdentityCheckGroupByArgs['orderBy'] }
+        : { orderBy?: IdentityCheckGroupByArgs['orderBy'] },
+      OrderFields extends ExcludeUnderscoreKeys<Keys<MaybeTupleToUnion<T['orderBy']>>>,
+      ByFields extends MaybeTupleToUnion<T['by']>,
+      ByValid extends Has<ByFields, OrderFields>,
+      HavingFields extends GetHavingFields<T['having']>,
+      HavingValid extends Has<ByFields, HavingFields>,
+      ByEmpty extends T['by'] extends never[] ? True : False,
+      InputErrors extends ByEmpty extends True
+      ? `Error: "by" must not be empty.`
+      : HavingValid extends False
+      ? {
+          [P in HavingFields]: P extends ByFields
+            ? never
+            : P extends string
+            ? `Error: Field "${P}" used in "having" needs to be provided in "by".`
+            : [
+                Error,
+                'Field ',
+                P,
+                ` in "having" needs to be provided in "by"`,
+              ]
+        }[HavingFields]
+      : 'take' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "take", you also need to provide "orderBy"'
+      : 'skip' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "skip", you also need to provide "orderBy"'
+      : ByValid extends True
+      ? {}
+      : {
+          [P in OrderFields]: P extends ByFields
+            ? never
+            : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+        }[OrderFields]
+    >(args: SubsetIntersection<T, IdentityCheckGroupByArgs, OrderByArg> & InputErrors): {} extends InputErrors ? GetIdentityCheckGroupByPayload<T> : Prisma.PrismaPromise<InputErrors>
+  /**
+   * Fields of the IdentityCheck model
+   */
+  readonly fields: IdentityCheckFieldRefs;
+  }
+
+  /**
+   * The delegate class that acts as a "Promise-like" for IdentityCheck.
+   * Why is this prefixed with `Prisma__`?
+   * Because we want to prevent naming conflicts as mentioned in
+   * https://github.com/prisma/prisma-client-js/issues/707
+   */
+  export interface Prisma__IdentityCheckClient<T, Null = never, ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs, GlobalOmitOptions = {}> extends Prisma.PrismaPromise<T> {
+    readonly [Symbol.toStringTag]: "PrismaPromise"
+    user<T extends UserDefaultArgs<ExtArgs> = {}>(args?: Subset<T, UserDefaultArgs<ExtArgs>>): Prisma__UserClient<$Result.GetResult<Prisma.$UserPayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions> | Null, Null, ExtArgs, GlobalOmitOptions>
+    /**
+     * Attaches callbacks for the resolution and/or rejection of the Promise.
+     * @param onfulfilled The callback to execute when the Promise is resolved.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of which ever callback is executed.
+     */
+    then<TResult1 = T, TResult2 = never>(onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | undefined | null, onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | undefined | null): $Utils.JsPromise<TResult1 | TResult2>
+    /**
+     * Attaches a callback for only the rejection of the Promise.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of the callback.
+     */
+    catch<TResult = never>(onrejected?: ((reason: any) => TResult | PromiseLike<TResult>) | undefined | null): $Utils.JsPromise<T | TResult>
+    /**
+     * Attaches a callback that is invoked when the Promise is settled (fulfilled or rejected). The
+     * resolved value cannot be modified from the callback.
+     * @param onfinally The callback to execute when the Promise is settled (fulfilled or rejected).
+     * @returns A Promise for the completion of the callback.
+     */
+    finally(onfinally?: (() => void) | undefined | null): $Utils.JsPromise<T>
+  }
+
+
+
+
+  /**
+   * Fields of the IdentityCheck model
+   */
+  interface IdentityCheckFieldRefs {
+    readonly id: FieldRef<"IdentityCheck", 'String'>
+    readonly userId: FieldRef<"IdentityCheck", 'String'>
+    readonly provider: FieldRef<"IdentityCheck", 'String'>
+    readonly externalId: FieldRef<"IdentityCheck", 'String'>
+    readonly tier: FieldRef<"IdentityCheck", 'IdentityTier'>
+    readonly status: FieldRef<"IdentityCheck", 'IdentityCheckStatus'>
+    readonly initiatedAt: FieldRef<"IdentityCheck", 'DateTime'>
+    readonly resolvedAt: FieldRef<"IdentityCheck", 'DateTime'>
+    readonly expiresAt: FieldRef<"IdentityCheck", 'DateTime'>
+    readonly providerPayload: FieldRef<"IdentityCheck", 'Json'>
+  }
+    
+
+  // Custom InputTypes
+  /**
+   * IdentityCheck findUnique
+   */
+  export type IdentityCheckFindUniqueArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the IdentityCheck
+     */
+    select?: IdentityCheckSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the IdentityCheck
+     */
+    omit?: IdentityCheckOmit<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: IdentityCheckInclude<ExtArgs> | null
+    /**
+     * Filter, which IdentityCheck to fetch.
+     */
+    where: IdentityCheckWhereUniqueInput
+  }
+
+  /**
+   * IdentityCheck findUniqueOrThrow
+   */
+  export type IdentityCheckFindUniqueOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the IdentityCheck
+     */
+    select?: IdentityCheckSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the IdentityCheck
+     */
+    omit?: IdentityCheckOmit<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: IdentityCheckInclude<ExtArgs> | null
+    /**
+     * Filter, which IdentityCheck to fetch.
+     */
+    where: IdentityCheckWhereUniqueInput
+  }
+
+  /**
+   * IdentityCheck findFirst
+   */
+  export type IdentityCheckFindFirstArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the IdentityCheck
+     */
+    select?: IdentityCheckSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the IdentityCheck
+     */
+    omit?: IdentityCheckOmit<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: IdentityCheckInclude<ExtArgs> | null
+    /**
+     * Filter, which IdentityCheck to fetch.
+     */
+    where?: IdentityCheckWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of IdentityChecks to fetch.
+     */
+    orderBy?: IdentityCheckOrderByWithRelationInput | IdentityCheckOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for IdentityChecks.
+     */
+    cursor?: IdentityCheckWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` IdentityChecks from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` IdentityChecks.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of IdentityChecks.
+     */
+    distinct?: IdentityCheckScalarFieldEnum | IdentityCheckScalarFieldEnum[]
+  }
+
+  /**
+   * IdentityCheck findFirstOrThrow
+   */
+  export type IdentityCheckFindFirstOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the IdentityCheck
+     */
+    select?: IdentityCheckSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the IdentityCheck
+     */
+    omit?: IdentityCheckOmit<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: IdentityCheckInclude<ExtArgs> | null
+    /**
+     * Filter, which IdentityCheck to fetch.
+     */
+    where?: IdentityCheckWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of IdentityChecks to fetch.
+     */
+    orderBy?: IdentityCheckOrderByWithRelationInput | IdentityCheckOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for IdentityChecks.
+     */
+    cursor?: IdentityCheckWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` IdentityChecks from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` IdentityChecks.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of IdentityChecks.
+     */
+    distinct?: IdentityCheckScalarFieldEnum | IdentityCheckScalarFieldEnum[]
+  }
+
+  /**
+   * IdentityCheck findMany
+   */
+  export type IdentityCheckFindManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the IdentityCheck
+     */
+    select?: IdentityCheckSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the IdentityCheck
+     */
+    omit?: IdentityCheckOmit<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: IdentityCheckInclude<ExtArgs> | null
+    /**
+     * Filter, which IdentityChecks to fetch.
+     */
+    where?: IdentityCheckWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of IdentityChecks to fetch.
+     */
+    orderBy?: IdentityCheckOrderByWithRelationInput | IdentityCheckOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for listing IdentityChecks.
+     */
+    cursor?: IdentityCheckWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` IdentityChecks from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` IdentityChecks.
+     */
+    skip?: number
+    distinct?: IdentityCheckScalarFieldEnum | IdentityCheckScalarFieldEnum[]
+  }
+
+  /**
+   * IdentityCheck create
+   */
+  export type IdentityCheckCreateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the IdentityCheck
+     */
+    select?: IdentityCheckSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the IdentityCheck
+     */
+    omit?: IdentityCheckOmit<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: IdentityCheckInclude<ExtArgs> | null
+    /**
+     * The data needed to create a IdentityCheck.
+     */
+    data: XOR<IdentityCheckCreateInput, IdentityCheckUncheckedCreateInput>
+  }
+
+  /**
+   * IdentityCheck createMany
+   */
+  export type IdentityCheckCreateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to create many IdentityChecks.
+     */
+    data: IdentityCheckCreateManyInput | IdentityCheckCreateManyInput[]
+    skipDuplicates?: boolean
+  }
+
+  /**
+   * IdentityCheck createManyAndReturn
+   */
+  export type IdentityCheckCreateManyAndReturnArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the IdentityCheck
+     */
+    select?: IdentityCheckSelectCreateManyAndReturn<ExtArgs> | null
+    /**
+     * Omit specific fields from the IdentityCheck
+     */
+    omit?: IdentityCheckOmit<ExtArgs> | null
+    /**
+     * The data used to create many IdentityChecks.
+     */
+    data: IdentityCheckCreateManyInput | IdentityCheckCreateManyInput[]
+    skipDuplicates?: boolean
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: IdentityCheckIncludeCreateManyAndReturn<ExtArgs> | null
+  }
+
+  /**
+   * IdentityCheck update
+   */
+  export type IdentityCheckUpdateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the IdentityCheck
+     */
+    select?: IdentityCheckSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the IdentityCheck
+     */
+    omit?: IdentityCheckOmit<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: IdentityCheckInclude<ExtArgs> | null
+    /**
+     * The data needed to update a IdentityCheck.
+     */
+    data: XOR<IdentityCheckUpdateInput, IdentityCheckUncheckedUpdateInput>
+    /**
+     * Choose, which IdentityCheck to update.
+     */
+    where: IdentityCheckWhereUniqueInput
+  }
+
+  /**
+   * IdentityCheck updateMany
+   */
+  export type IdentityCheckUpdateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to update IdentityChecks.
+     */
+    data: XOR<IdentityCheckUpdateManyMutationInput, IdentityCheckUncheckedUpdateManyInput>
+    /**
+     * Filter which IdentityChecks to update
+     */
+    where?: IdentityCheckWhereInput
+    /**
+     * Limit how many IdentityChecks to update.
+     */
+    limit?: number
+  }
+
+  /**
+   * IdentityCheck updateManyAndReturn
+   */
+  export type IdentityCheckUpdateManyAndReturnArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the IdentityCheck
+     */
+    select?: IdentityCheckSelectUpdateManyAndReturn<ExtArgs> | null
+    /**
+     * Omit specific fields from the IdentityCheck
+     */
+    omit?: IdentityCheckOmit<ExtArgs> | null
+    /**
+     * The data used to update IdentityChecks.
+     */
+    data: XOR<IdentityCheckUpdateManyMutationInput, IdentityCheckUncheckedUpdateManyInput>
+    /**
+     * Filter which IdentityChecks to update
+     */
+    where?: IdentityCheckWhereInput
+    /**
+     * Limit how many IdentityChecks to update.
+     */
+    limit?: number
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: IdentityCheckIncludeUpdateManyAndReturn<ExtArgs> | null
+  }
+
+  /**
+   * IdentityCheck upsert
+   */
+  export type IdentityCheckUpsertArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the IdentityCheck
+     */
+    select?: IdentityCheckSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the IdentityCheck
+     */
+    omit?: IdentityCheckOmit<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: IdentityCheckInclude<ExtArgs> | null
+    /**
+     * The filter to search for the IdentityCheck to update in case it exists.
+     */
+    where: IdentityCheckWhereUniqueInput
+    /**
+     * In case the IdentityCheck found by the `where` argument doesn't exist, create a new IdentityCheck with this data.
+     */
+    create: XOR<IdentityCheckCreateInput, IdentityCheckUncheckedCreateInput>
+    /**
+     * In case the IdentityCheck was found with the provided `where` argument, update it with this data.
+     */
+    update: XOR<IdentityCheckUpdateInput, IdentityCheckUncheckedUpdateInput>
+  }
+
+  /**
+   * IdentityCheck delete
+   */
+  export type IdentityCheckDeleteArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the IdentityCheck
+     */
+    select?: IdentityCheckSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the IdentityCheck
+     */
+    omit?: IdentityCheckOmit<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: IdentityCheckInclude<ExtArgs> | null
+    /**
+     * Filter which IdentityCheck to delete.
+     */
+    where: IdentityCheckWhereUniqueInput
+  }
+
+  /**
+   * IdentityCheck deleteMany
+   */
+  export type IdentityCheckDeleteManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which IdentityChecks to delete
+     */
+    where?: IdentityCheckWhereInput
+    /**
+     * Limit how many IdentityChecks to delete.
+     */
+    limit?: number
+  }
+
+  /**
+   * IdentityCheck without action
+   */
+  export type IdentityCheckDefaultArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the IdentityCheck
+     */
+    select?: IdentityCheckSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the IdentityCheck
+     */
+    omit?: IdentityCheckOmit<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: IdentityCheckInclude<ExtArgs> | null
   }
 
 
@@ -8495,10 +9796,28 @@ export namespace Prisma {
     lastActiveAt: 'lastActiveAt',
     isVerified: 'isVerified',
     isBanned: 'isBanned',
-    reputation: 'reputation'
+    reputation: 'reputation',
+    identityTier: 'identityTier',
+    identityVerifiedAt: 'identityVerifiedAt'
   };
 
   export type UserScalarFieldEnum = (typeof UserScalarFieldEnum)[keyof typeof UserScalarFieldEnum]
+
+
+  export const IdentityCheckScalarFieldEnum: {
+    id: 'id',
+    userId: 'userId',
+    provider: 'provider',
+    externalId: 'externalId',
+    tier: 'tier',
+    status: 'status',
+    initiatedAt: 'initiatedAt',
+    resolvedAt: 'resolvedAt',
+    expiresAt: 'expiresAt',
+    providerPayload: 'providerPayload'
+  };
+
+  export type IdentityCheckScalarFieldEnum = (typeof IdentityCheckScalarFieldEnum)[keyof typeof IdentityCheckScalarFieldEnum]
 
 
   export const PostScalarFieldEnum: {
@@ -8579,6 +9898,14 @@ export namespace Prisma {
   export type SortOrder = (typeof SortOrder)[keyof typeof SortOrder]
 
 
+  export const NullableJsonNullValueInput: {
+    DbNull: typeof DbNull,
+    JsonNull: typeof JsonNull
+  };
+
+  export type NullableJsonNullValueInput = (typeof NullableJsonNullValueInput)[keyof typeof NullableJsonNullValueInput]
+
+
   export const QueryMode: {
     default: 'default',
     insensitive: 'insensitive'
@@ -8593,6 +9920,15 @@ export namespace Prisma {
   };
 
   export type NullsOrder = (typeof NullsOrder)[keyof typeof NullsOrder]
+
+
+  export const JsonNullValueFilter: {
+    DbNull: typeof DbNull,
+    JsonNull: typeof JsonNull,
+    AnyNull: typeof AnyNull
+  };
+
+  export type JsonNullValueFilter = (typeof JsonNullValueFilter)[keyof typeof JsonNullValueFilter]
 
 
   /**
@@ -8646,6 +9982,48 @@ export namespace Prisma {
    * Reference to a field of type 'Int[]'
    */
   export type ListIntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Int[]'>
+    
+
+
+  /**
+   * Reference to a field of type 'IdentityTier'
+   */
+  export type EnumIdentityTierFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'IdentityTier'>
+    
+
+
+  /**
+   * Reference to a field of type 'IdentityTier[]'
+   */
+  export type ListEnumIdentityTierFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'IdentityTier[]'>
+    
+
+
+  /**
+   * Reference to a field of type 'IdentityCheckStatus'
+   */
+  export type EnumIdentityCheckStatusFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'IdentityCheckStatus'>
+    
+
+
+  /**
+   * Reference to a field of type 'IdentityCheckStatus[]'
+   */
+  export type ListEnumIdentityCheckStatusFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'IdentityCheckStatus[]'>
+    
+
+
+  /**
+   * Reference to a field of type 'Json'
+   */
+  export type JsonFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Json'>
+    
+
+
+  /**
+   * Reference to a field of type 'QueryMode'
+   */
+  export type EnumQueryModeFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'QueryMode'>
     
 
 
@@ -8711,12 +10089,15 @@ export namespace Prisma {
     isVerified?: BoolFilter<"User"> | boolean
     isBanned?: BoolFilter<"User"> | boolean
     reputation?: IntFilter<"User"> | number
+    identityTier?: EnumIdentityTierFilter<"User"> | $Enums.IdentityTier
+    identityVerifiedAt?: DateTimeNullableFilter<"User"> | Date | string | null
     posts?: PostListRelationFilter
     comments?: CommentListRelationFilter
     likes?: LikeListRelationFilter
     follows?: FollowListRelationFilter
     followers?: FollowListRelationFilter
     nfts?: NFTListRelationFilter
+    identityChecks?: IdentityCheckListRelationFilter
   }
 
   export type UserOrderByWithRelationInput = {
@@ -8733,12 +10114,15 @@ export namespace Prisma {
     isVerified?: SortOrder
     isBanned?: SortOrder
     reputation?: SortOrder
+    identityTier?: SortOrder
+    identityVerifiedAt?: SortOrderInput | SortOrder
     posts?: PostOrderByRelationAggregateInput
     comments?: CommentOrderByRelationAggregateInput
     likes?: LikeOrderByRelationAggregateInput
     follows?: FollowOrderByRelationAggregateInput
     followers?: FollowOrderByRelationAggregateInput
     nfts?: NFTOrderByRelationAggregateInput
+    identityChecks?: IdentityCheckOrderByRelationAggregateInput
   }
 
   export type UserWhereUniqueInput = Prisma.AtLeast<{
@@ -8758,12 +10142,15 @@ export namespace Prisma {
     isVerified?: BoolFilter<"User"> | boolean
     isBanned?: BoolFilter<"User"> | boolean
     reputation?: IntFilter<"User"> | number
+    identityTier?: EnumIdentityTierFilter<"User"> | $Enums.IdentityTier
+    identityVerifiedAt?: DateTimeNullableFilter<"User"> | Date | string | null
     posts?: PostListRelationFilter
     comments?: CommentListRelationFilter
     likes?: LikeListRelationFilter
     follows?: FollowListRelationFilter
     followers?: FollowListRelationFilter
     nfts?: NFTListRelationFilter
+    identityChecks?: IdentityCheckListRelationFilter
   }, "id" | "username" | "email" | "walletAddress">
 
   export type UserOrderByWithAggregationInput = {
@@ -8780,6 +10167,8 @@ export namespace Prisma {
     isVerified?: SortOrder
     isBanned?: SortOrder
     reputation?: SortOrder
+    identityTier?: SortOrder
+    identityVerifiedAt?: SortOrderInput | SortOrder
     _count?: UserCountOrderByAggregateInput
     _avg?: UserAvgOrderByAggregateInput
     _max?: UserMaxOrderByAggregateInput
@@ -8804,6 +10193,88 @@ export namespace Prisma {
     isVerified?: BoolWithAggregatesFilter<"User"> | boolean
     isBanned?: BoolWithAggregatesFilter<"User"> | boolean
     reputation?: IntWithAggregatesFilter<"User"> | number
+    identityTier?: EnumIdentityTierWithAggregatesFilter<"User"> | $Enums.IdentityTier
+    identityVerifiedAt?: DateTimeNullableWithAggregatesFilter<"User"> | Date | string | null
+  }
+
+  export type IdentityCheckWhereInput = {
+    AND?: IdentityCheckWhereInput | IdentityCheckWhereInput[]
+    OR?: IdentityCheckWhereInput[]
+    NOT?: IdentityCheckWhereInput | IdentityCheckWhereInput[]
+    id?: StringFilter<"IdentityCheck"> | string
+    userId?: StringFilter<"IdentityCheck"> | string
+    provider?: StringFilter<"IdentityCheck"> | string
+    externalId?: StringFilter<"IdentityCheck"> | string
+    tier?: EnumIdentityTierFilter<"IdentityCheck"> | $Enums.IdentityTier
+    status?: EnumIdentityCheckStatusFilter<"IdentityCheck"> | $Enums.IdentityCheckStatus
+    initiatedAt?: DateTimeFilter<"IdentityCheck"> | Date | string
+    resolvedAt?: DateTimeNullableFilter<"IdentityCheck"> | Date | string | null
+    expiresAt?: DateTimeNullableFilter<"IdentityCheck"> | Date | string | null
+    providerPayload?: JsonNullableFilter<"IdentityCheck">
+    user?: XOR<UserScalarRelationFilter, UserWhereInput>
+  }
+
+  export type IdentityCheckOrderByWithRelationInput = {
+    id?: SortOrder
+    userId?: SortOrder
+    provider?: SortOrder
+    externalId?: SortOrder
+    tier?: SortOrder
+    status?: SortOrder
+    initiatedAt?: SortOrder
+    resolvedAt?: SortOrderInput | SortOrder
+    expiresAt?: SortOrderInput | SortOrder
+    providerPayload?: SortOrderInput | SortOrder
+    user?: UserOrderByWithRelationInput
+  }
+
+  export type IdentityCheckWhereUniqueInput = Prisma.AtLeast<{
+    id?: string
+    AND?: IdentityCheckWhereInput | IdentityCheckWhereInput[]
+    OR?: IdentityCheckWhereInput[]
+    NOT?: IdentityCheckWhereInput | IdentityCheckWhereInput[]
+    userId?: StringFilter<"IdentityCheck"> | string
+    provider?: StringFilter<"IdentityCheck"> | string
+    externalId?: StringFilter<"IdentityCheck"> | string
+    tier?: EnumIdentityTierFilter<"IdentityCheck"> | $Enums.IdentityTier
+    status?: EnumIdentityCheckStatusFilter<"IdentityCheck"> | $Enums.IdentityCheckStatus
+    initiatedAt?: DateTimeFilter<"IdentityCheck"> | Date | string
+    resolvedAt?: DateTimeNullableFilter<"IdentityCheck"> | Date | string | null
+    expiresAt?: DateTimeNullableFilter<"IdentityCheck"> | Date | string | null
+    providerPayload?: JsonNullableFilter<"IdentityCheck">
+    user?: XOR<UserScalarRelationFilter, UserWhereInput>
+  }, "id">
+
+  export type IdentityCheckOrderByWithAggregationInput = {
+    id?: SortOrder
+    userId?: SortOrder
+    provider?: SortOrder
+    externalId?: SortOrder
+    tier?: SortOrder
+    status?: SortOrder
+    initiatedAt?: SortOrder
+    resolvedAt?: SortOrderInput | SortOrder
+    expiresAt?: SortOrderInput | SortOrder
+    providerPayload?: SortOrderInput | SortOrder
+    _count?: IdentityCheckCountOrderByAggregateInput
+    _max?: IdentityCheckMaxOrderByAggregateInput
+    _min?: IdentityCheckMinOrderByAggregateInput
+  }
+
+  export type IdentityCheckScalarWhereWithAggregatesInput = {
+    AND?: IdentityCheckScalarWhereWithAggregatesInput | IdentityCheckScalarWhereWithAggregatesInput[]
+    OR?: IdentityCheckScalarWhereWithAggregatesInput[]
+    NOT?: IdentityCheckScalarWhereWithAggregatesInput | IdentityCheckScalarWhereWithAggregatesInput[]
+    id?: StringWithAggregatesFilter<"IdentityCheck"> | string
+    userId?: StringWithAggregatesFilter<"IdentityCheck"> | string
+    provider?: StringWithAggregatesFilter<"IdentityCheck"> | string
+    externalId?: StringWithAggregatesFilter<"IdentityCheck"> | string
+    tier?: EnumIdentityTierWithAggregatesFilter<"IdentityCheck"> | $Enums.IdentityTier
+    status?: EnumIdentityCheckStatusWithAggregatesFilter<"IdentityCheck"> | $Enums.IdentityCheckStatus
+    initiatedAt?: DateTimeWithAggregatesFilter<"IdentityCheck"> | Date | string
+    resolvedAt?: DateTimeNullableWithAggregatesFilter<"IdentityCheck"> | Date | string | null
+    expiresAt?: DateTimeNullableWithAggregatesFilter<"IdentityCheck"> | Date | string | null
+    providerPayload?: JsonNullableWithAggregatesFilter<"IdentityCheck">
   }
 
   export type PostWhereInput = {
@@ -9195,12 +10666,15 @@ export namespace Prisma {
     isVerified?: boolean
     isBanned?: boolean
     reputation?: number
+    identityTier?: $Enums.IdentityTier
+    identityVerifiedAt?: Date | string | null
     posts?: PostCreateNestedManyWithoutUserInput
     comments?: CommentCreateNestedManyWithoutUserInput
     likes?: LikeCreateNestedManyWithoutUserInput
     follows?: FollowCreateNestedManyWithoutFollowerInput
     followers?: FollowCreateNestedManyWithoutFollowingInput
     nfts?: NFTCreateNestedManyWithoutUserInput
+    identityChecks?: IdentityCheckCreateNestedManyWithoutUserInput
   }
 
   export type UserUncheckedCreateInput = {
@@ -9217,12 +10691,15 @@ export namespace Prisma {
     isVerified?: boolean
     isBanned?: boolean
     reputation?: number
+    identityTier?: $Enums.IdentityTier
+    identityVerifiedAt?: Date | string | null
     posts?: PostUncheckedCreateNestedManyWithoutUserInput
     comments?: CommentUncheckedCreateNestedManyWithoutUserInput
     likes?: LikeUncheckedCreateNestedManyWithoutUserInput
     follows?: FollowUncheckedCreateNestedManyWithoutFollowerInput
     followers?: FollowUncheckedCreateNestedManyWithoutFollowingInput
     nfts?: NFTUncheckedCreateNestedManyWithoutUserInput
+    identityChecks?: IdentityCheckUncheckedCreateNestedManyWithoutUserInput
   }
 
   export type UserUpdateInput = {
@@ -9239,12 +10716,15 @@ export namespace Prisma {
     isVerified?: BoolFieldUpdateOperationsInput | boolean
     isBanned?: BoolFieldUpdateOperationsInput | boolean
     reputation?: IntFieldUpdateOperationsInput | number
+    identityTier?: EnumIdentityTierFieldUpdateOperationsInput | $Enums.IdentityTier
+    identityVerifiedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     posts?: PostUpdateManyWithoutUserNestedInput
     comments?: CommentUpdateManyWithoutUserNestedInput
     likes?: LikeUpdateManyWithoutUserNestedInput
     follows?: FollowUpdateManyWithoutFollowerNestedInput
     followers?: FollowUpdateManyWithoutFollowingNestedInput
     nfts?: NFTUpdateManyWithoutUserNestedInput
+    identityChecks?: IdentityCheckUpdateManyWithoutUserNestedInput
   }
 
   export type UserUncheckedUpdateInput = {
@@ -9261,12 +10741,15 @@ export namespace Prisma {
     isVerified?: BoolFieldUpdateOperationsInput | boolean
     isBanned?: BoolFieldUpdateOperationsInput | boolean
     reputation?: IntFieldUpdateOperationsInput | number
+    identityTier?: EnumIdentityTierFieldUpdateOperationsInput | $Enums.IdentityTier
+    identityVerifiedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     posts?: PostUncheckedUpdateManyWithoutUserNestedInput
     comments?: CommentUncheckedUpdateManyWithoutUserNestedInput
     likes?: LikeUncheckedUpdateManyWithoutUserNestedInput
     follows?: FollowUncheckedUpdateManyWithoutFollowerNestedInput
     followers?: FollowUncheckedUpdateManyWithoutFollowingNestedInput
     nfts?: NFTUncheckedUpdateManyWithoutUserNestedInput
+    identityChecks?: IdentityCheckUncheckedUpdateManyWithoutUserNestedInput
   }
 
   export type UserCreateManyInput = {
@@ -9283,6 +10766,8 @@ export namespace Prisma {
     isVerified?: boolean
     isBanned?: boolean
     reputation?: number
+    identityTier?: $Enums.IdentityTier
+    identityVerifiedAt?: Date | string | null
   }
 
   export type UserUpdateManyMutationInput = {
@@ -9299,6 +10784,8 @@ export namespace Prisma {
     isVerified?: BoolFieldUpdateOperationsInput | boolean
     isBanned?: BoolFieldUpdateOperationsInput | boolean
     reputation?: IntFieldUpdateOperationsInput | number
+    identityTier?: EnumIdentityTierFieldUpdateOperationsInput | $Enums.IdentityTier
+    identityVerifiedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   }
 
   export type UserUncheckedUpdateManyInput = {
@@ -9315,6 +10802,98 @@ export namespace Prisma {
     isVerified?: BoolFieldUpdateOperationsInput | boolean
     isBanned?: BoolFieldUpdateOperationsInput | boolean
     reputation?: IntFieldUpdateOperationsInput | number
+    identityTier?: EnumIdentityTierFieldUpdateOperationsInput | $Enums.IdentityTier
+    identityVerifiedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  }
+
+  export type IdentityCheckCreateInput = {
+    id?: string
+    provider: string
+    externalId: string
+    tier: $Enums.IdentityTier
+    status: $Enums.IdentityCheckStatus
+    initiatedAt?: Date | string
+    resolvedAt?: Date | string | null
+    expiresAt?: Date | string | null
+    providerPayload?: NullableJsonNullValueInput | InputJsonValue
+    user: UserCreateNestedOneWithoutIdentityChecksInput
+  }
+
+  export type IdentityCheckUncheckedCreateInput = {
+    id?: string
+    userId: string
+    provider: string
+    externalId: string
+    tier: $Enums.IdentityTier
+    status: $Enums.IdentityCheckStatus
+    initiatedAt?: Date | string
+    resolvedAt?: Date | string | null
+    expiresAt?: Date | string | null
+    providerPayload?: NullableJsonNullValueInput | InputJsonValue
+  }
+
+  export type IdentityCheckUpdateInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    provider?: StringFieldUpdateOperationsInput | string
+    externalId?: StringFieldUpdateOperationsInput | string
+    tier?: EnumIdentityTierFieldUpdateOperationsInput | $Enums.IdentityTier
+    status?: EnumIdentityCheckStatusFieldUpdateOperationsInput | $Enums.IdentityCheckStatus
+    initiatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    resolvedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    expiresAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    providerPayload?: NullableJsonNullValueInput | InputJsonValue
+    user?: UserUpdateOneRequiredWithoutIdentityChecksNestedInput
+  }
+
+  export type IdentityCheckUncheckedUpdateInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    userId?: StringFieldUpdateOperationsInput | string
+    provider?: StringFieldUpdateOperationsInput | string
+    externalId?: StringFieldUpdateOperationsInput | string
+    tier?: EnumIdentityTierFieldUpdateOperationsInput | $Enums.IdentityTier
+    status?: EnumIdentityCheckStatusFieldUpdateOperationsInput | $Enums.IdentityCheckStatus
+    initiatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    resolvedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    expiresAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    providerPayload?: NullableJsonNullValueInput | InputJsonValue
+  }
+
+  export type IdentityCheckCreateManyInput = {
+    id?: string
+    userId: string
+    provider: string
+    externalId: string
+    tier: $Enums.IdentityTier
+    status: $Enums.IdentityCheckStatus
+    initiatedAt?: Date | string
+    resolvedAt?: Date | string | null
+    expiresAt?: Date | string | null
+    providerPayload?: NullableJsonNullValueInput | InputJsonValue
+  }
+
+  export type IdentityCheckUpdateManyMutationInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    provider?: StringFieldUpdateOperationsInput | string
+    externalId?: StringFieldUpdateOperationsInput | string
+    tier?: EnumIdentityTierFieldUpdateOperationsInput | $Enums.IdentityTier
+    status?: EnumIdentityCheckStatusFieldUpdateOperationsInput | $Enums.IdentityCheckStatus
+    initiatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    resolvedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    expiresAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    providerPayload?: NullableJsonNullValueInput | InputJsonValue
+  }
+
+  export type IdentityCheckUncheckedUpdateManyInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    userId?: StringFieldUpdateOperationsInput | string
+    provider?: StringFieldUpdateOperationsInput | string
+    externalId?: StringFieldUpdateOperationsInput | string
+    tier?: EnumIdentityTierFieldUpdateOperationsInput | $Enums.IdentityTier
+    status?: EnumIdentityCheckStatusFieldUpdateOperationsInput | $Enums.IdentityCheckStatus
+    initiatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    resolvedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    expiresAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    providerPayload?: NullableJsonNullValueInput | InputJsonValue
   }
 
   export type PostCreateInput = {
@@ -9762,6 +11341,24 @@ export namespace Prisma {
     not?: NestedIntFilter<$PrismaModel> | number
   }
 
+  export type EnumIdentityTierFilter<$PrismaModel = never> = {
+    equals?: $Enums.IdentityTier | EnumIdentityTierFieldRefInput<$PrismaModel>
+    in?: $Enums.IdentityTier[] | ListEnumIdentityTierFieldRefInput<$PrismaModel>
+    notIn?: $Enums.IdentityTier[] | ListEnumIdentityTierFieldRefInput<$PrismaModel>
+    not?: NestedEnumIdentityTierFilter<$PrismaModel> | $Enums.IdentityTier
+  }
+
+  export type DateTimeNullableFilter<$PrismaModel = never> = {
+    equals?: Date | string | DateTimeFieldRefInput<$PrismaModel> | null
+    in?: Date[] | string[] | ListDateTimeFieldRefInput<$PrismaModel> | null
+    notIn?: Date[] | string[] | ListDateTimeFieldRefInput<$PrismaModel> | null
+    lt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    lte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    gt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    gte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    not?: NestedDateTimeNullableFilter<$PrismaModel> | Date | string | null
+  }
+
   export type PostListRelationFilter = {
     every?: PostWhereInput
     some?: PostWhereInput
@@ -9792,6 +11389,12 @@ export namespace Prisma {
     none?: NFTWhereInput
   }
 
+  export type IdentityCheckListRelationFilter = {
+    every?: IdentityCheckWhereInput
+    some?: IdentityCheckWhereInput
+    none?: IdentityCheckWhereInput
+  }
+
   export type SortOrderInput = {
     sort: SortOrder
     nulls?: NullsOrder
@@ -9817,6 +11420,10 @@ export namespace Prisma {
     _count?: SortOrder
   }
 
+  export type IdentityCheckOrderByRelationAggregateInput = {
+    _count?: SortOrder
+  }
+
   export type UserCountOrderByAggregateInput = {
     id?: SortOrder
     username?: SortOrder
@@ -9831,6 +11438,8 @@ export namespace Prisma {
     isVerified?: SortOrder
     isBanned?: SortOrder
     reputation?: SortOrder
+    identityTier?: SortOrder
+    identityVerifiedAt?: SortOrder
   }
 
   export type UserAvgOrderByAggregateInput = {
@@ -9851,6 +11460,8 @@ export namespace Prisma {
     isVerified?: SortOrder
     isBanned?: SortOrder
     reputation?: SortOrder
+    identityTier?: SortOrder
+    identityVerifiedAt?: SortOrder
   }
 
   export type UserMinOrderByAggregateInput = {
@@ -9867,6 +11478,8 @@ export namespace Prisma {
     isVerified?: SortOrder
     isBanned?: SortOrder
     reputation?: SortOrder
+    identityTier?: SortOrder
+    identityVerifiedAt?: SortOrder
   }
 
   export type UserSumOrderByAggregateInput = {
@@ -9947,6 +11560,138 @@ export namespace Prisma {
     _max?: NestedIntFilter<$PrismaModel>
   }
 
+  export type EnumIdentityTierWithAggregatesFilter<$PrismaModel = never> = {
+    equals?: $Enums.IdentityTier | EnumIdentityTierFieldRefInput<$PrismaModel>
+    in?: $Enums.IdentityTier[] | ListEnumIdentityTierFieldRefInput<$PrismaModel>
+    notIn?: $Enums.IdentityTier[] | ListEnumIdentityTierFieldRefInput<$PrismaModel>
+    not?: NestedEnumIdentityTierWithAggregatesFilter<$PrismaModel> | $Enums.IdentityTier
+    _count?: NestedIntFilter<$PrismaModel>
+    _min?: NestedEnumIdentityTierFilter<$PrismaModel>
+    _max?: NestedEnumIdentityTierFilter<$PrismaModel>
+  }
+
+  export type DateTimeNullableWithAggregatesFilter<$PrismaModel = never> = {
+    equals?: Date | string | DateTimeFieldRefInput<$PrismaModel> | null
+    in?: Date[] | string[] | ListDateTimeFieldRefInput<$PrismaModel> | null
+    notIn?: Date[] | string[] | ListDateTimeFieldRefInput<$PrismaModel> | null
+    lt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    lte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    gt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    gte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    not?: NestedDateTimeNullableWithAggregatesFilter<$PrismaModel> | Date | string | null
+    _count?: NestedIntNullableFilter<$PrismaModel>
+    _min?: NestedDateTimeNullableFilter<$PrismaModel>
+    _max?: NestedDateTimeNullableFilter<$PrismaModel>
+  }
+
+  export type EnumIdentityCheckStatusFilter<$PrismaModel = never> = {
+    equals?: $Enums.IdentityCheckStatus | EnumIdentityCheckStatusFieldRefInput<$PrismaModel>
+    in?: $Enums.IdentityCheckStatus[] | ListEnumIdentityCheckStatusFieldRefInput<$PrismaModel>
+    notIn?: $Enums.IdentityCheckStatus[] | ListEnumIdentityCheckStatusFieldRefInput<$PrismaModel>
+    not?: NestedEnumIdentityCheckStatusFilter<$PrismaModel> | $Enums.IdentityCheckStatus
+  }
+  export type JsonNullableFilter<$PrismaModel = never> =
+    | PatchUndefined<
+        Either<Required<JsonNullableFilterBase<$PrismaModel>>, Exclude<keyof Required<JsonNullableFilterBase<$PrismaModel>>, 'path'>>,
+        Required<JsonNullableFilterBase<$PrismaModel>>
+      >
+    | OptionalFlat<Omit<Required<JsonNullableFilterBase<$PrismaModel>>, 'path'>>
+
+  export type JsonNullableFilterBase<$PrismaModel = never> = {
+    equals?: InputJsonValue | JsonFieldRefInput<$PrismaModel> | JsonNullValueFilter
+    path?: string[]
+    mode?: QueryMode | EnumQueryModeFieldRefInput<$PrismaModel>
+    string_contains?: string | StringFieldRefInput<$PrismaModel>
+    string_starts_with?: string | StringFieldRefInput<$PrismaModel>
+    string_ends_with?: string | StringFieldRefInput<$PrismaModel>
+    array_starts_with?: InputJsonValue | JsonFieldRefInput<$PrismaModel> | null
+    array_ends_with?: InputJsonValue | JsonFieldRefInput<$PrismaModel> | null
+    array_contains?: InputJsonValue | JsonFieldRefInput<$PrismaModel> | null
+    lt?: InputJsonValue | JsonFieldRefInput<$PrismaModel>
+    lte?: InputJsonValue | JsonFieldRefInput<$PrismaModel>
+    gt?: InputJsonValue | JsonFieldRefInput<$PrismaModel>
+    gte?: InputJsonValue | JsonFieldRefInput<$PrismaModel>
+    not?: InputJsonValue | JsonFieldRefInput<$PrismaModel> | JsonNullValueFilter
+  }
+
+  export type UserScalarRelationFilter = {
+    is?: UserWhereInput
+    isNot?: UserWhereInput
+  }
+
+  export type IdentityCheckCountOrderByAggregateInput = {
+    id?: SortOrder
+    userId?: SortOrder
+    provider?: SortOrder
+    externalId?: SortOrder
+    tier?: SortOrder
+    status?: SortOrder
+    initiatedAt?: SortOrder
+    resolvedAt?: SortOrder
+    expiresAt?: SortOrder
+    providerPayload?: SortOrder
+  }
+
+  export type IdentityCheckMaxOrderByAggregateInput = {
+    id?: SortOrder
+    userId?: SortOrder
+    provider?: SortOrder
+    externalId?: SortOrder
+    tier?: SortOrder
+    status?: SortOrder
+    initiatedAt?: SortOrder
+    resolvedAt?: SortOrder
+    expiresAt?: SortOrder
+  }
+
+  export type IdentityCheckMinOrderByAggregateInput = {
+    id?: SortOrder
+    userId?: SortOrder
+    provider?: SortOrder
+    externalId?: SortOrder
+    tier?: SortOrder
+    status?: SortOrder
+    initiatedAt?: SortOrder
+    resolvedAt?: SortOrder
+    expiresAt?: SortOrder
+  }
+
+  export type EnumIdentityCheckStatusWithAggregatesFilter<$PrismaModel = never> = {
+    equals?: $Enums.IdentityCheckStatus | EnumIdentityCheckStatusFieldRefInput<$PrismaModel>
+    in?: $Enums.IdentityCheckStatus[] | ListEnumIdentityCheckStatusFieldRefInput<$PrismaModel>
+    notIn?: $Enums.IdentityCheckStatus[] | ListEnumIdentityCheckStatusFieldRefInput<$PrismaModel>
+    not?: NestedEnumIdentityCheckStatusWithAggregatesFilter<$PrismaModel> | $Enums.IdentityCheckStatus
+    _count?: NestedIntFilter<$PrismaModel>
+    _min?: NestedEnumIdentityCheckStatusFilter<$PrismaModel>
+    _max?: NestedEnumIdentityCheckStatusFilter<$PrismaModel>
+  }
+  export type JsonNullableWithAggregatesFilter<$PrismaModel = never> =
+    | PatchUndefined<
+        Either<Required<JsonNullableWithAggregatesFilterBase<$PrismaModel>>, Exclude<keyof Required<JsonNullableWithAggregatesFilterBase<$PrismaModel>>, 'path'>>,
+        Required<JsonNullableWithAggregatesFilterBase<$PrismaModel>>
+      >
+    | OptionalFlat<Omit<Required<JsonNullableWithAggregatesFilterBase<$PrismaModel>>, 'path'>>
+
+  export type JsonNullableWithAggregatesFilterBase<$PrismaModel = never> = {
+    equals?: InputJsonValue | JsonFieldRefInput<$PrismaModel> | JsonNullValueFilter
+    path?: string[]
+    mode?: QueryMode | EnumQueryModeFieldRefInput<$PrismaModel>
+    string_contains?: string | StringFieldRefInput<$PrismaModel>
+    string_starts_with?: string | StringFieldRefInput<$PrismaModel>
+    string_ends_with?: string | StringFieldRefInput<$PrismaModel>
+    array_starts_with?: InputJsonValue | JsonFieldRefInput<$PrismaModel> | null
+    array_ends_with?: InputJsonValue | JsonFieldRefInput<$PrismaModel> | null
+    array_contains?: InputJsonValue | JsonFieldRefInput<$PrismaModel> | null
+    lt?: InputJsonValue | JsonFieldRefInput<$PrismaModel>
+    lte?: InputJsonValue | JsonFieldRefInput<$PrismaModel>
+    gt?: InputJsonValue | JsonFieldRefInput<$PrismaModel>
+    gte?: InputJsonValue | JsonFieldRefInput<$PrismaModel>
+    not?: InputJsonValue | JsonFieldRefInput<$PrismaModel> | JsonNullValueFilter
+    _count?: NestedIntNullableFilter<$PrismaModel>
+    _min?: NestedJsonNullableFilter<$PrismaModel>
+    _max?: NestedJsonNullableFilter<$PrismaModel>
+  }
+
   export type StringNullableListFilter<$PrismaModel = never> = {
     equals?: string[] | ListStringFieldRefInput<$PrismaModel> | null
     has?: string | StringFieldRefInput<$PrismaModel> | null
@@ -9960,11 +11705,6 @@ export namespace Prisma {
     in?: $Enums.MediaType[] | ListEnumMediaTypeFieldRefInput<$PrismaModel>
     notIn?: $Enums.MediaType[] | ListEnumMediaTypeFieldRefInput<$PrismaModel>
     not?: NestedEnumMediaTypeFilter<$PrismaModel> | $Enums.MediaType
-  }
-
-  export type UserScalarRelationFilter = {
-    is?: UserWhereInput
-    isNot?: UserWhereInput
   }
 
   export type NFTNullableScalarRelationFilter = {
@@ -10236,6 +11976,13 @@ export namespace Prisma {
     connect?: NFTWhereUniqueInput | NFTWhereUniqueInput[]
   }
 
+  export type IdentityCheckCreateNestedManyWithoutUserInput = {
+    create?: XOR<IdentityCheckCreateWithoutUserInput, IdentityCheckUncheckedCreateWithoutUserInput> | IdentityCheckCreateWithoutUserInput[] | IdentityCheckUncheckedCreateWithoutUserInput[]
+    connectOrCreate?: IdentityCheckCreateOrConnectWithoutUserInput | IdentityCheckCreateOrConnectWithoutUserInput[]
+    createMany?: IdentityCheckCreateManyUserInputEnvelope
+    connect?: IdentityCheckWhereUniqueInput | IdentityCheckWhereUniqueInput[]
+  }
+
   export type PostUncheckedCreateNestedManyWithoutUserInput = {
     create?: XOR<PostCreateWithoutUserInput, PostUncheckedCreateWithoutUserInput> | PostCreateWithoutUserInput[] | PostUncheckedCreateWithoutUserInput[]
     connectOrCreate?: PostCreateOrConnectWithoutUserInput | PostCreateOrConnectWithoutUserInput[]
@@ -10278,6 +12025,13 @@ export namespace Prisma {
     connect?: NFTWhereUniqueInput | NFTWhereUniqueInput[]
   }
 
+  export type IdentityCheckUncheckedCreateNestedManyWithoutUserInput = {
+    create?: XOR<IdentityCheckCreateWithoutUserInput, IdentityCheckUncheckedCreateWithoutUserInput> | IdentityCheckCreateWithoutUserInput[] | IdentityCheckUncheckedCreateWithoutUserInput[]
+    connectOrCreate?: IdentityCheckCreateOrConnectWithoutUserInput | IdentityCheckCreateOrConnectWithoutUserInput[]
+    createMany?: IdentityCheckCreateManyUserInputEnvelope
+    connect?: IdentityCheckWhereUniqueInput | IdentityCheckWhereUniqueInput[]
+  }
+
   export type StringFieldUpdateOperationsInput = {
     set?: string
   }
@@ -10300,6 +12054,14 @@ export namespace Prisma {
     decrement?: number
     multiply?: number
     divide?: number
+  }
+
+  export type EnumIdentityTierFieldUpdateOperationsInput = {
+    set?: $Enums.IdentityTier
+  }
+
+  export type NullableDateTimeFieldUpdateOperationsInput = {
+    set?: Date | string | null
   }
 
   export type PostUpdateManyWithoutUserNestedInput = {
@@ -10386,6 +12148,20 @@ export namespace Prisma {
     deleteMany?: NFTScalarWhereInput | NFTScalarWhereInput[]
   }
 
+  export type IdentityCheckUpdateManyWithoutUserNestedInput = {
+    create?: XOR<IdentityCheckCreateWithoutUserInput, IdentityCheckUncheckedCreateWithoutUserInput> | IdentityCheckCreateWithoutUserInput[] | IdentityCheckUncheckedCreateWithoutUserInput[]
+    connectOrCreate?: IdentityCheckCreateOrConnectWithoutUserInput | IdentityCheckCreateOrConnectWithoutUserInput[]
+    upsert?: IdentityCheckUpsertWithWhereUniqueWithoutUserInput | IdentityCheckUpsertWithWhereUniqueWithoutUserInput[]
+    createMany?: IdentityCheckCreateManyUserInputEnvelope
+    set?: IdentityCheckWhereUniqueInput | IdentityCheckWhereUniqueInput[]
+    disconnect?: IdentityCheckWhereUniqueInput | IdentityCheckWhereUniqueInput[]
+    delete?: IdentityCheckWhereUniqueInput | IdentityCheckWhereUniqueInput[]
+    connect?: IdentityCheckWhereUniqueInput | IdentityCheckWhereUniqueInput[]
+    update?: IdentityCheckUpdateWithWhereUniqueWithoutUserInput | IdentityCheckUpdateWithWhereUniqueWithoutUserInput[]
+    updateMany?: IdentityCheckUpdateManyWithWhereWithoutUserInput | IdentityCheckUpdateManyWithWhereWithoutUserInput[]
+    deleteMany?: IdentityCheckScalarWhereInput | IdentityCheckScalarWhereInput[]
+  }
+
   export type PostUncheckedUpdateManyWithoutUserNestedInput = {
     create?: XOR<PostCreateWithoutUserInput, PostUncheckedCreateWithoutUserInput> | PostCreateWithoutUserInput[] | PostUncheckedCreateWithoutUserInput[]
     connectOrCreate?: PostCreateOrConnectWithoutUserInput | PostCreateOrConnectWithoutUserInput[]
@@ -10468,6 +12244,38 @@ export namespace Prisma {
     update?: NFTUpdateWithWhereUniqueWithoutUserInput | NFTUpdateWithWhereUniqueWithoutUserInput[]
     updateMany?: NFTUpdateManyWithWhereWithoutUserInput | NFTUpdateManyWithWhereWithoutUserInput[]
     deleteMany?: NFTScalarWhereInput | NFTScalarWhereInput[]
+  }
+
+  export type IdentityCheckUncheckedUpdateManyWithoutUserNestedInput = {
+    create?: XOR<IdentityCheckCreateWithoutUserInput, IdentityCheckUncheckedCreateWithoutUserInput> | IdentityCheckCreateWithoutUserInput[] | IdentityCheckUncheckedCreateWithoutUserInput[]
+    connectOrCreate?: IdentityCheckCreateOrConnectWithoutUserInput | IdentityCheckCreateOrConnectWithoutUserInput[]
+    upsert?: IdentityCheckUpsertWithWhereUniqueWithoutUserInput | IdentityCheckUpsertWithWhereUniqueWithoutUserInput[]
+    createMany?: IdentityCheckCreateManyUserInputEnvelope
+    set?: IdentityCheckWhereUniqueInput | IdentityCheckWhereUniqueInput[]
+    disconnect?: IdentityCheckWhereUniqueInput | IdentityCheckWhereUniqueInput[]
+    delete?: IdentityCheckWhereUniqueInput | IdentityCheckWhereUniqueInput[]
+    connect?: IdentityCheckWhereUniqueInput | IdentityCheckWhereUniqueInput[]
+    update?: IdentityCheckUpdateWithWhereUniqueWithoutUserInput | IdentityCheckUpdateWithWhereUniqueWithoutUserInput[]
+    updateMany?: IdentityCheckUpdateManyWithWhereWithoutUserInput | IdentityCheckUpdateManyWithWhereWithoutUserInput[]
+    deleteMany?: IdentityCheckScalarWhereInput | IdentityCheckScalarWhereInput[]
+  }
+
+  export type UserCreateNestedOneWithoutIdentityChecksInput = {
+    create?: XOR<UserCreateWithoutIdentityChecksInput, UserUncheckedCreateWithoutIdentityChecksInput>
+    connectOrCreate?: UserCreateOrConnectWithoutIdentityChecksInput
+    connect?: UserWhereUniqueInput
+  }
+
+  export type EnumIdentityCheckStatusFieldUpdateOperationsInput = {
+    set?: $Enums.IdentityCheckStatus
+  }
+
+  export type UserUpdateOneRequiredWithoutIdentityChecksNestedInput = {
+    create?: XOR<UserCreateWithoutIdentityChecksInput, UserUncheckedCreateWithoutIdentityChecksInput>
+    connectOrCreate?: UserCreateOrConnectWithoutIdentityChecksInput
+    upsert?: UserUpsertWithoutIdentityChecksInput
+    connect?: UserWhereUniqueInput
+    update?: XOR<XOR<UserUpdateToOneWithWhereWithoutIdentityChecksInput, UserUpdateWithoutIdentityChecksInput>, UserUncheckedUpdateWithoutIdentityChecksInput>
   }
 
   export type PostCreatemediaUrlsInput = {
@@ -10786,6 +12594,24 @@ export namespace Prisma {
     not?: NestedIntFilter<$PrismaModel> | number
   }
 
+  export type NestedEnumIdentityTierFilter<$PrismaModel = never> = {
+    equals?: $Enums.IdentityTier | EnumIdentityTierFieldRefInput<$PrismaModel>
+    in?: $Enums.IdentityTier[] | ListEnumIdentityTierFieldRefInput<$PrismaModel>
+    notIn?: $Enums.IdentityTier[] | ListEnumIdentityTierFieldRefInput<$PrismaModel>
+    not?: NestedEnumIdentityTierFilter<$PrismaModel> | $Enums.IdentityTier
+  }
+
+  export type NestedDateTimeNullableFilter<$PrismaModel = never> = {
+    equals?: Date | string | DateTimeFieldRefInput<$PrismaModel> | null
+    in?: Date[] | string[] | ListDateTimeFieldRefInput<$PrismaModel> | null
+    notIn?: Date[] | string[] | ListDateTimeFieldRefInput<$PrismaModel> | null
+    lt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    lte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    gt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    gte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    not?: NestedDateTimeNullableFilter<$PrismaModel> | Date | string | null
+  }
+
   export type NestedStringWithAggregatesFilter<$PrismaModel = never> = {
     equals?: string | StringFieldRefInput<$PrismaModel>
     in?: string[] | ListStringFieldRefInput<$PrismaModel>
@@ -10878,6 +12704,70 @@ export namespace Prisma {
     gt?: number | FloatFieldRefInput<$PrismaModel>
     gte?: number | FloatFieldRefInput<$PrismaModel>
     not?: NestedFloatFilter<$PrismaModel> | number
+  }
+
+  export type NestedEnumIdentityTierWithAggregatesFilter<$PrismaModel = never> = {
+    equals?: $Enums.IdentityTier | EnumIdentityTierFieldRefInput<$PrismaModel>
+    in?: $Enums.IdentityTier[] | ListEnumIdentityTierFieldRefInput<$PrismaModel>
+    notIn?: $Enums.IdentityTier[] | ListEnumIdentityTierFieldRefInput<$PrismaModel>
+    not?: NestedEnumIdentityTierWithAggregatesFilter<$PrismaModel> | $Enums.IdentityTier
+    _count?: NestedIntFilter<$PrismaModel>
+    _min?: NestedEnumIdentityTierFilter<$PrismaModel>
+    _max?: NestedEnumIdentityTierFilter<$PrismaModel>
+  }
+
+  export type NestedDateTimeNullableWithAggregatesFilter<$PrismaModel = never> = {
+    equals?: Date | string | DateTimeFieldRefInput<$PrismaModel> | null
+    in?: Date[] | string[] | ListDateTimeFieldRefInput<$PrismaModel> | null
+    notIn?: Date[] | string[] | ListDateTimeFieldRefInput<$PrismaModel> | null
+    lt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    lte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    gt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    gte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    not?: NestedDateTimeNullableWithAggregatesFilter<$PrismaModel> | Date | string | null
+    _count?: NestedIntNullableFilter<$PrismaModel>
+    _min?: NestedDateTimeNullableFilter<$PrismaModel>
+    _max?: NestedDateTimeNullableFilter<$PrismaModel>
+  }
+
+  export type NestedEnumIdentityCheckStatusFilter<$PrismaModel = never> = {
+    equals?: $Enums.IdentityCheckStatus | EnumIdentityCheckStatusFieldRefInput<$PrismaModel>
+    in?: $Enums.IdentityCheckStatus[] | ListEnumIdentityCheckStatusFieldRefInput<$PrismaModel>
+    notIn?: $Enums.IdentityCheckStatus[] | ListEnumIdentityCheckStatusFieldRefInput<$PrismaModel>
+    not?: NestedEnumIdentityCheckStatusFilter<$PrismaModel> | $Enums.IdentityCheckStatus
+  }
+
+  export type NestedEnumIdentityCheckStatusWithAggregatesFilter<$PrismaModel = never> = {
+    equals?: $Enums.IdentityCheckStatus | EnumIdentityCheckStatusFieldRefInput<$PrismaModel>
+    in?: $Enums.IdentityCheckStatus[] | ListEnumIdentityCheckStatusFieldRefInput<$PrismaModel>
+    notIn?: $Enums.IdentityCheckStatus[] | ListEnumIdentityCheckStatusFieldRefInput<$PrismaModel>
+    not?: NestedEnumIdentityCheckStatusWithAggregatesFilter<$PrismaModel> | $Enums.IdentityCheckStatus
+    _count?: NestedIntFilter<$PrismaModel>
+    _min?: NestedEnumIdentityCheckStatusFilter<$PrismaModel>
+    _max?: NestedEnumIdentityCheckStatusFilter<$PrismaModel>
+  }
+  export type NestedJsonNullableFilter<$PrismaModel = never> =
+    | PatchUndefined<
+        Either<Required<NestedJsonNullableFilterBase<$PrismaModel>>, Exclude<keyof Required<NestedJsonNullableFilterBase<$PrismaModel>>, 'path'>>,
+        Required<NestedJsonNullableFilterBase<$PrismaModel>>
+      >
+    | OptionalFlat<Omit<Required<NestedJsonNullableFilterBase<$PrismaModel>>, 'path'>>
+
+  export type NestedJsonNullableFilterBase<$PrismaModel = never> = {
+    equals?: InputJsonValue | JsonFieldRefInput<$PrismaModel> | JsonNullValueFilter
+    path?: string[]
+    mode?: QueryMode | EnumQueryModeFieldRefInput<$PrismaModel>
+    string_contains?: string | StringFieldRefInput<$PrismaModel>
+    string_starts_with?: string | StringFieldRefInput<$PrismaModel>
+    string_ends_with?: string | StringFieldRefInput<$PrismaModel>
+    array_starts_with?: InputJsonValue | JsonFieldRefInput<$PrismaModel> | null
+    array_ends_with?: InputJsonValue | JsonFieldRefInput<$PrismaModel> | null
+    array_contains?: InputJsonValue | JsonFieldRefInput<$PrismaModel> | null
+    lt?: InputJsonValue | JsonFieldRefInput<$PrismaModel>
+    lte?: InputJsonValue | JsonFieldRefInput<$PrismaModel>
+    gt?: InputJsonValue | JsonFieldRefInput<$PrismaModel>
+    gte?: InputJsonValue | JsonFieldRefInput<$PrismaModel>
+    not?: InputJsonValue | JsonFieldRefInput<$PrismaModel> | JsonNullValueFilter
   }
 
   export type NestedEnumMediaTypeFilter<$PrismaModel = never> = {
@@ -11092,6 +12982,40 @@ export namespace Prisma {
     skipDuplicates?: boolean
   }
 
+  export type IdentityCheckCreateWithoutUserInput = {
+    id?: string
+    provider: string
+    externalId: string
+    tier: $Enums.IdentityTier
+    status: $Enums.IdentityCheckStatus
+    initiatedAt?: Date | string
+    resolvedAt?: Date | string | null
+    expiresAt?: Date | string | null
+    providerPayload?: NullableJsonNullValueInput | InputJsonValue
+  }
+
+  export type IdentityCheckUncheckedCreateWithoutUserInput = {
+    id?: string
+    provider: string
+    externalId: string
+    tier: $Enums.IdentityTier
+    status: $Enums.IdentityCheckStatus
+    initiatedAt?: Date | string
+    resolvedAt?: Date | string | null
+    expiresAt?: Date | string | null
+    providerPayload?: NullableJsonNullValueInput | InputJsonValue
+  }
+
+  export type IdentityCheckCreateOrConnectWithoutUserInput = {
+    where: IdentityCheckWhereUniqueInput
+    create: XOR<IdentityCheckCreateWithoutUserInput, IdentityCheckUncheckedCreateWithoutUserInput>
+  }
+
+  export type IdentityCheckCreateManyUserInputEnvelope = {
+    data: IdentityCheckCreateManyUserInput | IdentityCheckCreateManyUserInput[]
+    skipDuplicates?: boolean
+  }
+
   export type PostUpsertWithWhereUniqueWithoutUserInput = {
     where: PostWhereUniqueInput
     update: XOR<PostUpdateWithoutUserInput, PostUncheckedUpdateWithoutUserInput>
@@ -11258,6 +13182,150 @@ export namespace Prisma {
     createdAt?: DateTimeFilter<"NFT"> | Date | string
   }
 
+  export type IdentityCheckUpsertWithWhereUniqueWithoutUserInput = {
+    where: IdentityCheckWhereUniqueInput
+    update: XOR<IdentityCheckUpdateWithoutUserInput, IdentityCheckUncheckedUpdateWithoutUserInput>
+    create: XOR<IdentityCheckCreateWithoutUserInput, IdentityCheckUncheckedCreateWithoutUserInput>
+  }
+
+  export type IdentityCheckUpdateWithWhereUniqueWithoutUserInput = {
+    where: IdentityCheckWhereUniqueInput
+    data: XOR<IdentityCheckUpdateWithoutUserInput, IdentityCheckUncheckedUpdateWithoutUserInput>
+  }
+
+  export type IdentityCheckUpdateManyWithWhereWithoutUserInput = {
+    where: IdentityCheckScalarWhereInput
+    data: XOR<IdentityCheckUpdateManyMutationInput, IdentityCheckUncheckedUpdateManyWithoutUserInput>
+  }
+
+  export type IdentityCheckScalarWhereInput = {
+    AND?: IdentityCheckScalarWhereInput | IdentityCheckScalarWhereInput[]
+    OR?: IdentityCheckScalarWhereInput[]
+    NOT?: IdentityCheckScalarWhereInput | IdentityCheckScalarWhereInput[]
+    id?: StringFilter<"IdentityCheck"> | string
+    userId?: StringFilter<"IdentityCheck"> | string
+    provider?: StringFilter<"IdentityCheck"> | string
+    externalId?: StringFilter<"IdentityCheck"> | string
+    tier?: EnumIdentityTierFilter<"IdentityCheck"> | $Enums.IdentityTier
+    status?: EnumIdentityCheckStatusFilter<"IdentityCheck"> | $Enums.IdentityCheckStatus
+    initiatedAt?: DateTimeFilter<"IdentityCheck"> | Date | string
+    resolvedAt?: DateTimeNullableFilter<"IdentityCheck"> | Date | string | null
+    expiresAt?: DateTimeNullableFilter<"IdentityCheck"> | Date | string | null
+    providerPayload?: JsonNullableFilter<"IdentityCheck">
+  }
+
+  export type UserCreateWithoutIdentityChecksInput = {
+    id?: string
+    username: string
+    email?: string | null
+    bio?: string | null
+    avatar?: string | null
+    walletAddress?: string | null
+    passwordHash?: string | null
+    createdAt?: Date | string
+    updatedAt?: Date | string
+    lastActiveAt?: Date | string
+    isVerified?: boolean
+    isBanned?: boolean
+    reputation?: number
+    identityTier?: $Enums.IdentityTier
+    identityVerifiedAt?: Date | string | null
+    posts?: PostCreateNestedManyWithoutUserInput
+    comments?: CommentCreateNestedManyWithoutUserInput
+    likes?: LikeCreateNestedManyWithoutUserInput
+    follows?: FollowCreateNestedManyWithoutFollowerInput
+    followers?: FollowCreateNestedManyWithoutFollowingInput
+    nfts?: NFTCreateNestedManyWithoutUserInput
+  }
+
+  export type UserUncheckedCreateWithoutIdentityChecksInput = {
+    id?: string
+    username: string
+    email?: string | null
+    bio?: string | null
+    avatar?: string | null
+    walletAddress?: string | null
+    passwordHash?: string | null
+    createdAt?: Date | string
+    updatedAt?: Date | string
+    lastActiveAt?: Date | string
+    isVerified?: boolean
+    isBanned?: boolean
+    reputation?: number
+    identityTier?: $Enums.IdentityTier
+    identityVerifiedAt?: Date | string | null
+    posts?: PostUncheckedCreateNestedManyWithoutUserInput
+    comments?: CommentUncheckedCreateNestedManyWithoutUserInput
+    likes?: LikeUncheckedCreateNestedManyWithoutUserInput
+    follows?: FollowUncheckedCreateNestedManyWithoutFollowerInput
+    followers?: FollowUncheckedCreateNestedManyWithoutFollowingInput
+    nfts?: NFTUncheckedCreateNestedManyWithoutUserInput
+  }
+
+  export type UserCreateOrConnectWithoutIdentityChecksInput = {
+    where: UserWhereUniqueInput
+    create: XOR<UserCreateWithoutIdentityChecksInput, UserUncheckedCreateWithoutIdentityChecksInput>
+  }
+
+  export type UserUpsertWithoutIdentityChecksInput = {
+    update: XOR<UserUpdateWithoutIdentityChecksInput, UserUncheckedUpdateWithoutIdentityChecksInput>
+    create: XOR<UserCreateWithoutIdentityChecksInput, UserUncheckedCreateWithoutIdentityChecksInput>
+    where?: UserWhereInput
+  }
+
+  export type UserUpdateToOneWithWhereWithoutIdentityChecksInput = {
+    where?: UserWhereInput
+    data: XOR<UserUpdateWithoutIdentityChecksInput, UserUncheckedUpdateWithoutIdentityChecksInput>
+  }
+
+  export type UserUpdateWithoutIdentityChecksInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    username?: StringFieldUpdateOperationsInput | string
+    email?: NullableStringFieldUpdateOperationsInput | string | null
+    bio?: NullableStringFieldUpdateOperationsInput | string | null
+    avatar?: NullableStringFieldUpdateOperationsInput | string | null
+    walletAddress?: NullableStringFieldUpdateOperationsInput | string | null
+    passwordHash?: NullableStringFieldUpdateOperationsInput | string | null
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    lastActiveAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    isVerified?: BoolFieldUpdateOperationsInput | boolean
+    isBanned?: BoolFieldUpdateOperationsInput | boolean
+    reputation?: IntFieldUpdateOperationsInput | number
+    identityTier?: EnumIdentityTierFieldUpdateOperationsInput | $Enums.IdentityTier
+    identityVerifiedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    posts?: PostUpdateManyWithoutUserNestedInput
+    comments?: CommentUpdateManyWithoutUserNestedInput
+    likes?: LikeUpdateManyWithoutUserNestedInput
+    follows?: FollowUpdateManyWithoutFollowerNestedInput
+    followers?: FollowUpdateManyWithoutFollowingNestedInput
+    nfts?: NFTUpdateManyWithoutUserNestedInput
+  }
+
+  export type UserUncheckedUpdateWithoutIdentityChecksInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    username?: StringFieldUpdateOperationsInput | string
+    email?: NullableStringFieldUpdateOperationsInput | string | null
+    bio?: NullableStringFieldUpdateOperationsInput | string | null
+    avatar?: NullableStringFieldUpdateOperationsInput | string | null
+    walletAddress?: NullableStringFieldUpdateOperationsInput | string | null
+    passwordHash?: NullableStringFieldUpdateOperationsInput | string | null
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    lastActiveAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    isVerified?: BoolFieldUpdateOperationsInput | boolean
+    isBanned?: BoolFieldUpdateOperationsInput | boolean
+    reputation?: IntFieldUpdateOperationsInput | number
+    identityTier?: EnumIdentityTierFieldUpdateOperationsInput | $Enums.IdentityTier
+    identityVerifiedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    posts?: PostUncheckedUpdateManyWithoutUserNestedInput
+    comments?: CommentUncheckedUpdateManyWithoutUserNestedInput
+    likes?: LikeUncheckedUpdateManyWithoutUserNestedInput
+    follows?: FollowUncheckedUpdateManyWithoutFollowerNestedInput
+    followers?: FollowUncheckedUpdateManyWithoutFollowingNestedInput
+    nfts?: NFTUncheckedUpdateManyWithoutUserNestedInput
+  }
+
   export type UserCreateWithoutPostsInput = {
     id?: string
     username: string
@@ -11272,11 +13340,14 @@ export namespace Prisma {
     isVerified?: boolean
     isBanned?: boolean
     reputation?: number
+    identityTier?: $Enums.IdentityTier
+    identityVerifiedAt?: Date | string | null
     comments?: CommentCreateNestedManyWithoutUserInput
     likes?: LikeCreateNestedManyWithoutUserInput
     follows?: FollowCreateNestedManyWithoutFollowerInput
     followers?: FollowCreateNestedManyWithoutFollowingInput
     nfts?: NFTCreateNestedManyWithoutUserInput
+    identityChecks?: IdentityCheckCreateNestedManyWithoutUserInput
   }
 
   export type UserUncheckedCreateWithoutPostsInput = {
@@ -11293,11 +13364,14 @@ export namespace Prisma {
     isVerified?: boolean
     isBanned?: boolean
     reputation?: number
+    identityTier?: $Enums.IdentityTier
+    identityVerifiedAt?: Date | string | null
     comments?: CommentUncheckedCreateNestedManyWithoutUserInput
     likes?: LikeUncheckedCreateNestedManyWithoutUserInput
     follows?: FollowUncheckedCreateNestedManyWithoutFollowerInput
     followers?: FollowUncheckedCreateNestedManyWithoutFollowingInput
     nfts?: NFTUncheckedCreateNestedManyWithoutUserInput
+    identityChecks?: IdentityCheckUncheckedCreateNestedManyWithoutUserInput
   }
 
   export type UserCreateOrConnectWithoutPostsInput = {
@@ -11417,11 +13491,14 @@ export namespace Prisma {
     isVerified?: BoolFieldUpdateOperationsInput | boolean
     isBanned?: BoolFieldUpdateOperationsInput | boolean
     reputation?: IntFieldUpdateOperationsInput | number
+    identityTier?: EnumIdentityTierFieldUpdateOperationsInput | $Enums.IdentityTier
+    identityVerifiedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     comments?: CommentUpdateManyWithoutUserNestedInput
     likes?: LikeUpdateManyWithoutUserNestedInput
     follows?: FollowUpdateManyWithoutFollowerNestedInput
     followers?: FollowUpdateManyWithoutFollowingNestedInput
     nfts?: NFTUpdateManyWithoutUserNestedInput
+    identityChecks?: IdentityCheckUpdateManyWithoutUserNestedInput
   }
 
   export type UserUncheckedUpdateWithoutPostsInput = {
@@ -11438,11 +13515,14 @@ export namespace Prisma {
     isVerified?: BoolFieldUpdateOperationsInput | boolean
     isBanned?: BoolFieldUpdateOperationsInput | boolean
     reputation?: IntFieldUpdateOperationsInput | number
+    identityTier?: EnumIdentityTierFieldUpdateOperationsInput | $Enums.IdentityTier
+    identityVerifiedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     comments?: CommentUncheckedUpdateManyWithoutUserNestedInput
     likes?: LikeUncheckedUpdateManyWithoutUserNestedInput
     follows?: FollowUncheckedUpdateManyWithoutFollowerNestedInput
     followers?: FollowUncheckedUpdateManyWithoutFollowingNestedInput
     nfts?: NFTUncheckedUpdateManyWithoutUserNestedInput
+    identityChecks?: IdentityCheckUncheckedUpdateManyWithoutUserNestedInput
   }
 
   export type CommentUpsertWithWhereUniqueWithoutPostInput = {
@@ -11571,11 +13651,14 @@ export namespace Prisma {
     isVerified?: boolean
     isBanned?: boolean
     reputation?: number
+    identityTier?: $Enums.IdentityTier
+    identityVerifiedAt?: Date | string | null
     posts?: PostCreateNestedManyWithoutUserInput
     likes?: LikeCreateNestedManyWithoutUserInput
     follows?: FollowCreateNestedManyWithoutFollowerInput
     followers?: FollowCreateNestedManyWithoutFollowingInput
     nfts?: NFTCreateNestedManyWithoutUserInput
+    identityChecks?: IdentityCheckCreateNestedManyWithoutUserInput
   }
 
   export type UserUncheckedCreateWithoutCommentsInput = {
@@ -11592,11 +13675,14 @@ export namespace Prisma {
     isVerified?: boolean
     isBanned?: boolean
     reputation?: number
+    identityTier?: $Enums.IdentityTier
+    identityVerifiedAt?: Date | string | null
     posts?: PostUncheckedCreateNestedManyWithoutUserInput
     likes?: LikeUncheckedCreateNestedManyWithoutUserInput
     follows?: FollowUncheckedCreateNestedManyWithoutFollowerInput
     followers?: FollowUncheckedCreateNestedManyWithoutFollowingInput
     nfts?: NFTUncheckedCreateNestedManyWithoutUserInput
+    identityChecks?: IdentityCheckUncheckedCreateNestedManyWithoutUserInput
   }
 
   export type UserCreateOrConnectWithoutCommentsInput = {
@@ -11672,11 +13758,14 @@ export namespace Prisma {
     isVerified?: BoolFieldUpdateOperationsInput | boolean
     isBanned?: BoolFieldUpdateOperationsInput | boolean
     reputation?: IntFieldUpdateOperationsInput | number
+    identityTier?: EnumIdentityTierFieldUpdateOperationsInput | $Enums.IdentityTier
+    identityVerifiedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     posts?: PostUpdateManyWithoutUserNestedInput
     likes?: LikeUpdateManyWithoutUserNestedInput
     follows?: FollowUpdateManyWithoutFollowerNestedInput
     followers?: FollowUpdateManyWithoutFollowingNestedInput
     nfts?: NFTUpdateManyWithoutUserNestedInput
+    identityChecks?: IdentityCheckUpdateManyWithoutUserNestedInput
   }
 
   export type UserUncheckedUpdateWithoutCommentsInput = {
@@ -11693,11 +13782,14 @@ export namespace Prisma {
     isVerified?: BoolFieldUpdateOperationsInput | boolean
     isBanned?: BoolFieldUpdateOperationsInput | boolean
     reputation?: IntFieldUpdateOperationsInput | number
+    identityTier?: EnumIdentityTierFieldUpdateOperationsInput | $Enums.IdentityTier
+    identityVerifiedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     posts?: PostUncheckedUpdateManyWithoutUserNestedInput
     likes?: LikeUncheckedUpdateManyWithoutUserNestedInput
     follows?: FollowUncheckedUpdateManyWithoutFollowerNestedInput
     followers?: FollowUncheckedUpdateManyWithoutFollowingNestedInput
     nfts?: NFTUncheckedUpdateManyWithoutUserNestedInput
+    identityChecks?: IdentityCheckUncheckedUpdateManyWithoutUserNestedInput
   }
 
   export type PostCreateWithoutLikesInput = {
@@ -11751,11 +13843,14 @@ export namespace Prisma {
     isVerified?: boolean
     isBanned?: boolean
     reputation?: number
+    identityTier?: $Enums.IdentityTier
+    identityVerifiedAt?: Date | string | null
     posts?: PostCreateNestedManyWithoutUserInput
     comments?: CommentCreateNestedManyWithoutUserInput
     follows?: FollowCreateNestedManyWithoutFollowerInput
     followers?: FollowCreateNestedManyWithoutFollowingInput
     nfts?: NFTCreateNestedManyWithoutUserInput
+    identityChecks?: IdentityCheckCreateNestedManyWithoutUserInput
   }
 
   export type UserUncheckedCreateWithoutLikesInput = {
@@ -11772,11 +13867,14 @@ export namespace Prisma {
     isVerified?: boolean
     isBanned?: boolean
     reputation?: number
+    identityTier?: $Enums.IdentityTier
+    identityVerifiedAt?: Date | string | null
     posts?: PostUncheckedCreateNestedManyWithoutUserInput
     comments?: CommentUncheckedCreateNestedManyWithoutUserInput
     follows?: FollowUncheckedCreateNestedManyWithoutFollowerInput
     followers?: FollowUncheckedCreateNestedManyWithoutFollowingInput
     nfts?: NFTUncheckedCreateNestedManyWithoutUserInput
+    identityChecks?: IdentityCheckUncheckedCreateNestedManyWithoutUserInput
   }
 
   export type UserCreateOrConnectWithoutLikesInput = {
@@ -11852,11 +13950,14 @@ export namespace Prisma {
     isVerified?: BoolFieldUpdateOperationsInput | boolean
     isBanned?: BoolFieldUpdateOperationsInput | boolean
     reputation?: IntFieldUpdateOperationsInput | number
+    identityTier?: EnumIdentityTierFieldUpdateOperationsInput | $Enums.IdentityTier
+    identityVerifiedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     posts?: PostUpdateManyWithoutUserNestedInput
     comments?: CommentUpdateManyWithoutUserNestedInput
     follows?: FollowUpdateManyWithoutFollowerNestedInput
     followers?: FollowUpdateManyWithoutFollowingNestedInput
     nfts?: NFTUpdateManyWithoutUserNestedInput
+    identityChecks?: IdentityCheckUpdateManyWithoutUserNestedInput
   }
 
   export type UserUncheckedUpdateWithoutLikesInput = {
@@ -11873,11 +13974,14 @@ export namespace Prisma {
     isVerified?: BoolFieldUpdateOperationsInput | boolean
     isBanned?: BoolFieldUpdateOperationsInput | boolean
     reputation?: IntFieldUpdateOperationsInput | number
+    identityTier?: EnumIdentityTierFieldUpdateOperationsInput | $Enums.IdentityTier
+    identityVerifiedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     posts?: PostUncheckedUpdateManyWithoutUserNestedInput
     comments?: CommentUncheckedUpdateManyWithoutUserNestedInput
     follows?: FollowUncheckedUpdateManyWithoutFollowerNestedInput
     followers?: FollowUncheckedUpdateManyWithoutFollowingNestedInput
     nfts?: NFTUncheckedUpdateManyWithoutUserNestedInput
+    identityChecks?: IdentityCheckUncheckedUpdateManyWithoutUserNestedInput
   }
 
   export type UserCreateWithoutFollowsInput = {
@@ -11894,11 +13998,14 @@ export namespace Prisma {
     isVerified?: boolean
     isBanned?: boolean
     reputation?: number
+    identityTier?: $Enums.IdentityTier
+    identityVerifiedAt?: Date | string | null
     posts?: PostCreateNestedManyWithoutUserInput
     comments?: CommentCreateNestedManyWithoutUserInput
     likes?: LikeCreateNestedManyWithoutUserInput
     followers?: FollowCreateNestedManyWithoutFollowingInput
     nfts?: NFTCreateNestedManyWithoutUserInput
+    identityChecks?: IdentityCheckCreateNestedManyWithoutUserInput
   }
 
   export type UserUncheckedCreateWithoutFollowsInput = {
@@ -11915,11 +14022,14 @@ export namespace Prisma {
     isVerified?: boolean
     isBanned?: boolean
     reputation?: number
+    identityTier?: $Enums.IdentityTier
+    identityVerifiedAt?: Date | string | null
     posts?: PostUncheckedCreateNestedManyWithoutUserInput
     comments?: CommentUncheckedCreateNestedManyWithoutUserInput
     likes?: LikeUncheckedCreateNestedManyWithoutUserInput
     followers?: FollowUncheckedCreateNestedManyWithoutFollowingInput
     nfts?: NFTUncheckedCreateNestedManyWithoutUserInput
+    identityChecks?: IdentityCheckUncheckedCreateNestedManyWithoutUserInput
   }
 
   export type UserCreateOrConnectWithoutFollowsInput = {
@@ -11941,11 +14051,14 @@ export namespace Prisma {
     isVerified?: boolean
     isBanned?: boolean
     reputation?: number
+    identityTier?: $Enums.IdentityTier
+    identityVerifiedAt?: Date | string | null
     posts?: PostCreateNestedManyWithoutUserInput
     comments?: CommentCreateNestedManyWithoutUserInput
     likes?: LikeCreateNestedManyWithoutUserInput
     follows?: FollowCreateNestedManyWithoutFollowerInput
     nfts?: NFTCreateNestedManyWithoutUserInput
+    identityChecks?: IdentityCheckCreateNestedManyWithoutUserInput
   }
 
   export type UserUncheckedCreateWithoutFollowersInput = {
@@ -11962,11 +14075,14 @@ export namespace Prisma {
     isVerified?: boolean
     isBanned?: boolean
     reputation?: number
+    identityTier?: $Enums.IdentityTier
+    identityVerifiedAt?: Date | string | null
     posts?: PostUncheckedCreateNestedManyWithoutUserInput
     comments?: CommentUncheckedCreateNestedManyWithoutUserInput
     likes?: LikeUncheckedCreateNestedManyWithoutUserInput
     follows?: FollowUncheckedCreateNestedManyWithoutFollowerInput
     nfts?: NFTUncheckedCreateNestedManyWithoutUserInput
+    identityChecks?: IdentityCheckUncheckedCreateNestedManyWithoutUserInput
   }
 
   export type UserCreateOrConnectWithoutFollowersInput = {
@@ -11999,11 +14115,14 @@ export namespace Prisma {
     isVerified?: BoolFieldUpdateOperationsInput | boolean
     isBanned?: BoolFieldUpdateOperationsInput | boolean
     reputation?: IntFieldUpdateOperationsInput | number
+    identityTier?: EnumIdentityTierFieldUpdateOperationsInput | $Enums.IdentityTier
+    identityVerifiedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     posts?: PostUpdateManyWithoutUserNestedInput
     comments?: CommentUpdateManyWithoutUserNestedInput
     likes?: LikeUpdateManyWithoutUserNestedInput
     followers?: FollowUpdateManyWithoutFollowingNestedInput
     nfts?: NFTUpdateManyWithoutUserNestedInput
+    identityChecks?: IdentityCheckUpdateManyWithoutUserNestedInput
   }
 
   export type UserUncheckedUpdateWithoutFollowsInput = {
@@ -12020,11 +14139,14 @@ export namespace Prisma {
     isVerified?: BoolFieldUpdateOperationsInput | boolean
     isBanned?: BoolFieldUpdateOperationsInput | boolean
     reputation?: IntFieldUpdateOperationsInput | number
+    identityTier?: EnumIdentityTierFieldUpdateOperationsInput | $Enums.IdentityTier
+    identityVerifiedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     posts?: PostUncheckedUpdateManyWithoutUserNestedInput
     comments?: CommentUncheckedUpdateManyWithoutUserNestedInput
     likes?: LikeUncheckedUpdateManyWithoutUserNestedInput
     followers?: FollowUncheckedUpdateManyWithoutFollowingNestedInput
     nfts?: NFTUncheckedUpdateManyWithoutUserNestedInput
+    identityChecks?: IdentityCheckUncheckedUpdateManyWithoutUserNestedInput
   }
 
   export type UserUpsertWithoutFollowersInput = {
@@ -12052,11 +14174,14 @@ export namespace Prisma {
     isVerified?: BoolFieldUpdateOperationsInput | boolean
     isBanned?: BoolFieldUpdateOperationsInput | boolean
     reputation?: IntFieldUpdateOperationsInput | number
+    identityTier?: EnumIdentityTierFieldUpdateOperationsInput | $Enums.IdentityTier
+    identityVerifiedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     posts?: PostUpdateManyWithoutUserNestedInput
     comments?: CommentUpdateManyWithoutUserNestedInput
     likes?: LikeUpdateManyWithoutUserNestedInput
     follows?: FollowUpdateManyWithoutFollowerNestedInput
     nfts?: NFTUpdateManyWithoutUserNestedInput
+    identityChecks?: IdentityCheckUpdateManyWithoutUserNestedInput
   }
 
   export type UserUncheckedUpdateWithoutFollowersInput = {
@@ -12073,11 +14198,14 @@ export namespace Prisma {
     isVerified?: BoolFieldUpdateOperationsInput | boolean
     isBanned?: BoolFieldUpdateOperationsInput | boolean
     reputation?: IntFieldUpdateOperationsInput | number
+    identityTier?: EnumIdentityTierFieldUpdateOperationsInput | $Enums.IdentityTier
+    identityVerifiedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     posts?: PostUncheckedUpdateManyWithoutUserNestedInput
     comments?: CommentUncheckedUpdateManyWithoutUserNestedInput
     likes?: LikeUncheckedUpdateManyWithoutUserNestedInput
     follows?: FollowUncheckedUpdateManyWithoutFollowerNestedInput
     nfts?: NFTUncheckedUpdateManyWithoutUserNestedInput
+    identityChecks?: IdentityCheckUncheckedUpdateManyWithoutUserNestedInput
   }
 
   export type UserCreateWithoutNftsInput = {
@@ -12094,11 +14222,14 @@ export namespace Prisma {
     isVerified?: boolean
     isBanned?: boolean
     reputation?: number
+    identityTier?: $Enums.IdentityTier
+    identityVerifiedAt?: Date | string | null
     posts?: PostCreateNestedManyWithoutUserInput
     comments?: CommentCreateNestedManyWithoutUserInput
     likes?: LikeCreateNestedManyWithoutUserInput
     follows?: FollowCreateNestedManyWithoutFollowerInput
     followers?: FollowCreateNestedManyWithoutFollowingInput
+    identityChecks?: IdentityCheckCreateNestedManyWithoutUserInput
   }
 
   export type UserUncheckedCreateWithoutNftsInput = {
@@ -12115,11 +14246,14 @@ export namespace Prisma {
     isVerified?: boolean
     isBanned?: boolean
     reputation?: number
+    identityTier?: $Enums.IdentityTier
+    identityVerifiedAt?: Date | string | null
     posts?: PostUncheckedCreateNestedManyWithoutUserInput
     comments?: CommentUncheckedCreateNestedManyWithoutUserInput
     likes?: LikeUncheckedCreateNestedManyWithoutUserInput
     follows?: FollowUncheckedCreateNestedManyWithoutFollowerInput
     followers?: FollowUncheckedCreateNestedManyWithoutFollowingInput
+    identityChecks?: IdentityCheckUncheckedCreateNestedManyWithoutUserInput
   }
 
   export type UserCreateOrConnectWithoutNftsInput = {
@@ -12189,11 +14323,14 @@ export namespace Prisma {
     isVerified?: BoolFieldUpdateOperationsInput | boolean
     isBanned?: BoolFieldUpdateOperationsInput | boolean
     reputation?: IntFieldUpdateOperationsInput | number
+    identityTier?: EnumIdentityTierFieldUpdateOperationsInput | $Enums.IdentityTier
+    identityVerifiedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     posts?: PostUpdateManyWithoutUserNestedInput
     comments?: CommentUpdateManyWithoutUserNestedInput
     likes?: LikeUpdateManyWithoutUserNestedInput
     follows?: FollowUpdateManyWithoutFollowerNestedInput
     followers?: FollowUpdateManyWithoutFollowingNestedInput
+    identityChecks?: IdentityCheckUpdateManyWithoutUserNestedInput
   }
 
   export type UserUncheckedUpdateWithoutNftsInput = {
@@ -12210,11 +14347,14 @@ export namespace Prisma {
     isVerified?: BoolFieldUpdateOperationsInput | boolean
     isBanned?: BoolFieldUpdateOperationsInput | boolean
     reputation?: IntFieldUpdateOperationsInput | number
+    identityTier?: EnumIdentityTierFieldUpdateOperationsInput | $Enums.IdentityTier
+    identityVerifiedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     posts?: PostUncheckedUpdateManyWithoutUserNestedInput
     comments?: CommentUncheckedUpdateManyWithoutUserNestedInput
     likes?: LikeUncheckedUpdateManyWithoutUserNestedInput
     follows?: FollowUncheckedUpdateManyWithoutFollowerNestedInput
     followers?: FollowUncheckedUpdateManyWithoutFollowingNestedInput
+    identityChecks?: IdentityCheckUncheckedUpdateManyWithoutUserNestedInput
   }
 
   export type PostUpsertWithoutNftInput = {
@@ -12314,6 +14454,18 @@ export namespace Prisma {
     isListed?: boolean
     price?: string | null
     createdAt?: Date | string
+  }
+
+  export type IdentityCheckCreateManyUserInput = {
+    id?: string
+    provider: string
+    externalId: string
+    tier: $Enums.IdentityTier
+    status: $Enums.IdentityCheckStatus
+    initiatedAt?: Date | string
+    resolvedAt?: Date | string | null
+    expiresAt?: Date | string | null
+    providerPayload?: NullableJsonNullValueInput | InputJsonValue
   }
 
   export type PostUpdateWithoutUserInput = {
@@ -12488,6 +14640,42 @@ export namespace Prisma {
     isListed?: BoolFieldUpdateOperationsInput | boolean
     price?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type IdentityCheckUpdateWithoutUserInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    provider?: StringFieldUpdateOperationsInput | string
+    externalId?: StringFieldUpdateOperationsInput | string
+    tier?: EnumIdentityTierFieldUpdateOperationsInput | $Enums.IdentityTier
+    status?: EnumIdentityCheckStatusFieldUpdateOperationsInput | $Enums.IdentityCheckStatus
+    initiatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    resolvedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    expiresAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    providerPayload?: NullableJsonNullValueInput | InputJsonValue
+  }
+
+  export type IdentityCheckUncheckedUpdateWithoutUserInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    provider?: StringFieldUpdateOperationsInput | string
+    externalId?: StringFieldUpdateOperationsInput | string
+    tier?: EnumIdentityTierFieldUpdateOperationsInput | $Enums.IdentityTier
+    status?: EnumIdentityCheckStatusFieldUpdateOperationsInput | $Enums.IdentityCheckStatus
+    initiatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    resolvedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    expiresAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    providerPayload?: NullableJsonNullValueInput | InputJsonValue
+  }
+
+  export type IdentityCheckUncheckedUpdateManyWithoutUserInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    provider?: StringFieldUpdateOperationsInput | string
+    externalId?: StringFieldUpdateOperationsInput | string
+    tier?: EnumIdentityTierFieldUpdateOperationsInput | $Enums.IdentityTier
+    status?: EnumIdentityCheckStatusFieldUpdateOperationsInput | $Enums.IdentityCheckStatus
+    initiatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    resolvedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    expiresAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    providerPayload?: NullableJsonNullValueInput | InputJsonValue
   }
 
   export type CommentCreateManyPostInput = {
