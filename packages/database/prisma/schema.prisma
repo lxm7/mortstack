@@ -17,14 +17,15 @@ model User {
   avatar    String?
 
   // SUI wallet address (primary auth method)
+  // Future: this becomes the SSO identity anchor
   walletAddress String? @unique
 
   // Traditional auth (optional, for email-based accounts)
   passwordHash String?
 
   // Metadata
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
   lastActiveAt DateTime @default(now())
 
   // Trust & Safety
@@ -32,16 +33,79 @@ model User {
   isBanned   Boolean @default(false)
   reputation Int     @default(0)
 
+  // Identity verification tier
+  // Drives what content a user can upload/mint
+  // Intentionally NOT called "KYC" - supports multiple verification methods:
+  //   Web2 now:    phone (Twilio), email, Sign in with Google
+  //   Web3 later:  World ID, SUI zkLogin, Gitcoin Passport, stake-based
+  identityTier  IdentityTier  @default(NONE)
+  identityVerifiedAt DateTime?
+
   // Relations
-  posts      Post[]
-  comments   Comment[]
-  likes      Like[]
-  follows    Follow[] @relation("UserFollows")
-  followers  Follow[] @relation("UserFollowers")
-  nfts       NFT[]
+  posts             Post[]
+  comments          Comment[]
+  likes             Like[]
+  follows           Follow[]          @relation("UserFollows")
+  followers         Follow[]          @relation("UserFollowers")
+  nfts              NFT[]
+  identityChecks    IdentityCheck[]
 
   @@index([walletAddress])
   @@index([username])
+  @@index([identityTier])
+}
+
+// What a user can do based on their verified tier
+// Deliberately tiered so we can raise/lower requirements over time
+enum IdentityTier {
+  NONE       // Unverified - can only post text
+  BASIC      // Phone or zkLogin verified - can post images
+  CREATOR    // World ID or stake-based - can upload audio/video
+  ARTIST     // Creator + wallet age check - can mint NFTs
+}
+
+// Identity check record - one per verification attempt
+// Provider-agnostic by design. Swap implementations without schema changes.
+//
+// Current Web2 providers:
+//   "phone"        - Twilio SMS OTP
+//   "email"        - Magic link / OTP
+//   "google_oauth" - Sign in with Google
+//
+// Future Web3 providers:
+//   "world_id"         - Worldcoin iris proof (unique human)
+//   "sui_zklogin"      - SUI zkLogin (OAuth → ZK → wallet)
+//   "gitcoin_passport" - Aggregate Web3 credential score
+//   "sui_stake"        - SUI token stake as identity bond
+//   "sui_attestation"  - On-chain verifiable credential
+model IdentityCheck {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  provider   String // See enum above
+  externalId String // Provider's session/reference ID
+
+  tier      IdentityTier // What tier this check grants if approved
+  status    IdentityCheckStatus
+
+  // Timestamps
+  initiatedAt DateTime  @default(now())
+  resolvedAt  DateTime?
+  expiresAt   DateTime? // Stake-based checks expire if stake is withdrawn
+
+  // Raw provider payload (audit trail, never expose to client)
+  providerPayload Json?
+
+  @@index([userId])
+  @@index([provider, externalId])
+}
+
+enum IdentityCheckStatus {
+  PENDING   // Awaiting provider callback
+  APPROVED
+  REJECTED
+  EXPIRED
 }
 
 // Posts (music, performances, content)

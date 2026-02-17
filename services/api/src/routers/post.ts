@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { router, publicProcedure, protectedProcedure } from '../trpc';
+import { router, publicProcedure, protectedProcedure, tierProcedure } from '../trpc';
 import { TRPCError } from '@trpc/server';
 
 export const postRouter = router({
@@ -90,7 +90,10 @@ export const postRouter = router({
       return post;
     }),
 
-  // Create post
+  // Create post - media types are gated by identity tier
+  // TEXT: any authenticated user
+  // IMAGE: BASIC tier+
+  // AUDIO/VIDEO/PERFORMANCE: CREATOR tier+
   create: protectedProcedure
     .input(
       z.object({
@@ -99,6 +102,29 @@ export const postRouter = router({
         mediaType: z.enum(['TEXT', 'IMAGE', 'VIDEO', 'AUDIO', 'PERFORMANCE']),
       })
     )
+    .use(async ({ ctx, input, next }) => {
+      // Check permission based on media type
+      const permissionMap = {
+        TEXT: null,                   // No extra permission needed
+        IMAGE: 'canPostImage',
+        AUDIO: 'canUploadAudio',
+        VIDEO: 'canUploadVideo',
+        PERFORMANCE: 'canUploadVideo', // Performance requires same level as video
+      } as const;
+
+      const required = permissionMap[input.mediaType];
+      if (required) {
+        const { hasPermission } = await import('@repo/identity');
+        if (!hasPermission(ctx.user.identityTier, required)) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: `Uploading ${input.mediaType.toLowerCase()} content requires account verification. Visit your profile to verify.`,
+            cause: { requiredPermission: required, currentTier: ctx.user.identityTier },
+          });
+        }
+      }
+      return next({ ctx });
+    })
     .mutation(async ({ input, ctx }) => {
       const post = await ctx.prisma.post.create({
         data: {

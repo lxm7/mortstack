@@ -134,7 +134,22 @@ exports.Prisma.UserScalarFieldEnum = {
   lastActiveAt: 'lastActiveAt',
   isVerified: 'isVerified',
   isBanned: 'isBanned',
-  reputation: 'reputation'
+  reputation: 'reputation',
+  identityTier: 'identityTier',
+  identityVerifiedAt: 'identityVerifiedAt'
+};
+
+exports.Prisma.IdentityCheckScalarFieldEnum = {
+  id: 'id',
+  userId: 'userId',
+  provider: 'provider',
+  externalId: 'externalId',
+  tier: 'tier',
+  status: 'status',
+  initiatedAt: 'initiatedAt',
+  resolvedAt: 'resolvedAt',
+  expiresAt: 'expiresAt',
+  providerPayload: 'providerPayload'
 };
 
 exports.Prisma.PostScalarFieldEnum = {
@@ -197,6 +212,11 @@ exports.Prisma.SortOrder = {
   desc: 'desc'
 };
 
+exports.Prisma.NullableJsonNullValueInput = {
+  DbNull: Prisma.DbNull,
+  JsonNull: Prisma.JsonNull
+};
+
 exports.Prisma.QueryMode = {
   default: 'default',
   insensitive: 'insensitive'
@@ -206,6 +226,26 @@ exports.Prisma.NullsOrder = {
   first: 'first',
   last: 'last'
 };
+
+exports.Prisma.JsonNullValueFilter = {
+  DbNull: Prisma.DbNull,
+  JsonNull: Prisma.JsonNull,
+  AnyNull: Prisma.AnyNull
+};
+exports.IdentityTier = exports.$Enums.IdentityTier = {
+  NONE: 'NONE',
+  BASIC: 'BASIC',
+  CREATOR: 'CREATOR',
+  ARTIST: 'ARTIST'
+};
+
+exports.IdentityCheckStatus = exports.$Enums.IdentityCheckStatus = {
+  PENDING: 'PENDING',
+  APPROVED: 'APPROVED',
+  REJECTED: 'REJECTED',
+  EXPIRED: 'EXPIRED'
+};
+
 exports.MediaType = exports.$Enums.MediaType = {
   TEXT: 'TEXT',
   IMAGE: 'IMAGE',
@@ -223,6 +263,7 @@ exports.NFTType = exports.$Enums.NFTType = {
 
 exports.Prisma.ModelName = {
   User: 'User',
+  IdentityCheck: 'IdentityCheck',
   Post: 'Post',
   Comment: 'Comment',
   Like: 'Like',
