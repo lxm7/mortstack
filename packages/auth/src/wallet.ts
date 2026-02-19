@@ -1,10 +1,9 @@
-import { verifyPersonalMessageSignature } from '@mysten/sui/verify';
-import { fromBase64 } from '@mysten/sui/utils';
+import { verifyPersonalMessageSignature } from "@mysten/sui/verify";
 
 export interface WalletSignature {
   signature: string; // Base64 encoded signature
-  message: string;   // Original message that was signed
-  address: string;   // SUI wallet address
+  message: string; // Original message that was signed
+  address: string; // SUI wallet address
 }
 
 /**
@@ -13,18 +12,17 @@ export interface WalletSignature {
  * @returns true if signature is valid, false otherwise
  */
 export async function verifySuiWalletSignature(
-  walletSignature: WalletSignature
+  walletSignature: WalletSignature,
 ): Promise<boolean> {
   try {
     const { signature, message, address } = walletSignature;
 
     // Verify the signature using SUI SDK
-    const signatureBytes = fromBase64(signature);
     const messageBytes = new TextEncoder().encode(message);
 
     const publicKey = await verifyPersonalMessageSignature(
       messageBytes,
-      signatureBytes
+      signature,
     );
 
     // Get the address from the public key and compare
@@ -32,7 +30,7 @@ export async function verifySuiWalletSignature(
 
     return derivedAddress === address;
   } catch (error) {
-    console.error('Wallet signature verification failed:', error);
+    console.error("Wallet signature verification failed:", error);
     return false;
   }
 }
@@ -50,6 +48,8 @@ export function generateNonceMessage(nonce: string): string {
  * Generate a random nonce
  */
 export function generateNonce(): string {
-  return Math.random().toString(36).substring(2, 15) +
-         Math.random().toString(36).substring(2, 15);
+  return (
+    Math.random().toString(36).substring(2, 15) +
+    Math.random().toString(36).substring(2, 15)
+  );
 }
