@@ -1,0 +1,2 @@
+npx lint-staged
+npx nx affected --target=check-types --base=HEAD

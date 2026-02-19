@@ -14,7 +14,7 @@ Enterprise React Native social media app with SUI blockchain integration.
 ## Project Structure
 
 ```
-my-turborepo/
+sessions/
 ├── apps/
 │   ├── mobile/         # React Native (Expo) - TODO
 │   ├── web/            # Next.js app
@@ -37,17 +37,20 @@ my-turborepo/
 ## Database Schema
 
 ### User Model
+
 - Supports both wallet auth (SUI) and traditional email/password
 - Trust & safety: reputation, verification, banning
 - Relations: posts, comments, likes, follows, NFTs
 
 ### Content Models
+
 - **Post**: Social media posts (text, images, videos, audio, performances)
 - **Comment**: Comments on posts
 - **Like**: Post likes
 - **Follow**: User follow relationships
 
 ### NFT Model
+
 - Links to SUI blockchain objects
 - Supports music, performances, art, collectibles
 - Marketplace integration (listing, pricing)
@@ -55,12 +58,14 @@ my-turborepo/
 ## Authentication
 
 ### Wallet Authentication (Primary)
+
 1. Client requests nonce
 2. User signs nonce with SUI wallet
 3. Server verifies signature
 4. Server issues JWT access + refresh tokens
 
 ### Traditional Authentication (Optional)
+
 - Email/password sign up and sign in
 - bcrypt password hashing
 - Same JWT flow
@@ -68,11 +73,13 @@ my-turborepo/
 ## API Architecture
 
 ### tRPC Routers
+
 - **auth**: Sign in, sign up, wallet authentication
 - **user**: Profile management, follow/unfollow
 - **post**: Feed, create posts, like, comment
 
 ### Deployment
+
 - **Development**: Standalone HTTP server (localhost:3001)
 - **Production**: AWS Lambda + API Gateway
 

@@ -1,6 +1,6 @@
-import { z } from 'zod';
-import { router, publicProcedure, protectedProcedure, tierProcedure } from '../trpc';
-import { TRPCError } from '@trpc/server';
+import { z } from "zod";
+import { router, publicProcedure, protectedProcedure } from "../trpc";
+import { TRPCError } from "@trpc/server";
 
 export const postRouter = router({
   // Get feed (paginated)
@@ -9,14 +9,14 @@ export const postRouter = router({
       z.object({
         cursor: z.string().optional(),
         limit: z.number().min(1).max(50).default(20),
-      })
+      }),
     )
     .query(async ({ input, ctx }) => {
       const posts = await ctx.prisma.post.findMany({
         where: { isHidden: false },
         take: input.limit + 1,
         cursor: input.cursor ? { id: input.cursor } : undefined,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
         select: {
           id: true,
           content: true,
@@ -65,7 +65,7 @@ export const postRouter = router({
           },
           comments: {
             where: { isHidden: false },
-            orderBy: { createdAt: 'desc' },
+            orderBy: { createdAt: "desc" },
             take: 10,
             include: {
               user: {
@@ -82,8 +82,8 @@ export const postRouter = router({
 
       if (!post || post.isHidden) {
         throw new TRPCError({
-          code: 'NOT_FOUND',
-          message: 'Post not found',
+          code: "NOT_FOUND",
+          message: "Post not found",
         });
       }
 
@@ -99,27 +99,30 @@ export const postRouter = router({
       z.object({
         content: z.string().min(1).max(5000),
         mediaUrls: z.array(z.string().url()).max(10).optional(),
-        mediaType: z.enum(['TEXT', 'IMAGE', 'VIDEO', 'AUDIO', 'PERFORMANCE']),
-      })
+        mediaType: z.enum(["TEXT", "IMAGE", "VIDEO", "AUDIO", "PERFORMANCE"]),
+      }),
     )
     .use(async ({ ctx, input, next }) => {
       // Check permission based on media type
       const permissionMap = {
-        TEXT: null,                   // No extra permission needed
-        IMAGE: 'canPostImage',
-        AUDIO: 'canUploadAudio',
-        VIDEO: 'canUploadVideo',
-        PERFORMANCE: 'canUploadVideo', // Performance requires same level as video
+        TEXT: null, // No extra permission needed
+        IMAGE: "canPostImage",
+        AUDIO: "canUploadAudio",
+        VIDEO: "canUploadVideo",
+        PERFORMANCE: "canUploadVideo", // Performance requires same level as video
       } as const;
 
       const required = permissionMap[input.mediaType];
       if (required) {
-        const { hasPermission } = await import('@repo/identity');
+        const { hasPermission } = await import("@repo/identity");
         if (!hasPermission(ctx.user.identityTier, required)) {
           throw new TRPCError({
-            code: 'FORBIDDEN',
+            code: "FORBIDDEN",
             message: `Uploading ${input.mediaType.toLowerCase()} content requires account verification. Visit your profile to verify.`,
-            cause: { requiredPermission: required, currentTier: ctx.user.identityTier },
+            cause: {
+              requiredPermission: required,
+              currentTier: ctx.user.identityTier,
+            },
           });
         }
       }
@@ -163,8 +166,8 @@ export const postRouter = router({
 
       if (existing) {
         throw new TRPCError({
-          code: 'CONFLICT',
-          message: 'Already liked',
+          code: "CONFLICT",
+          message: "Already liked",
         });
       }
 
@@ -205,13 +208,66 @@ export const postRouter = router({
       return { success: true };
     }),
 
+  // Search posts by content or username
+  search: publicProcedure
+    .input(
+      z.object({
+        query: z.string().min(1).max(100),
+        cursor: z.string().optional(),
+        limit: z.number().min(1).max(50).default(20),
+      }),
+    )
+    .query(async ({ input, ctx }) => {
+      const posts = await ctx.prisma.post.findMany({
+        where: {
+          isHidden: false,
+          OR: [
+            { content: { contains: input.query, mode: "insensitive" } },
+            {
+              user: {
+                username: { contains: input.query, mode: "insensitive" },
+              },
+            },
+          ],
+        },
+        take: input.limit + 1,
+        cursor: input.cursor ? { id: input.cursor } : undefined,
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          content: true,
+          mediaUrls: true,
+          mediaType: true,
+          createdAt: true,
+          likesCount: true,
+          commentsCount: true,
+          user: {
+            select: {
+              id: true,
+              username: true,
+              avatar: true,
+              isVerified: true,
+            },
+          },
+        },
+      });
+
+      let nextCursor: string | undefined;
+      if (posts.length > input.limit) {
+        const nextItem = posts.pop();
+        nextCursor = nextItem?.id;
+      }
+
+      return { posts, nextCursor };
+    }),
+
   // Comment on post
   comment: protectedProcedure
     .input(
       z.object({
         postId: z.string(),
         content: z.string().min(1).max(1000),
-      })
+      }),
     )
     .mutation(async ({ input, ctx }) => {
       const comment = await ctx.prisma.comment.create({
