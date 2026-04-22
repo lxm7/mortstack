@@ -1,0 +1,54 @@
+# ── Secrets & credentials ─────────────────────────────────────────────────────
+.env
+.env.*
+**/.env
+**/.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*.cert
+*.cer
+**/*secret*
+**/*credential*
+**/*private*
+
+# ── AWS ───────────────────────────────────────────────────────────────────────
+.aws/
+**/aws-exports.js
+**/amplify-meta.json
+
+# ── Expo / EAS ────────────────────────────────────────────────────────────────
+**/google-services.json
+**/GoogleService-Info.plist
+**/eas-build-local-nodejs/
+
+# ── SST ───────────────────────────────────────────────────────────────────────
+.sst/
+**/.sst/
+
+# ── Package manager caches ────────────────────────────────────────────────────
+node_modules/
+**/node_modules/
+.pnpm-store/
+
+# ── Build outputs ─────────────────────────────────────────────────────────────
+dist/
+.next/
+**/dist/
+**/.next/
+
+# ── Logs ─────────────────────────────────────────────────────────────────────
+**/*.log
+**/logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ── Native build artifacts ────────────────────────────────────────────────────
+apps/*/ios/
+apps/*/android/
+**/*.xcarchive
+**/*.ipa
+**/*.apk
+**/*.aab

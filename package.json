@@ -2,32 +2,34 @@
   "name": "sessions",
   "private": true,
   "scripts": {
-    "build": "nx run-many -t build",
-    "dev": "nx run-many -t dev",
-    "lint": "nx run-many -t lint",
+    "build": "turbo build",
+    "dev": "turbo dev",
+    "lint": "turbo lint",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
-    "check-types": "nx run-many -t check-types",
+    "check-types": "turbo check-types",
     "prepare": "husky",
-    "mobile": "nx run mobile:start",
-    "mobile:ios": "nx run mobile:ios",
-    "mobile:android": "nx run mobile:android",
-    "mobile:prebuild": "nx run mobile:prebuild",
-    "mobile:prebuild-clean": "nx run mobile:prebuild-clean",
-    "mobile:rebuild-ios": "nx run mobile:rebuild-ios",
-    "mobile:rebuild-android": "nx run mobile:rebuild-android"
+    "rn": "turbo start --filter=rn-tamagui",
+    "rn:ios": "turbo ios --filter=rn-tamagui",
+    "rn:android": "turbo android --filter=rn-tamagui",
+    "rn:prebuild": "turbo prebuild --filter=rn-tamagui",
+    "rn:prebuild-clean": "turbo prebuild-clean --filter=rn-tamagui",
+    "rn:rebuild-ios": "turbo rebuild-ios --filter=rn-tamagui",
+    "rn:rebuild-android": "turbo rebuild-android --filter=rn-tamagui",
+    "android": "expo run:android",
+    "ios": "expo run:ios"
   },
   "devDependencies": {
+    "@repo/eslint-config": "workspace:*",
     "husky": "^9.1.7",
     "lint-staged": "^16.2.7",
-    "nx": "22.5.1",
     "prettier": "^3.7.4",
     "sst": "^3.18.6",
+    "turbo": "^2.5.0",
     "typescript": "5.9.2"
   },
   "engines": {
     "node": ">=18"
   },
-  "packageManager": "npm@11.6.2",
   "workspaces": [
     "apps/*",
     "packages/*",
@@ -41,6 +43,7 @@
     "@types/react-dom": "~19.1.10"
   },
   "version": "1.0.0",
+  "packageManager": "pnpm@10.33.1+sha512.05ba3c1d5d1c18f68df06470d74055e62d41fc110a0c660db1b2dfb2785327f04cf0f68345d4609bc52089e7fa0343c31593b2f9594e2c5d5da426230acc9820",
   "lint-staged": {
     "*.{ts,tsx}": "eslint --fix --max-warnings=0",
     "*.{ts,tsx,js,jsx,json,css,md}": "prettier --write"

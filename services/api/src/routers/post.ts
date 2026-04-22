@@ -1,9 +1,22 @@
-import { z } from "zod";
-import { router, publicProcedure, protectedProcedure } from "../trpc";
-import { TRPCError } from "@trpc/server";
+import { z } from 'zod';
+import { router, publicProcedure, profileProcedure, tierProcedure } from '../trpc';
+import { TRPCError } from '@trpc/server';
+import { FeedSchema, PostSchema, FeedPostSchema, CommentSchema } from '@repo/schemas';
+
+const profileSelect = {
+  id: true,
+  handle: true,
+  displayName: true,
+  avatar: true,
+  type: true,
+  isVerified: true,
+} as const;
 
 export const postRouter = router({
-  // Get feed (paginated)
+  // ── Feed ─────────────────────────────────────────────────────────────────────
+  // Authenticated: posts from profiles the active profile follows
+  // Unauthenticated: global public feed
+
   getFeed: publicProcedure
     .input(
       z.object({
@@ -11,12 +24,26 @@ export const postRouter = router({
         limit: z.number().min(1).max(50).default(20),
       }),
     )
+    .output(FeedSchema)
     .query(async ({ input, ctx }) => {
+      const followedIds =
+        ctx.activeProfile
+          ? (
+              await ctx.prisma.follow.findMany({
+                where: { followerId: ctx.activeProfile.id },
+                select: { followingId: true },
+              })
+            ).map((f) => f.followingId)
+          : undefined;
+
       const posts = await ctx.prisma.post.findMany({
-        where: { isHidden: false },
+        where: {
+          isHidden: false,
+          ...(followedIds ? { profileId: { in: followedIds } } : {}),
+        },
         take: input.limit + 1,
         cursor: input.cursor ? { id: input.cursor } : undefined,
-        orderBy: { createdAt: "desc" },
+        orderBy: { createdAt: 'desc' },
         select: {
           id: true,
           content: true,
@@ -25,159 +52,128 @@ export const postRouter = router({
           createdAt: true,
           likesCount: true,
           commentsCount: true,
-          user: {
-            select: {
-              id: true,
-              username: true,
-              avatar: true,
-              isVerified: true,
-            },
-          },
+          profile: { select: profileSelect },
         },
       });
 
       let nextCursor: string | undefined;
       if (posts.length > input.limit) {
-        const nextItem = posts.pop();
-        nextCursor = nextItem?.id;
+        nextCursor = posts.pop()!.id;
       }
 
-      return {
-        posts,
-        nextCursor,
-      };
+      return { posts, nextCursor };
     }),
 
-  // Get single post
+  // ── Single post ───────────────────────────────────────────────────────────────
+
   getPost: publicProcedure
     .input(z.object({ postId: z.string() }))
+    .output(PostSchema)
     .query(async ({ input, ctx }) => {
       const post = await ctx.prisma.post.findUnique({
         where: { id: input.postId },
-        include: {
-          user: {
-            select: {
-              id: true,
-              username: true,
-              avatar: true,
-              isVerified: true,
-            },
-          },
+        select: {
+          id: true,
+          content: true,
+          mediaUrls: true,
+          mediaType: true,
+          createdAt: true,
+          updatedAt: true,
+          likesCount: true,
+          commentsCount: true,
+          isHidden: true,
+          profile: { select: profileSelect },
           comments: {
             where: { isHidden: false },
-            orderBy: { createdAt: "desc" },
-            take: 10,
-            include: {
-              user: {
-                select: {
-                  id: true,
-                  username: true,
-                  avatar: true,
-                },
-              },
+            orderBy: { createdAt: 'desc' },
+            take: 20,
+            select: {
+              id: true,
+              content: true,
+              createdAt: true,
+              profile: { select: profileSelect },
             },
           },
         },
       });
 
       if (!post || post.isHidden) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Post not found",
-        });
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Post not found' });
       }
 
       return post;
     }),
 
-  // Create post - media types are gated by identity tier
-  // TEXT: any authenticated user
-  // IMAGE: BASIC tier+
-  // AUDIO/VIDEO/PERFORMANCE: CREATOR tier+
-  create: protectedProcedure
+  // ── Create post ───────────────────────────────────────────────────────────────
+  // Media type determines required identity tier — checked via tierProcedure
+
+  create: tierProcedure('canPostImage') // minimum gate — further check inside
     .input(
       z.object({
         content: z.string().min(1).max(5000),
-        mediaUrls: z.array(z.string().url()).max(10).optional(),
-        mediaType: z.enum(["TEXT", "IMAGE", "VIDEO", "AUDIO", "PERFORMANCE"]),
+        mediaUrls: z.array(z.string().url()).max(10).default([]),
+        mediaType: z.enum(['TEXT', 'IMAGE', 'VIDEO', 'AUDIO', 'PERFORMANCE']).default('TEXT'),
       }),
     )
     .use(async ({ ctx, input, next }) => {
-      // Check permission based on media type
       const permissionMap = {
-        TEXT: null, // No extra permission needed
-        IMAGE: "canPostImage",
-        AUDIO: "canUploadAudio",
-        VIDEO: "canUploadVideo",
-        PERFORMANCE: "canUploadVideo", // Performance requires same level as video
+        TEXT: null,
+        IMAGE: 'canPostImage',
+        AUDIO: 'canUploadAudio',
+        VIDEO: 'canUploadVideo',
+        PERFORMANCE: 'canUploadVideo',
       } as const;
 
       const required = permissionMap[input.mediaType];
       if (required) {
-        const { hasPermission } = await import("@repo/identity");
-        if (!hasPermission(ctx.user.identityTier, required)) {
+        const { hasPermission } = await import('@repo/identity');
+        if (!hasPermission(ctx.account.identityTier, required)) {
           throw new TRPCError({
-            code: "FORBIDDEN",
-            message: `Uploading ${input.mediaType.toLowerCase()} content requires account verification. Visit your profile to verify.`,
-            cause: {
-              requiredPermission: required,
-              currentTier: ctx.user.identityTier,
-            },
+            code: 'FORBIDDEN',
+            message: `Uploading ${input.mediaType.toLowerCase()} requires account verification`,
           });
         }
       }
+
       return next({ ctx });
     })
     .mutation(async ({ input, ctx }) => {
-      const post = await ctx.prisma.post.create({
+      return ctx.prisma.post.create({
         data: {
-          userId: ctx.user.id,
+          profileId: ctx.activeProfile.id,
           content: input.content,
-          mediaUrls: input.mediaUrls || [],
+          mediaUrls: input.mediaUrls,
           mediaType: input.mediaType,
         },
-        include: {
-          user: {
-            select: {
-              id: true,
-              username: true,
-              avatar: true,
-            },
-          },
+        select: {
+          id: true,
+          content: true,
+          mediaUrls: true,
+          mediaType: true,
+          createdAt: true,
+          profile: { select: profileSelect },
         },
       });
-
-      return post;
     }),
 
-  // Like post
-  like: protectedProcedure
+  // ── Like / unlike ─────────────────────────────────────────────────────────────
+
+  like: profileProcedure
     .input(z.object({ postId: z.string() }))
     .mutation(async ({ input, ctx }) => {
-      // Check if already liked
       const existing = await ctx.prisma.like.findUnique({
         where: {
-          postId_userId: {
-            postId: input.postId,
-            userId: ctx.user.id,
-          },
+          postId_profileId: { postId: input.postId, profileId: ctx.activeProfile.id },
         },
       });
 
       if (existing) {
-        throw new TRPCError({
-          code: "CONFLICT",
-          message: "Already liked",
-        });
+        throw new TRPCError({ code: 'CONFLICT', message: 'Already liked' });
       }
 
-      // Create like and increment counter
       await ctx.prisma.$transaction([
         ctx.prisma.like.create({
-          data: {
-            postId: input.postId,
-            userId: ctx.user.id,
-          },
+          data: { postId: input.postId, profileId: ctx.activeProfile.id },
         }),
         ctx.prisma.post.update({
           where: { id: input.postId },
@@ -188,16 +184,12 @@ export const postRouter = router({
       return { success: true };
     }),
 
-  // Unlike post
-  unlike: protectedProcedure
+  unlike: profileProcedure
     .input(z.object({ postId: z.string() }))
     .mutation(async ({ input, ctx }) => {
       await ctx.prisma.$transaction([
         ctx.prisma.like.deleteMany({
-          where: {
-            postId: input.postId,
-            userId: ctx.user.id,
-          },
+          where: { postId: input.postId, profileId: ctx.activeProfile.id },
         }),
         ctx.prisma.post.update({
           where: { id: input.postId },
@@ -208,7 +200,42 @@ export const postRouter = router({
       return { success: true };
     }),
 
-  // Search posts by content or username
+  // ── Comment ───────────────────────────────────────────────────────────────────
+
+  comment: profileProcedure
+    .input(
+      z.object({
+        postId: z.string(),
+        content: z.string().min(1).max(1000),
+      }),
+    )
+    .output(CommentSchema)
+    .mutation(async ({ input, ctx }) => {
+      const [comment] = await ctx.prisma.$transaction([
+        ctx.prisma.comment.create({
+          data: {
+            postId: input.postId,
+            profileId: ctx.activeProfile.id,
+            content: input.content,
+          },
+          select: {
+            id: true,
+            content: true,
+            createdAt: true,
+            profile: { select: profileSelect },
+          },
+        }),
+        ctx.prisma.post.update({
+          where: { id: input.postId },
+          data: { commentsCount: { increment: 1 } },
+        }),
+      ]);
+
+      return comment;
+    }),
+
+  // ── Search ────────────────────────────────────────────────────────────────────
+
   search: publicProcedure
     .input(
       z.object({
@@ -217,22 +244,20 @@ export const postRouter = router({
         limit: z.number().min(1).max(50).default(20),
       }),
     )
+    .output(FeedSchema)
     .query(async ({ input, ctx }) => {
       const posts = await ctx.prisma.post.findMany({
         where: {
           isHidden: false,
           OR: [
-            { content: { contains: input.query, mode: "insensitive" } },
-            {
-              user: {
-                username: { contains: input.query, mode: "insensitive" },
-              },
-            },
+            { content: { contains: input.query, mode: 'insensitive' } },
+            { profile: { displayName: { contains: input.query, mode: 'insensitive' } } },
+            { profile: { handle: { contains: input.query, mode: 'insensitive' } } },
           ],
         },
         take: input.limit + 1,
         cursor: input.cursor ? { id: input.cursor } : undefined,
-        orderBy: { createdAt: "desc" },
+        orderBy: { createdAt: 'desc' },
         select: {
           id: true,
           content: true,
@@ -241,58 +266,15 @@ export const postRouter = router({
           createdAt: true,
           likesCount: true,
           commentsCount: true,
-          user: {
-            select: {
-              id: true,
-              username: true,
-              avatar: true,
-              isVerified: true,
-            },
-          },
+          profile: { select: profileSelect },
         },
       });
 
       let nextCursor: string | undefined;
       if (posts.length > input.limit) {
-        const nextItem = posts.pop();
-        nextCursor = nextItem?.id;
+        nextCursor = posts.pop()!.id;
       }
 
       return { posts, nextCursor };
-    }),
-
-  // Comment on post
-  comment: protectedProcedure
-    .input(
-      z.object({
-        postId: z.string(),
-        content: z.string().min(1).max(1000),
-      }),
-    )
-    .mutation(async ({ input, ctx }) => {
-      const comment = await ctx.prisma.comment.create({
-        data: {
-          postId: input.postId,
-          userId: ctx.user.id,
-          content: input.content,
-        },
-        include: {
-          user: {
-            select: {
-              id: true,
-              username: true,
-              avatar: true,
-            },
-          },
-        },
-      });
-
-      // Increment comment count
-      await ctx.prisma.post.update({
-        where: { id: input.postId },
-        data: { commentsCount: { increment: 1 } },
-      });
-
-      return comment;
     }),
 });

@@ -1,8 +1,7 @@
 import jwt from 'jsonwebtoken';
 
 export interface TokenPayload {
-  userId: string;
-  walletAddress?: string;
+  accountId: string;
   type: 'access' | 'refresh';
 }
 

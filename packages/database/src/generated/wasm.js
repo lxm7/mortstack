@@ -36,11 +36,11 @@ exports.Prisma = Prisma
 exports.$Enums = {}
 
 /**
- * Prisma Client JS version: 6.19.2
+ * Prisma Client JS version: 6.19.3
  * Query Engine version: c2990dca591cba766e3b7ef5d9e8a84796e47ab7
  */
 Prisma.prismaVersion = {
-  client: "6.19.2",
+  client: "6.19.3",
   engine: "c2990dca591cba766e3b7ef5d9e8a84796e47ab7"
 }
 
@@ -93,27 +93,91 @@ exports.Prisma.TransactionIsolationLevel = makeStrictEnum({
   Serializable: 'Serializable'
 });
 
-exports.Prisma.UserScalarFieldEnum = {
+exports.Prisma.AuthUserScalarFieldEnum = {
   id: 'id',
-  username: 'username',
+  name: 'name',
   email: 'email',
-  bio: 'bio',
-  avatar: 'avatar',
-  walletAddress: 'walletAddress',
-  passwordHash: 'passwordHash',
+  emailVerified: 'emailVerified',
+  image: 'image',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+};
+
+exports.Prisma.SessionScalarFieldEnum = {
+  id: 'id',
+  expiresAt: 'expiresAt',
+  token: 'token',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  ipAddress: 'ipAddress',
+  userAgent: 'userAgent',
+  userId: 'userId'
+};
+
+exports.Prisma.AuthAccountScalarFieldEnum = {
+  id: 'id',
+  accountId: 'accountId',
+  providerId: 'providerId',
+  userId: 'userId',
+  accessToken: 'accessToken',
+  refreshToken: 'refreshToken',
+  idToken: 'idToken',
+  accessTokenExpiresAt: 'accessTokenExpiresAt',
+  refreshTokenExpiresAt: 'refreshTokenExpiresAt',
+  scope: 'scope',
+  password: 'password',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+};
+
+exports.Prisma.VerificationScalarFieldEnum = {
+  id: 'id',
+  identifier: 'identifier',
+  value: 'value',
+  expiresAt: 'expiresAt',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+};
+
+exports.Prisma.AccountScalarFieldEnum = {
+  id: 'id',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt',
   lastActiveAt: 'lastActiveAt',
-  isVerified: 'isVerified',
+  authUserId: 'authUserId',
+  email: 'email',
+  walletAddress: 'walletAddress',
   isBanned: 'isBanned',
-  reputation: 'reputation',
   identityTier: 'identityTier',
   identityVerifiedAt: 'identityVerifiedAt'
 };
 
+exports.Prisma.ProfileScalarFieldEnum = {
+  id: 'id',
+  handle: 'handle',
+  displayName: 'displayName',
+  bio: 'bio',
+  avatar: 'avatar',
+  type: 'type',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  isBanned: 'isBanned',
+  reportCount: 'reportCount',
+  isVerified: 'isVerified',
+  reputation: 'reputation'
+};
+
+exports.Prisma.ProfileMemberScalarFieldEnum = {
+  id: 'id',
+  accountId: 'accountId',
+  profileId: 'profileId',
+  role: 'role',
+  createdAt: 'createdAt'
+};
+
 exports.Prisma.IdentityCheckScalarFieldEnum = {
   id: 'id',
-  userId: 'userId',
+  accountId: 'accountId',
   provider: 'provider',
   externalId: 'externalId',
   tier: 'tier',
@@ -126,7 +190,7 @@ exports.Prisma.IdentityCheckScalarFieldEnum = {
 
 exports.Prisma.PostScalarFieldEnum = {
   id: 'id',
-  userId: 'userId',
+  profileId: 'profileId',
   content: 'content',
   mediaUrls: 'mediaUrls',
   mediaType: 'mediaType',
@@ -141,7 +205,7 @@ exports.Prisma.PostScalarFieldEnum = {
 exports.Prisma.CommentScalarFieldEnum = {
   id: 'id',
   postId: 'postId',
-  userId: 'userId',
+  profileId: 'profileId',
   content: 'content',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt',
@@ -151,7 +215,7 @@ exports.Prisma.CommentScalarFieldEnum = {
 exports.Prisma.LikeScalarFieldEnum = {
   id: 'id',
   postId: 'postId',
-  userId: 'userId',
+  profileId: 'profileId',
   createdAt: 'createdAt'
 };
 
@@ -164,7 +228,7 @@ exports.Prisma.FollowScalarFieldEnum = {
 
 exports.Prisma.NFTScalarFieldEnum = {
   id: 'id',
-  userId: 'userId',
+  profileId: 'profileId',
   postId: 'postId',
   objectId: 'objectId',
   packageId: 'packageId',
@@ -204,6 +268,20 @@ exports.Prisma.JsonNullValueFilter = {
   JsonNull: Prisma.JsonNull,
   AnyNull: Prisma.AnyNull
 };
+exports.ProfileType = exports.$Enums.ProfileType = {
+  MUSICIAN: 'MUSICIAN',
+  VENUE: 'VENUE',
+  PROMOTER: 'PROMOTER',
+  VISUAL_ARTIST: 'VISUAL_ARTIST',
+  BAND: 'BAND'
+};
+
+exports.ProfileRole = exports.$Enums.ProfileRole = {
+  OWNER: 'OWNER',
+  ADMIN: 'ADMIN',
+  MEMBER: 'MEMBER'
+};
+
 exports.IdentityTier = exports.$Enums.IdentityTier = {
   NONE: 'NONE',
   BASIC: 'BASIC',
@@ -234,7 +312,13 @@ exports.NFTType = exports.$Enums.NFTType = {
 };
 
 exports.Prisma.ModelName = {
-  User: 'User',
+  AuthUser: 'AuthUser',
+  Session: 'Session',
+  AuthAccount: 'AuthAccount',
+  Verification: 'Verification',
+  Account: 'Account',
+  Profile: 'Profile',
+  ProfileMember: 'ProfileMember',
   IdentityCheck: 'IdentityCheck',
   Post: 'Post',
   Comment: 'Comment',
@@ -253,7 +337,7 @@ const config = {
       "value": "prisma-client-js"
     },
     "output": {
-      "value": "/Users/alex/Dev/my-turborepo/packages/database/src/generated",
+      "value": "/Users/alex/Dev/sessions/packages/database/src/generated",
       "fromEnvVar": null
     },
     "config": {
@@ -267,7 +351,7 @@ const config = {
       }
     ],
     "previewFeatures": [],
-    "sourceFilePath": "/Users/alex/Dev/my-turborepo/packages/database/prisma/schema.prisma",
+    "sourceFilePath": "/Users/alex/Dev/sessions/packages/database/prisma/schema.prisma",
     "isCustomOutput": true
   },
   "relativeEnvPaths": {
@@ -275,7 +359,7 @@ const config = {
     "schemaEnvPath": "../../.env"
   },
   "relativePath": "../../prisma",
-  "clientVersion": "6.19.2",
+  "clientVersion": "6.19.3",
   "engineVersion": "c2990dca591cba766e3b7ef5d9e8a84796e47ab7",
   "datasourceNames": [
     "db"
@@ -290,13 +374,13 @@ const config = {
       }
     }
   },
-  "inlineSchema": "generator client {\n  provider = \"prisma-client-js\"\n  output   = \"../src/generated\"\n}\n\ndatasource db {\n  provider = \"postgresql\"\n  url      = env(\"DATABASE_URL\")\n}\n\n// User model with SUI wallet support\nmodel User {\n  id       String  @id @default(cuid())\n  username String  @unique\n  email    String? @unique\n  bio      String?\n  avatar   String?\n\n  // SUI wallet address (primary auth method)\n  // Future: this becomes the SSO identity anchor\n  walletAddress String? @unique\n\n  // Traditional auth (optional, for email-based accounts)\n  passwordHash String?\n\n  // Metadata\n  createdAt    DateTime @default(now())\n  updatedAt    DateTime @updatedAt\n  lastActiveAt DateTime @default(now())\n\n  // Trust & Safety\n  isVerified Boolean @default(false)\n  isBanned   Boolean @default(false)\n  reputation Int     @default(0)\n\n  // Identity verification tier\n  // Drives what content a user can upload/mint\n  // Intentionally NOT called \"KYC\" - supports multiple verification methods:\n  //   Web2 now:    phone (Twilio), email, Sign in with Google\n  //   Web3 later:  World ID, SUI zkLogin, Gitcoin Passport, stake-based\n  identityTier       IdentityTier @default(NONE)\n  identityVerifiedAt DateTime?\n\n  // Relations\n  posts          Post[]\n  comments       Comment[]\n  likes          Like[]\n  follows        Follow[]        @relation(\"UserFollows\")\n  followers      Follow[]        @relation(\"UserFollowers\")\n  nfts           NFT[]\n  identityChecks IdentityCheck[]\n\n  @@index([walletAddress])\n  @@index([username])\n  @@index([identityTier])\n}\n\n// What a user can do based on their verified tier\n// Deliberately tiered so we can raise/lower requirements over time\nenum IdentityTier {\n  NONE // Unverified - can only post text\n  BASIC // Phone or zkLogin verified - can post images\n  CREATOR // World ID or stake-based - can upload audio/video\n  ARTIST // Creator + wallet age check - can mint NFTs\n}\n\n// Identity check record - one per verification attempt\n// Provider-agnostic by design. Swap implementations without schema changes.\n//\n// Current Web2 providers:\n//   \"phone\"        - Twilio SMS OTP\n//   \"email\"        - Magic link / OTP\n//   \"google_oauth\" - Sign in with Google\n//\n// Future Web3 providers:\n//   \"world_id\"         - Worldcoin iris proof (unique human)\n//   \"sui_zklogin\"      - SUI zkLogin (OAuth → ZK → wallet)\n//   \"gitcoin_passport\" - Aggregate Web3 credential score\n//   \"sui_stake\"        - SUI token stake as identity bond\n//   \"sui_attestation\"  - On-chain verifiable credential\nmodel IdentityCheck {\n  id     String @id @default(cuid())\n  userId String\n  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)\n\n  provider   String // See enum above\n  externalId String // Provider's session/reference ID\n\n  tier   IdentityTier // What tier this check grants if approved\n  status IdentityCheckStatus\n\n  // Timestamps\n  initiatedAt DateTime  @default(now())\n  resolvedAt  DateTime?\n  expiresAt   DateTime? // Stake-based checks expire if stake is withdrawn\n\n  // Raw provider payload (audit trail, never expose to client)\n  providerPayload Json?\n\n  @@index([userId])\n  @@index([provider, externalId])\n}\n\nenum IdentityCheckStatus {\n  PENDING // Awaiting provider callback\n  APPROVED\n  REJECTED\n  EXPIRED\n}\n\n// Posts (music, performances, content)\nmodel Post {\n  id     String @id @default(cuid())\n  userId String\n  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)\n\n  content   String\n  mediaUrls String[] // S3 URLs for images/videos/audio\n  mediaType MediaType @default(TEXT)\n\n  // Metadata\n  createdAt DateTime @default(now())\n  updatedAt DateTime @updatedAt\n\n  // Engagement\n  likesCount    Int @default(0)\n  commentsCount Int @default(0)\n\n  // Trust & Safety\n  isHidden    Boolean @default(false)\n  reportCount Int     @default(0)\n\n  // Relations\n  comments Comment[]\n  likes    Like[]\n  nft      NFT?\n\n  @@index([userId])\n  @@index([createdAt])\n}\n\nenum MediaType {\n  TEXT\n  IMAGE\n  VIDEO\n  AUDIO\n  PERFORMANCE\n}\n\n// Comments on posts\nmodel Comment {\n  id     String @id @default(cuid())\n  postId String\n  post   Post   @relation(fields: [postId], references: [id], onDelete: Cascade)\n  userId String\n  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)\n\n  content   String\n  createdAt DateTime @default(now())\n  updatedAt DateTime @updatedAt\n\n  // Trust & Safety\n  isHidden Boolean @default(false)\n\n  @@index([postId])\n  @@index([userId])\n}\n\n// Likes on posts\nmodel Like {\n  id        String   @id @default(cuid())\n  postId    String\n  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)\n  userId    String\n  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)\n  createdAt DateTime @default(now())\n\n  @@unique([postId, userId])\n  @@index([postId])\n  @@index([userId])\n}\n\n// Follow relationships\nmodel Follow {\n  id          String   @id @default(cuid())\n  followerId  String\n  follower    User     @relation(\"UserFollows\", fields: [followerId], references: [id], onDelete: Cascade)\n  followingId String\n  following   User     @relation(\"UserFollowers\", fields: [followingId], references: [id], onDelete: Cascade)\n  createdAt   DateTime @default(now())\n\n  @@unique([followerId, followingId])\n  @@index([followerId])\n  @@index([followingId])\n}\n\n// NFTs (minted content on SUI)\nmodel NFT {\n  id     String  @id @default(cuid())\n  userId String\n  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)\n  postId String? @unique\n  post   Post?   @relation(fields: [postId], references: [id], onDelete: SetNull)\n\n  // SUI blockchain data\n  objectId  String  @unique // SUI object ID\n  packageId String // Smart contract package ID\n  moduleId  String // Module within package\n  type      NFTType\n\n  // NFT metadata\n  name        String\n  description String?\n  imageUrl    String\n  metadataUri String\n\n  // Pricing (if listed for sale)\n  isListed Boolean @default(false)\n  price    String? // In SUI tokens (stored as string to avoid precision loss)\n\n  createdAt DateTime @default(now())\n\n  @@index([userId])\n  @@index([objectId])\n}\n\nenum NFTType {\n  MUSIC\n  PERFORMANCE\n  ART\n  COLLECTIBLE\n}\n",
-  "inlineSchemaHash": "9295349a07d0cfd0cc6fc6ece6cc436a19c9720299094d0c33fff67307b3fee2",
+  "inlineSchema": "generator client {\n  provider = \"prisma-client-js\"\n  output   = \"../src/generated\"\n}\n\ndatasource db {\n  provider = \"postgresql\"\n  url      = env(\"DATABASE_URL\")\n}\n\n// ── Better Auth models ────────────────────────────────────────────────────────\n// Auth identity is separate from domain identity (Account/Profile).\n// AuthUser is created by Better Auth on sign-up (email or wallet).\n// Account.authUserId links the two layers.\n\nmodel AuthUser {\n  id            String   @id\n  name          String\n  email         String   @unique\n  emailVerified Boolean  @default(false)\n  image         String?\n  createdAt     DateTime @default(now())\n  updatedAt     DateTime @updatedAt\n\n  sessions Session[]\n  accounts AuthAccount[]\n\n  // Domain link\n  domainAccount Account?\n}\n\nmodel Session {\n  id        String   @id\n  expiresAt DateTime\n  token     String   @unique\n  createdAt DateTime @default(now())\n  updatedAt DateTime @updatedAt\n  ipAddress String?\n  userAgent String?\n\n  userId String\n  user   AuthUser @relation(fields: [userId], references: [id], onDelete: Cascade)\n\n  @@index([userId])\n  @@index([token])\n}\n\n// Better Auth's OAuth account table (used for social providers if added later)\nmodel AuthAccount {\n  id                    String    @id\n  accountId             String\n  providerId            String\n  userId                String\n  user                  AuthUser  @relation(fields: [userId], references: [id], onDelete: Cascade)\n  accessToken           String?\n  refreshToken          String?\n  idToken               String?\n  accessTokenExpiresAt  DateTime?\n  refreshTokenExpiresAt DateTime?\n  scope                 String?\n  password              String?\n  createdAt             DateTime  @default(now())\n  updatedAt             DateTime  @updatedAt\n\n  @@unique([providerId, accountId])\n  @@index([userId])\n}\n\n// Used by Better Auth for nonce storage (SUI wallet), email verification tokens, etc.\nmodel Verification {\n  id         String   @id\n  identifier String // e.g. \"sui:0xabc...\" or \"email:user@example.com\"\n  value      String // the nonce or OTP\n  expiresAt  DateTime\n  createdAt  DateTime @default(now())\n  updatedAt  DateTime @updatedAt\n\n  @@index([identifier])\n}\n\n// ── Account ───────────────────────────────────────────────────────────────────\n// Domain identity — one per real-world person.\n// Created automatically when a user signs up via Better Auth (email or wallet).\n// A person owns/is a member of one or more Profiles.\nmodel Account {\n  id           String   @id @default(cuid())\n  createdAt    DateTime @default(now())\n  updatedAt    DateTime @updatedAt\n  lastActiveAt DateTime @default(now())\n\n  // Link to Better Auth identity layer\n  authUserId String   @unique\n  authUser   AuthUser @relation(fields: [authUserId], references: [id], onDelete: Cascade)\n\n  // Web2 — email mirrored from AuthUser for domain queries\n  email String? @unique\n\n  // Web3 — SUI wallet address (optional until connected)\n  walletAddress String? @unique\n\n  // Trust & Safety (banning an Account bans all their Profiles)\n  isBanned Boolean @default(false)\n\n  // Identity verification tier (per person, not per persona)\n  //   NONE:    Unverified — text posts only\n  //   BASIC:   Phone or zkLogin — can post images\n  //   CREATOR: World ID or stake — can upload audio/video\n  //   ARTIST:  Creator + wallet age — can mint NFTs\n  identityTier       IdentityTier @default(NONE)\n  identityVerifiedAt DateTime?\n\n  // Relations\n  profiles       ProfileMember[]\n  identityChecks IdentityCheck[]\n\n  @@index([authUserId])\n  @@index([walletAddress])\n  @@index([email])\n}\n\n// ── Profile ───────────────────────────────────────────────────────────────────\n// Public persona. Posts, follows, NFTs, and reputation all live here.\n// One Account can own/be a member of multiple Profiles.\n// Examples: a person is both a MUSICIAN and a VENUE owner.\n//           a BAND profile has multiple Account members.\nmodel Profile {\n  id          String      @id @default(cuid())\n  handle      String      @unique // URL-safe slug, e.g. \"the-blue-note\"\n  displayName String\n  bio         String?\n  avatar      String?\n  type        ProfileType\n  createdAt   DateTime    @default(now())\n  updatedAt   DateTime    @updatedAt\n\n  // Trust & Safety\n  isBanned    Boolean @default(false)\n  reportCount Int     @default(0)\n\n  // Verified = official persona check (\"this is the real Boiler Room\")\n  // Distinct from Account.identityTier which is about the real person\n  isVerified Boolean @default(false)\n\n  // Reputation is per-persona — a venue's credibility ≠ their music credibility\n  reputation Int @default(0)\n\n  // Relations\n  members   ProfileMember[]\n  posts     Post[]\n  comments  Comment[]\n  likes     Like[]\n  nfts      NFT[]\n  follows   Follow[]        @relation(\"ProfileFollows\") // profiles this profile follows\n  followers Follow[]        @relation(\"ProfileFollowers\") // profiles following this profile\n\n  @@index([handle])\n  @@index([type])\n}\n\nenum ProfileType {\n  MUSICIAN\n  VENUE\n  PROMOTER\n  VISUAL_ARTIST\n  BAND\n}\n\n// ── ProfileMember ─────────────────────────────────────────────────────────────\n// Join table: Account ↔ Profile with role.\n// OWNER  — full control, can delete the profile\n// ADMIN  — manage members, post, edit profile\n// MEMBER — post as this profile (e.g. band members)\nmodel ProfileMember {\n  id        String      @id @default(cuid())\n  accountId String\n  account   Account     @relation(fields: [accountId], references: [id], onDelete: Cascade)\n  profileId String\n  profile   Profile     @relation(fields: [profileId], references: [id], onDelete: Cascade)\n  role      ProfileRole @default(OWNER)\n  createdAt DateTime    @default(now())\n\n  @@unique([accountId, profileId])\n  @@index([accountId])\n  @@index([profileId])\n}\n\nenum ProfileRole {\n  OWNER\n  ADMIN\n  MEMBER\n}\n\n// ── IdentityTier ──────────────────────────────────────────────────────────────\n// Lives on Account (the person). Governs all their Profiles.\nenum IdentityTier {\n  NONE // Unverified — text posts only\n  BASIC // Phone or zkLogin — can post images\n  CREATOR // World ID or stake — can upload audio/video\n  ARTIST // Creator + wallet age — can mint NFTs\n}\n\n// ── IdentityCheck ─────────────────────────────────────────────────────────────\n// Provider-agnostic verification attempt. One record per attempt.\n// Swap verification providers without schema changes.\nmodel IdentityCheck {\n  id        String  @id @default(cuid())\n  accountId String\n  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)\n\n  // \"phone\" | \"email\" | \"google_oauth\" | \"world_id\" | \"sui_zklogin\" | \"gitcoin_passport\" | \"sui_stake\"\n  provider   String\n  externalId String // Provider's session or reference ID\n\n  tier   IdentityTier\n  status IdentityCheckStatus\n\n  initiatedAt DateTime  @default(now())\n  resolvedAt  DateTime?\n  expiresAt   DateTime? // Stake-based checks expire on stake withdrawal\n\n  // Raw payload for audit trail — never expose to client\n  providerPayload Json?\n\n  @@index([accountId])\n  @@index([provider, externalId])\n}\n\nenum IdentityCheckStatus {\n  PENDING // Awaiting provider callback\n  APPROVED\n  REJECTED\n  EXPIRED\n}\n\n// ── Post ──────────────────────────────────────────────────────────────────────\n// Belongs to a Profile. Feed is aggregated across followed Profiles.\nmodel Post {\n  id        String    @id @default(cuid())\n  profileId String\n  profile   Profile   @relation(fields: [profileId], references: [id], onDelete: Cascade)\n  content   String\n  mediaUrls String[]\n  mediaType MediaType @default(TEXT)\n  createdAt DateTime  @default(now())\n  updatedAt DateTime  @updatedAt\n\n  // Denormalised counts — updated via triggers or post-mutation\n  likesCount    Int @default(0)\n  commentsCount Int @default(0)\n\n  // Trust & Safety\n  isHidden    Boolean @default(false)\n  reportCount Int     @default(0)\n\n  // Relations\n  comments Comment[]\n  likes    Like[]\n  nft      NFT?\n\n  @@index([profileId])\n  @@index([createdAt])\n}\n\nenum MediaType {\n  TEXT\n  IMAGE\n  VIDEO\n  AUDIO\n  PERFORMANCE\n}\n\n// ── Comment ───────────────────────────────────────────────────────────────────\n// Posted as a Profile — you comment as your musician/venue persona.\nmodel Comment {\n  id        String   @id @default(cuid())\n  postId    String\n  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)\n  profileId String\n  profile   Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)\n  content   String\n  createdAt DateTime @default(now())\n  updatedAt DateTime @updatedAt\n  isHidden  Boolean  @default(false)\n\n  @@index([postId])\n  @@index([profileId])\n}\n\n// ── Like ──────────────────────────────────────────────────────────────────────\n// Liked as a Profile. Unique per Profile per Post.\nmodel Like {\n  id        String   @id @default(cuid())\n  postId    String\n  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)\n  profileId String\n  profile   Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)\n  createdAt DateTime @default(now())\n\n  @@unique([postId, profileId])\n  @@index([postId])\n  @@index([profileId])\n}\n\n// ── Follow ────────────────────────────────────────────────────────────────────\n// Profile → Profile. Cross-type follows are valid (musician follows venue, etc).\n// Feed query: fetch posts from all profiles where followerId = activeProfileId\nmodel Follow {\n  id          String   @id @default(cuid())\n  followerId  String\n  follower    Profile  @relation(\"ProfileFollows\", fields: [followerId], references: [id], onDelete: Cascade)\n  followingId String\n  following   Profile  @relation(\"ProfileFollowers\", fields: [followingId], references: [id], onDelete: Cascade)\n  createdAt   DateTime @default(now())\n\n  @@unique([followerId, followingId])\n  @@index([followerId])\n  @@index([followingId])\n}\n\n// ── NFT ───────────────────────────────────────────────────────────────────────\n// Minted content on SUI. Belongs to a Profile (the artist/venue persona).\n// The Account's walletAddress is the on-chain owner — linked via Profile membership.\nmodel NFT {\n  id        String  @id @default(cuid())\n  profileId String\n  profile   Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)\n  postId    String? @unique\n  post      Post?   @relation(fields: [postId], references: [id], onDelete: SetNull)\n\n  // SUI on-chain identifiers\n  objectId  String  @unique // SUI object ID\n  packageId String // Smart contract package\n  moduleId  String // Module within package\n  type      NFTType\n\n  // Metadata\n  name        String\n  description String?\n  imageUrl    String\n  metadataUri String\n\n  // Marketplace\n  isListed Boolean @default(false)\n  price    String? // SUI tokens as string (avoids float precision loss)\n\n  createdAt DateTime @default(now())\n\n  @@index([profileId])\n  @@index([objectId])\n}\n\nenum NFTType {\n  MUSIC\n  PERFORMANCE\n  ART\n  COLLECTIBLE\n}\n",
+  "inlineSchemaHash": "36fb059fe9ecd6fe7ee3b10dd927bbb6678ef752a9d7615a8f196ab8148b7d62",
   "copyEngine": true
 }
 config.dirname = '/'
 
-config.runtimeDataModel = JSON.parse("{\"models\":{\"User\":{\"fields\":[{\"name\":\"id\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"username\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"email\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"bio\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"avatar\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"walletAddress\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"passwordHash\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"createdAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"updatedAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"lastActiveAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"isVerified\",\"kind\":\"scalar\",\"type\":\"Boolean\"},{\"name\":\"isBanned\",\"kind\":\"scalar\",\"type\":\"Boolean\"},{\"name\":\"reputation\",\"kind\":\"scalar\",\"type\":\"Int\"},{\"name\":\"identityTier\",\"kind\":\"enum\",\"type\":\"IdentityTier\"},{\"name\":\"identityVerifiedAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"posts\",\"kind\":\"object\",\"type\":\"Post\",\"relationName\":\"PostToUser\"},{\"name\":\"comments\",\"kind\":\"object\",\"type\":\"Comment\",\"relationName\":\"CommentToUser\"},{\"name\":\"likes\",\"kind\":\"object\",\"type\":\"Like\",\"relationName\":\"LikeToUser\"},{\"name\":\"follows\",\"kind\":\"object\",\"type\":\"Follow\",\"relationName\":\"UserFollows\"},{\"name\":\"followers\",\"kind\":\"object\",\"type\":\"Follow\",\"relationName\":\"UserFollowers\"},{\"name\":\"nfts\",\"kind\":\"object\",\"type\":\"NFT\",\"relationName\":\"NFTToUser\"},{\"name\":\"identityChecks\",\"kind\":\"object\",\"type\":\"IdentityCheck\",\"relationName\":\"IdentityCheckToUser\"}],\"dbName\":null},\"IdentityCheck\":{\"fields\":[{\"name\":\"id\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"userId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"user\",\"kind\":\"object\",\"type\":\"User\",\"relationName\":\"IdentityCheckToUser\"},{\"name\":\"provider\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"externalId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"tier\",\"kind\":\"enum\",\"type\":\"IdentityTier\"},{\"name\":\"status\",\"kind\":\"enum\",\"type\":\"IdentityCheckStatus\"},{\"name\":\"initiatedAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"resolvedAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"expiresAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"providerPayload\",\"kind\":\"scalar\",\"type\":\"Json\"}],\"dbName\":null},\"Post\":{\"fields\":[{\"name\":\"id\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"userId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"user\",\"kind\":\"object\",\"type\":\"User\",\"relationName\":\"PostToUser\"},{\"name\":\"content\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"mediaUrls\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"mediaType\",\"kind\":\"enum\",\"type\":\"MediaType\"},{\"name\":\"createdAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"updatedAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"likesCount\",\"kind\":\"scalar\",\"type\":\"Int\"},{\"name\":\"commentsCount\",\"kind\":\"scalar\",\"type\":\"Int\"},{\"name\":\"isHidden\",\"kind\":\"scalar\",\"type\":\"Boolean\"},{\"name\":\"reportCount\",\"kind\":\"scalar\",\"type\":\"Int\"},{\"name\":\"comments\",\"kind\":\"object\",\"type\":\"Comment\",\"relationName\":\"CommentToPost\"},{\"name\":\"likes\",\"kind\":\"object\",\"type\":\"Like\",\"relationName\":\"LikeToPost\"},{\"name\":\"nft\",\"kind\":\"object\",\"type\":\"NFT\",\"relationName\":\"NFTToPost\"}],\"dbName\":null},\"Comment\":{\"fields\":[{\"name\":\"id\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"postId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"post\",\"kind\":\"object\",\"type\":\"Post\",\"relationName\":\"CommentToPost\"},{\"name\":\"userId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"user\",\"kind\":\"object\",\"type\":\"User\",\"relationName\":\"CommentToUser\"},{\"name\":\"content\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"createdAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"updatedAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"isHidden\",\"kind\":\"scalar\",\"type\":\"Boolean\"}],\"dbName\":null},\"Like\":{\"fields\":[{\"name\":\"id\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"postId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"post\",\"kind\":\"object\",\"type\":\"Post\",\"relationName\":\"LikeToPost\"},{\"name\":\"userId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"user\",\"kind\":\"object\",\"type\":\"User\",\"relationName\":\"LikeToUser\"},{\"name\":\"createdAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"}],\"dbName\":null},\"Follow\":{\"fields\":[{\"name\":\"id\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"followerId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"follower\",\"kind\":\"object\",\"type\":\"User\",\"relationName\":\"UserFollows\"},{\"name\":\"followingId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"following\",\"kind\":\"object\",\"type\":\"User\",\"relationName\":\"UserFollowers\"},{\"name\":\"createdAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"}],\"dbName\":null},\"NFT\":{\"fields\":[{\"name\":\"id\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"userId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"user\",\"kind\":\"object\",\"type\":\"User\",\"relationName\":\"NFTToUser\"},{\"name\":\"postId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"post\",\"kind\":\"object\",\"type\":\"Post\",\"relationName\":\"NFTToPost\"},{\"name\":\"objectId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"packageId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"moduleId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"type\",\"kind\":\"enum\",\"type\":\"NFTType\"},{\"name\":\"name\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"description\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"imageUrl\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"metadataUri\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"isListed\",\"kind\":\"scalar\",\"type\":\"Boolean\"},{\"name\":\"price\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"createdAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"}],\"dbName\":null}},\"enums\":{},\"types\":{}}")
+config.runtimeDataModel = JSON.parse("{\"models\":{\"AuthUser\":{\"fields\":[{\"name\":\"id\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"name\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"email\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"emailVerified\",\"kind\":\"scalar\",\"type\":\"Boolean\"},{\"name\":\"image\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"createdAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"updatedAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"sessions\",\"kind\":\"object\",\"type\":\"Session\",\"relationName\":\"AuthUserToSession\"},{\"name\":\"accounts\",\"kind\":\"object\",\"type\":\"AuthAccount\",\"relationName\":\"AuthAccountToAuthUser\"},{\"name\":\"domainAccount\",\"kind\":\"object\",\"type\":\"Account\",\"relationName\":\"AccountToAuthUser\"}],\"dbName\":null},\"Session\":{\"fields\":[{\"name\":\"id\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"expiresAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"token\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"createdAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"updatedAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"ipAddress\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"userAgent\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"userId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"user\",\"kind\":\"object\",\"type\":\"AuthUser\",\"relationName\":\"AuthUserToSession\"}],\"dbName\":null},\"AuthAccount\":{\"fields\":[{\"name\":\"id\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"accountId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"providerId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"userId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"user\",\"kind\":\"object\",\"type\":\"AuthUser\",\"relationName\":\"AuthAccountToAuthUser\"},{\"name\":\"accessToken\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"refreshToken\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"idToken\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"accessTokenExpiresAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"refreshTokenExpiresAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"scope\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"password\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"createdAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"updatedAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"}],\"dbName\":null},\"Verification\":{\"fields\":[{\"name\":\"id\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"identifier\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"value\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"expiresAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"createdAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"updatedAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"}],\"dbName\":null},\"Account\":{\"fields\":[{\"name\":\"id\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"createdAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"updatedAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"lastActiveAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"authUserId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"authUser\",\"kind\":\"object\",\"type\":\"AuthUser\",\"relationName\":\"AccountToAuthUser\"},{\"name\":\"email\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"walletAddress\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"isBanned\",\"kind\":\"scalar\",\"type\":\"Boolean\"},{\"name\":\"identityTier\",\"kind\":\"enum\",\"type\":\"IdentityTier\"},{\"name\":\"identityVerifiedAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"profiles\",\"kind\":\"object\",\"type\":\"ProfileMember\",\"relationName\":\"AccountToProfileMember\"},{\"name\":\"identityChecks\",\"kind\":\"object\",\"type\":\"IdentityCheck\",\"relationName\":\"AccountToIdentityCheck\"}],\"dbName\":null},\"Profile\":{\"fields\":[{\"name\":\"id\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"handle\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"displayName\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"bio\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"avatar\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"type\",\"kind\":\"enum\",\"type\":\"ProfileType\"},{\"name\":\"createdAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"updatedAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"isBanned\",\"kind\":\"scalar\",\"type\":\"Boolean\"},{\"name\":\"reportCount\",\"kind\":\"scalar\",\"type\":\"Int\"},{\"name\":\"isVerified\",\"kind\":\"scalar\",\"type\":\"Boolean\"},{\"name\":\"reputation\",\"kind\":\"scalar\",\"type\":\"Int\"},{\"name\":\"members\",\"kind\":\"object\",\"type\":\"ProfileMember\",\"relationName\":\"ProfileToProfileMember\"},{\"name\":\"posts\",\"kind\":\"object\",\"type\":\"Post\",\"relationName\":\"PostToProfile\"},{\"name\":\"comments\",\"kind\":\"object\",\"type\":\"Comment\",\"relationName\":\"CommentToProfile\"},{\"name\":\"likes\",\"kind\":\"object\",\"type\":\"Like\",\"relationName\":\"LikeToProfile\"},{\"name\":\"nfts\",\"kind\":\"object\",\"type\":\"NFT\",\"relationName\":\"NFTToProfile\"},{\"name\":\"follows\",\"kind\":\"object\",\"type\":\"Follow\",\"relationName\":\"ProfileFollows\"},{\"name\":\"followers\",\"kind\":\"object\",\"type\":\"Follow\",\"relationName\":\"ProfileFollowers\"}],\"dbName\":null},\"ProfileMember\":{\"fields\":[{\"name\":\"id\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"accountId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"account\",\"kind\":\"object\",\"type\":\"Account\",\"relationName\":\"AccountToProfileMember\"},{\"name\":\"profileId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"profile\",\"kind\":\"object\",\"type\":\"Profile\",\"relationName\":\"ProfileToProfileMember\"},{\"name\":\"role\",\"kind\":\"enum\",\"type\":\"ProfileRole\"},{\"name\":\"createdAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"}],\"dbName\":null},\"IdentityCheck\":{\"fields\":[{\"name\":\"id\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"accountId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"account\",\"kind\":\"object\",\"type\":\"Account\",\"relationName\":\"AccountToIdentityCheck\"},{\"name\":\"provider\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"externalId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"tier\",\"kind\":\"enum\",\"type\":\"IdentityTier\"},{\"name\":\"status\",\"kind\":\"enum\",\"type\":\"IdentityCheckStatus\"},{\"name\":\"initiatedAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"resolvedAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"expiresAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"providerPayload\",\"kind\":\"scalar\",\"type\":\"Json\"}],\"dbName\":null},\"Post\":{\"fields\":[{\"name\":\"id\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"profileId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"profile\",\"kind\":\"object\",\"type\":\"Profile\",\"relationName\":\"PostToProfile\"},{\"name\":\"content\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"mediaUrls\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"mediaType\",\"kind\":\"enum\",\"type\":\"MediaType\"},{\"name\":\"createdAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"updatedAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"likesCount\",\"kind\":\"scalar\",\"type\":\"Int\"},{\"name\":\"commentsCount\",\"kind\":\"scalar\",\"type\":\"Int\"},{\"name\":\"isHidden\",\"kind\":\"scalar\",\"type\":\"Boolean\"},{\"name\":\"reportCount\",\"kind\":\"scalar\",\"type\":\"Int\"},{\"name\":\"comments\",\"kind\":\"object\",\"type\":\"Comment\",\"relationName\":\"CommentToPost\"},{\"name\":\"likes\",\"kind\":\"object\",\"type\":\"Like\",\"relationName\":\"LikeToPost\"},{\"name\":\"nft\",\"kind\":\"object\",\"type\":\"NFT\",\"relationName\":\"NFTToPost\"}],\"dbName\":null},\"Comment\":{\"fields\":[{\"name\":\"id\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"postId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"post\",\"kind\":\"object\",\"type\":\"Post\",\"relationName\":\"CommentToPost\"},{\"name\":\"profileId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"profile\",\"kind\":\"object\",\"type\":\"Profile\",\"relationName\":\"CommentToProfile\"},{\"name\":\"content\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"createdAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"updatedAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"isHidden\",\"kind\":\"scalar\",\"type\":\"Boolean\"}],\"dbName\":null},\"Like\":{\"fields\":[{\"name\":\"id\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"postId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"post\",\"kind\":\"object\",\"type\":\"Post\",\"relationName\":\"LikeToPost\"},{\"name\":\"profileId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"profile\",\"kind\":\"object\",\"type\":\"Profile\",\"relationName\":\"LikeToProfile\"},{\"name\":\"createdAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"}],\"dbName\":null},\"Follow\":{\"fields\":[{\"name\":\"id\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"followerId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"follower\",\"kind\":\"object\",\"type\":\"Profile\",\"relationName\":\"ProfileFollows\"},{\"name\":\"followingId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"following\",\"kind\":\"object\",\"type\":\"Profile\",\"relationName\":\"ProfileFollowers\"},{\"name\":\"createdAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"}],\"dbName\":null},\"NFT\":{\"fields\":[{\"name\":\"id\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"profileId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"profile\",\"kind\":\"object\",\"type\":\"Profile\",\"relationName\":\"NFTToProfile\"},{\"name\":\"postId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"post\",\"kind\":\"object\",\"type\":\"Post\",\"relationName\":\"NFTToPost\"},{\"name\":\"objectId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"packageId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"moduleId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"type\",\"kind\":\"enum\",\"type\":\"NFTType\"},{\"name\":\"name\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"description\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"imageUrl\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"metadataUri\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"isListed\",\"kind\":\"scalar\",\"type\":\"Boolean\"},{\"name\":\"price\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"createdAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"}],\"dbName\":null}},\"enums\":{},\"types\":{}}")
 defineDmmfProperty(exports.Prisma, config.runtimeDataModel)
 config.engineWasm = {
   getRuntime: async () => require('./query_engine_bg.js'),

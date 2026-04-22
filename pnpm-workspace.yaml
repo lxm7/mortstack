@@ -1,0 +1,13 @@
+packages:
+  - apps/*
+  - packages/*
+  - services/*
+  - infra
+
+ignoredBuiltDependencies:
+  - aws-sdk
+  - es5-ext
+  - unrs-resolver
+
+neverBuiltDependencies: []
+nodeLinker: hoisted

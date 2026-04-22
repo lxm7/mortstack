@@ -1,3 +1,4 @@
+import { vpc } from './vpc';
 import { secrets } from './secrets';
 
 // ── Content Moderation ────────────────────────────────────────────────────────
