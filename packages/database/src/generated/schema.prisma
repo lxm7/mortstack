@@ -8,96 +8,220 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// User model with SUI wallet support
-model User {
-  id       String  @id @default(cuid())
-  username String  @unique
-  email    String? @unique
-  bio      String?
-  avatar   String?
+// ── Better Auth models ────────────────────────────────────────────────────────
+// Auth identity is separate from domain identity (Account/Profile).
+// AuthUser is created by Better Auth on sign-up (email or wallet).
+// Account.authUserId links the two layers.
 
-  // SUI wallet address (primary auth method)
-  // Future: this becomes the SSO identity anchor
-  walletAddress String? @unique
+model AuthUser {
+  id            String   @id
+  name          String
+  email         String   @unique
+  emailVerified Boolean  @default(false)
+  image         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  // Traditional auth (optional, for email-based accounts)
-  passwordHash String?
+  sessions Session[]
+  accounts AuthAccount[]
 
-  // Metadata
+  // Domain link
+  domainAccount Account?
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+
+  userId String
+  user   AuthUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+}
+
+// Better Auth's OAuth account table (used for social providers if added later)
+model AuthAccount {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  AuthUser  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@unique([providerId, accountId])
+  @@index([userId])
+}
+
+// Used by Better Auth for nonce storage (SUI wallet), email verification tokens, etc.
+model Verification {
+  id         String   @id
+  identifier String // e.g. "sui:0xabc..." or "email:user@example.com"
+  value      String // the nonce or OTP
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+}
+
+// ── Account ───────────────────────────────────────────────────────────────────
+// Domain identity — one per real-world person.
+// Created automatically when a user signs up via Better Auth (email or wallet).
+// A person owns/is a member of one or more Profiles.
+model Account {
+  id           String   @id @default(cuid())
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   lastActiveAt DateTime @default(now())
 
-  // Trust & Safety
-  isVerified Boolean @default(false)
-  isBanned   Boolean @default(false)
-  reputation Int     @default(0)
+  // Link to Better Auth identity layer
+  authUserId String   @unique
+  authUser   AuthUser @relation(fields: [authUserId], references: [id], onDelete: Cascade)
 
-  // Identity verification tier
-  // Drives what content a user can upload/mint
-  // Intentionally NOT called "KYC" - supports multiple verification methods:
-  //   Web2 now:    phone (Twilio), email, Sign in with Google
-  //   Web3 later:  World ID, SUI zkLogin, Gitcoin Passport, stake-based
+  // Web2 — email mirrored from AuthUser for domain queries
+  email String? @unique
+
+  // Web3 — SUI wallet address (optional until connected)
+  walletAddress String? @unique
+
+  // Trust & Safety (banning an Account bans all their Profiles)
+  isBanned Boolean @default(false)
+
+  // Identity verification tier (per person, not per persona)
+  //   NONE:    Unverified — text posts only
+  //   BASIC:   Phone or zkLogin — can post images
+  //   CREATOR: World ID or stake — can upload audio/video
+  //   ARTIST:  Creator + wallet age — can mint NFTs
   identityTier       IdentityTier @default(NONE)
   identityVerifiedAt DateTime?
 
   // Relations
-  posts          Post[]
-  comments       Comment[]
-  likes          Like[]
-  follows        Follow[]        @relation("UserFollows")
-  followers      Follow[]        @relation("UserFollowers")
-  nfts           NFT[]
+  profiles       ProfileMember[]
   identityChecks IdentityCheck[]
 
+  @@index([authUserId])
   @@index([walletAddress])
-  @@index([username])
-  @@index([identityTier])
+  @@index([email])
 }
 
-// What a user can do based on their verified tier
-// Deliberately tiered so we can raise/lower requirements over time
+// ── Profile ───────────────────────────────────────────────────────────────────
+// Public persona. Posts, follows, NFTs, and reputation all live here.
+// One Account can own/be a member of multiple Profiles.
+// Examples: a person is both a MUSICIAN and a VENUE owner.
+//           a BAND profile has multiple Account members.
+model Profile {
+  id          String      @id @default(cuid())
+  handle      String      @unique // URL-safe slug, e.g. "the-blue-note"
+  displayName String
+  bio         String?
+  avatar      String?
+  type        ProfileType
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  // Trust & Safety
+  isBanned    Boolean @default(false)
+  reportCount Int     @default(0)
+
+  // Verified = official persona check ("this is the real Boiler Room")
+  // Distinct from Account.identityTier which is about the real person
+  isVerified Boolean @default(false)
+
+  // Reputation is per-persona — a venue's credibility ≠ their music credibility
+  reputation Int @default(0)
+
+  // Relations
+  members   ProfileMember[]
+  posts     Post[]
+  comments  Comment[]
+  likes     Like[]
+  nfts      NFT[]
+  follows   Follow[]        @relation("ProfileFollows") // profiles this profile follows
+  followers Follow[]        @relation("ProfileFollowers") // profiles following this profile
+
+  @@index([handle])
+  @@index([type])
+}
+
+enum ProfileType {
+  MUSICIAN
+  VENUE
+  PROMOTER
+  VISUAL_ARTIST
+  BAND
+}
+
+// ── ProfileMember ─────────────────────────────────────────────────────────────
+// Join table: Account ↔ Profile with role.
+// OWNER  — full control, can delete the profile
+// ADMIN  — manage members, post, edit profile
+// MEMBER — post as this profile (e.g. band members)
+model ProfileMember {
+  id        String      @id @default(cuid())
+  accountId String
+  account   Account     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  profileId String
+  profile   Profile     @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  role      ProfileRole @default(OWNER)
+  createdAt DateTime    @default(now())
+
+  @@unique([accountId, profileId])
+  @@index([accountId])
+  @@index([profileId])
+}
+
+enum ProfileRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+// ── IdentityTier ──────────────────────────────────────────────────────────────
+// Lives on Account (the person). Governs all their Profiles.
 enum IdentityTier {
-  NONE // Unverified - can only post text
-  BASIC // Phone or zkLogin verified - can post images
-  CREATOR // World ID or stake-based - can upload audio/video
-  ARTIST // Creator + wallet age check - can mint NFTs
+  NONE // Unverified — text posts only
+  BASIC // Phone or zkLogin — can post images
+  CREATOR // World ID or stake — can upload audio/video
+  ARTIST // Creator + wallet age — can mint NFTs
 }
 
-// Identity check record - one per verification attempt
-// Provider-agnostic by design. Swap implementations without schema changes.
-//
-// Current Web2 providers:
-//   "phone"        - Twilio SMS OTP
-//   "email"        - Magic link / OTP
-//   "google_oauth" - Sign in with Google
-//
-// Future Web3 providers:
-//   "world_id"         - Worldcoin iris proof (unique human)
-//   "sui_zklogin"      - SUI zkLogin (OAuth → ZK → wallet)
-//   "gitcoin_passport" - Aggregate Web3 credential score
-//   "sui_stake"        - SUI token stake as identity bond
-//   "sui_attestation"  - On-chain verifiable credential
+// ── IdentityCheck ─────────────────────────────────────────────────────────────
+// Provider-agnostic verification attempt. One record per attempt.
+// Swap verification providers without schema changes.
 model IdentityCheck {
-  id     String @id @default(cuid())
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
-  provider   String // See enum above
-  externalId String // Provider's session/reference ID
+  // "phone" | "email" | "google_oauth" | "world_id" | "sui_zklogin" | "gitcoin_passport" | "sui_stake"
+  provider   String
+  externalId String // Provider's session or reference ID
 
-  tier   IdentityTier // What tier this check grants if approved
+  tier   IdentityTier
   status IdentityCheckStatus
 
-  // Timestamps
   initiatedAt DateTime  @default(now())
   resolvedAt  DateTime?
-  expiresAt   DateTime? // Stake-based checks expire if stake is withdrawn
+  expiresAt   DateTime? // Stake-based checks expire on stake withdrawal
 
-  // Raw provider payload (audit trail, never expose to client)
+  // Raw payload for audit trail — never expose to client
   providerPayload Json?
 
-  @@index([userId])
+  @@index([accountId])
   @@index([provider, externalId])
 }
 
@@ -108,21 +232,19 @@ enum IdentityCheckStatus {
   EXPIRED
 }
 
-// Posts (music, performances, content)
+// ── Post ──────────────────────────────────────────────────────────────────────
+// Belongs to a Profile. Feed is aggregated across followed Profiles.
 model Post {
-  id     String @id @default(cuid())
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
+  id        String    @id @default(cuid())
+  profileId String
+  profile   Profile   @relation(fields: [profileId], references: [id], onDelete: Cascade)
   content   String
-  mediaUrls String[] // S3 URLs for images/videos/audio
+  mediaUrls String[]
   mediaType MediaType @default(TEXT)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
-  // Metadata
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Engagement
+  // Denormalised counts — updated via triggers or post-mutation
   likesCount    Int @default(0)
   commentsCount Int @default(0)
 
@@ -135,7 +257,7 @@ model Post {
   likes    Like[]
   nft      NFT?
 
-  @@index([userId])
+  @@index([profileId])
   @@index([createdAt])
 }
 
@@ -147,46 +269,47 @@ enum MediaType {
   PERFORMANCE
 }
 
-// Comments on posts
+// ── Comment ───────────────────────────────────────────────────────────────────
+// Posted as a Profile — you comment as your musician/venue persona.
 model Comment {
-  id     String @id @default(cuid())
-  postId String
-  post   Post   @relation(fields: [postId], references: [id], onDelete: Cascade)
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
+  id        String   @id @default(cuid())
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  profileId String
+  profile   Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
   content   String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  // Trust & Safety
-  isHidden Boolean @default(false)
+  isHidden  Boolean  @default(false)
 
   @@index([postId])
-  @@index([userId])
+  @@index([profileId])
 }
 
-// Likes on posts
+// ── Like ──────────────────────────────────────────────────────────────────────
+// Liked as a Profile. Unique per Profile per Post.
 model Like {
   id        String   @id @default(cuid())
   postId    String
   post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  profileId String
+  profile   Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
 
-  @@unique([postId, userId])
+  @@unique([postId, profileId])
   @@index([postId])
-  @@index([userId])
+  @@index([profileId])
 }
 
-// Follow relationships
+// ── Follow ────────────────────────────────────────────────────────────────────
+// Profile → Profile. Cross-type follows are valid (musician follows venue, etc).
+// Feed query: fetch posts from all profiles where followerId = activeProfileId
 model Follow {
   id          String   @id @default(cuid())
   followerId  String
-  follower    User     @relation("UserFollows", fields: [followerId], references: [id], onDelete: Cascade)
+  follower    Profile  @relation("ProfileFollows", fields: [followerId], references: [id], onDelete: Cascade)
   followingId String
-  following   User     @relation("UserFollowers", fields: [followingId], references: [id], onDelete: Cascade)
+  following   Profile  @relation("ProfileFollowers", fields: [followingId], references: [id], onDelete: Cascade)
   createdAt   DateTime @default(now())
 
   @@unique([followerId, followingId])
@@ -194,33 +317,35 @@ model Follow {
   @@index([followingId])
 }
 
-// NFTs (minted content on SUI)
+// ── NFT ───────────────────────────────────────────────────────────────────────
+// Minted content on SUI. Belongs to a Profile (the artist/venue persona).
+// The Account's walletAddress is the on-chain owner — linked via Profile membership.
 model NFT {
-  id     String  @id @default(cuid())
-  userId String
-  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  postId String? @unique
-  post   Post?   @relation(fields: [postId], references: [id], onDelete: SetNull)
+  id        String  @id @default(cuid())
+  profileId String
+  profile   Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  postId    String? @unique
+  post      Post?   @relation(fields: [postId], references: [id], onDelete: SetNull)
 
-  // SUI blockchain data
+  // SUI on-chain identifiers
   objectId  String  @unique // SUI object ID
-  packageId String // Smart contract package ID
+  packageId String // Smart contract package
   moduleId  String // Module within package
   type      NFTType
 
-  // NFT metadata
+  // Metadata
   name        String
   description String?
   imageUrl    String
   metadataUri String
 
-  // Pricing (if listed for sale)
+  // Marketplace
   isListed Boolean @default(false)
-  price    String? // In SUI tokens (stored as string to avoid precision loss)
+  price    String? // SUI tokens as string (avoids float precision loss)
 
   createdAt DateTime @default(now())
 
-  @@index([userId])
+  @@index([profileId])
   @@index([objectId])
 }
 

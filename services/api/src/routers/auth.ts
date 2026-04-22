@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { router, publicProcedure } from '../trpc';
+import { router, publicProcedure, protectedProcedure } from '../trpc';
+import { AuthResponseSchema, TokensSchema } from '@repo/schemas';
 import {
   generateTokenPair,
   verifySuiWalletSignature,
@@ -9,44 +10,91 @@ import {
 } from '@repo/auth';
 import { TRPCError } from '@trpc/server';
 
-// In-memory nonce store (use Redis in production)
+// In-memory nonce store — replace with Upstash Redis in staging/production
 const nonceStore = new Map<string, { nonce: string; expiresAt: number }>();
 
+// Shared profile shape returned after any successful auth
+const profileSelect = {
+  id: true,
+  handle: true,
+  displayName: true,
+  avatar: true,
+  type: true,
+  isVerified: true,
+} as const;
+
+// Builds the auth response shape: tokens + account + their profiles
+async function buildAuthResponse(
+  prisma: Parameters<Parameters<typeof protectedProcedure.mutation>[0]>[0]['ctx']['prisma'],
+  accountId: string,
+  tokens: { accessToken: string; refreshToken: string },
+) {
+  const account = await prisma.account.findUniqueOrThrow({
+    where: { id: accountId },
+    select: {
+      id: true,
+      email: true,
+      walletAddress: true,
+      identityTier: true,
+      profiles: {
+        select: {
+          profile: { select: profileSelect },
+          role: true,
+        },
+      },
+    },
+  });
+
+  return {
+    ...tokens,
+    account: {
+      id: account.id,
+      email: account.email,
+      walletAddress: account.walletAddress,
+      identityTier: account.identityTier,
+    },
+    // Client picks one to set as X-Profile-Id header, or navigates to profile creation
+    profiles: account.profiles.map(({ profile, role }) => ({
+      id: profile.id,
+      handle: profile.handle,
+      displayName: profile.displayName,
+      avatar: profile.avatar,
+      type: profile.type,
+      isVerified: profile.isVerified,
+      role,
+    })),
+  };
+}
+
 export const authRouter = router({
-  // Get nonce for wallet sign-in
+  // ── Wallet auth ─────────────────────────────────────────────────────────────
+
   getNonce: publicProcedure
-    .input(
-      z.object({
-        walletAddress: z.string(),
-      })
-    )
-    .mutation(async ({ input }) => {
+    .input(z.object({ walletAddress: z.string() }))
+    .mutation(({ input }) => {
       const nonce = generateNonce();
-      const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes
+      const expiresAt = Date.now() + 5 * 60 * 1000; // 5 min
 
       nonceStore.set(input.walletAddress, { nonce, expiresAt });
 
-      // Clean up expired nonces
+      // Prune expired entries
       for (const [addr, data] of nonceStore.entries()) {
-        if (data.expiresAt < Date.now()) {
-          nonceStore.delete(addr);
-        }
+        if (data.expiresAt < Date.now()) nonceStore.delete(addr);
       }
 
       return { nonce };
     }),
 
-  // Sign in with SUI wallet
   signInWithWallet: publicProcedure
     .input(
       z.object({
         walletAddress: z.string(),
         signature: z.string(),
         message: z.string(),
-      })
+      }),
     )
+    .output(AuthResponseSchema)
     .mutation(async ({ input, ctx }) => {
-      // Verify signature
       const isValid = await verifySuiWalletSignature({
         signature: input.signature,
         message: input.message,
@@ -54,155 +102,157 @@ export const authRouter = router({
       });
 
       if (!isValid) {
-        throw new TRPCError({
-          code: 'UNAUTHORIZED',
-          message: 'Invalid wallet signature',
-        });
+        throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Invalid wallet signature' });
       }
 
-      // Verify nonce
       const storedNonce = nonceStore.get(input.walletAddress);
-      if (!storedNonce || !input.message.includes(storedNonce.nonce)) {
-        throw new TRPCError({
-          code: 'UNAUTHORIZED',
-          message: 'Invalid or expired nonce',
-        });
-      }
-
-      if (storedNonce.expiresAt < Date.now()) {
+      if (!storedNonce || storedNonce.expiresAt < Date.now()) {
         nonceStore.delete(input.walletAddress);
-        throw new TRPCError({
-          code: 'UNAUTHORIZED',
-          message: 'Nonce expired',
-        });
+        throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Invalid or expired nonce' });
       }
-
-      // Clear nonce after use
+      if (!input.message.includes(storedNonce.nonce)) {
+        throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Nonce mismatch' });
+      }
       nonceStore.delete(input.walletAddress);
 
-      // Find or create user
-      let user = await ctx.prisma.user.findUnique({
+      // Find or create Account — wallet auth always succeeds for new addresses
+      let account = await ctx.prisma.account.findUnique({
         where: { walletAddress: input.walletAddress },
+        select: { id: true },
       });
 
-      if (!user) {
-        // Create new user
-        user = await ctx.prisma.user.create({
-          data: {
-            walletAddress: input.walletAddress,
-            username: `user_${input.walletAddress.slice(0, 8)}`,
-          },
+      if (!account) {
+        account = await ctx.prisma.account.create({
+          data: { walletAddress: input.walletAddress },
+          select: { id: true },
         });
       }
 
-      // Generate tokens
-      const tokens = generateTokenPair({
-        userId: user.id,
-        walletAddress: user.walletAddress!,
-      });
-
-      return {
-        user: {
-          id: user.id,
-          username: user.username,
-          walletAddress: user.walletAddress,
-          avatar: user.avatar,
-        },
-        ...tokens,
-      };
+      const tokens = generateTokenPair({ accountId: account.id });
+      return buildAuthResponse(ctx.prisma, account.id, tokens);
     }),
 
-  // Traditional email/password sign up (optional)
+  // ── Email/password auth ──────────────────────────────────────────────────────
+
   signUp: publicProcedure
     .input(
       z.object({
-        username: z.string().min(3).max(30),
         email: z.string().email(),
         password: z.string().min(8),
-      })
+      }),
     )
+    .output(AuthResponseSchema)
     .mutation(async ({ input, ctx }) => {
-      // Check if user exists
-      const existing = await ctx.prisma.user.findFirst({
-        where: {
-          OR: [{ username: input.username }, { email: input.email }],
-        },
+      const existing = await ctx.prisma.account.findUnique({
+        where: { email: input.email },
+        select: { id: true },
       });
 
       if (existing) {
-        throw new TRPCError({
-          code: 'CONFLICT',
-          message: 'Username or email already taken',
-        });
+        throw new TRPCError({ code: 'CONFLICT', message: 'Email already registered' });
       }
 
-      // Hash password
       const passwordHash = await hashPassword(input.password);
-
-      // Create user
-      const user = await ctx.prisma.user.create({
-        data: {
-          username: input.username,
-          email: input.email,
-          passwordHash,
-        },
+      const account = await ctx.prisma.account.create({
+        data: { email: input.email, passwordHash },
+        select: { id: true },
       });
 
-      // Generate tokens
-      const tokens = generateTokenPair({
-        userId: user.id,
-      });
-
-      return {
-        user: {
-          id: user.id,
-          username: user.username,
-          email: user.email,
-        },
-        ...tokens,
-      };
+      const tokens = generateTokenPair({ accountId: account.id });
+      return buildAuthResponse(ctx.prisma, account.id, tokens);
     }),
 
-  // Traditional sign in
   signIn: publicProcedure
     .input(
       z.object({
         email: z.string().email(),
         password: z.string(),
-      })
+      }),
+    )
+    .output(AuthResponseSchema)
+    .mutation(async ({ input, ctx }) => {
+      const account = await ctx.prisma.account.findUnique({
+        where: { email: input.email },
+        select: { id: true, passwordHash: true },
+      });
+
+      if (!account?.passwordHash) {
+        throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Invalid credentials' });
+      }
+
+      const isValid = await comparePassword(input.password, account.passwordHash);
+      if (!isValid) {
+        throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Invalid credentials' });
+      }
+
+      const tokens = generateTokenPair({ accountId: account.id });
+      return buildAuthResponse(ctx.prisma, account.id, tokens);
+    }),
+
+  // ── Link wallet to existing account ──────────────────────────────────────────
+  // Called after sign-up when user later connects their SUI wallet
+
+  linkWallet: protectedProcedure
+    .input(
+      z.object({
+        walletAddress: z.string(),
+        signature: z.string(),
+        message: z.string(),
+      }),
     )
     .mutation(async ({ input, ctx }) => {
-      const user = await ctx.prisma.user.findUnique({
-        where: { email: input.email },
+      const isValid = await verifySuiWalletSignature({
+        signature: input.signature,
+        message: input.message,
+        address: input.walletAddress,
       });
-
-      if (!user || !user.passwordHash) {
-        throw new TRPCError({
-          code: 'UNAUTHORIZED',
-          message: 'Invalid credentials',
-        });
-      }
-
-      const isValid = await comparePassword(input.password, user.passwordHash);
 
       if (!isValid) {
+        throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Invalid wallet signature' });
+      }
+
+      const conflict = await ctx.prisma.account.findUnique({
+        where: { walletAddress: input.walletAddress },
+        select: { id: true },
+      });
+
+      if (conflict && conflict.id !== ctx.account.id) {
         throw new TRPCError({
-          code: 'UNAUTHORIZED',
-          message: 'Invalid credentials',
+          code: 'CONFLICT',
+          message: 'Wallet already linked to another account',
         });
       }
 
-      const tokens = generateTokenPair({
-        userId: user.id,
+      await ctx.prisma.account.update({
+        where: { id: ctx.account.id },
+        data: { walletAddress: input.walletAddress },
       });
 
-      return {
-        user: {
-          id: user.id,
-          username: user.username,
-          email: user.email,
-        },
-        ...tokens,
-      };
+      return { success: true };
+    }),
+
+  // ── Token refresh ────────────────────────────────────────────────────────────
+
+  refresh: publicProcedure
+    .input(z.object({ refreshToken: z.string() }))
+    .output(TokensSchema)
+    .mutation(async ({ input, ctx }) => {
+      const { verifyRefreshToken } = await import('@repo/auth');
+      try {
+        const payload = verifyRefreshToken(input.refreshToken);
+        const account = await ctx.prisma.account.findUnique({
+          where: { id: payload.accountId },
+          select: { id: true, isBanned: true },
+        });
+
+        if (!account || account.isBanned) {
+          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Account not found or banned' });
+        }
+
+        const tokens = generateTokenPair({ accountId: account.id });
+        return tokens;
+      } catch {
+        throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Invalid or expired refresh token' });
+      }
     }),
 });

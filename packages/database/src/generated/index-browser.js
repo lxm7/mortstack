@@ -21,11 +21,11 @@ exports.Prisma = Prisma
 exports.$Enums = {}
 
 /**
- * Prisma Client JS version: 6.19.2
+ * Prisma Client JS version: 6.19.3
  * Query Engine version: c2990dca591cba766e3b7ef5d9e8a84796e47ab7
  */
 Prisma.prismaVersion = {
-  client: "6.19.2",
+  client: "6.19.3",
   engine: "c2990dca591cba766e3b7ef5d9e8a84796e47ab7"
 }
 
@@ -121,27 +121,91 @@ exports.Prisma.TransactionIsolationLevel = makeStrictEnum({
   Serializable: 'Serializable'
 });
 
-exports.Prisma.UserScalarFieldEnum = {
+exports.Prisma.AuthUserScalarFieldEnum = {
   id: 'id',
-  username: 'username',
+  name: 'name',
   email: 'email',
-  bio: 'bio',
-  avatar: 'avatar',
-  walletAddress: 'walletAddress',
-  passwordHash: 'passwordHash',
+  emailVerified: 'emailVerified',
+  image: 'image',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+};
+
+exports.Prisma.SessionScalarFieldEnum = {
+  id: 'id',
+  expiresAt: 'expiresAt',
+  token: 'token',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  ipAddress: 'ipAddress',
+  userAgent: 'userAgent',
+  userId: 'userId'
+};
+
+exports.Prisma.AuthAccountScalarFieldEnum = {
+  id: 'id',
+  accountId: 'accountId',
+  providerId: 'providerId',
+  userId: 'userId',
+  accessToken: 'accessToken',
+  refreshToken: 'refreshToken',
+  idToken: 'idToken',
+  accessTokenExpiresAt: 'accessTokenExpiresAt',
+  refreshTokenExpiresAt: 'refreshTokenExpiresAt',
+  scope: 'scope',
+  password: 'password',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+};
+
+exports.Prisma.VerificationScalarFieldEnum = {
+  id: 'id',
+  identifier: 'identifier',
+  value: 'value',
+  expiresAt: 'expiresAt',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+};
+
+exports.Prisma.AccountScalarFieldEnum = {
+  id: 'id',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt',
   lastActiveAt: 'lastActiveAt',
-  isVerified: 'isVerified',
+  authUserId: 'authUserId',
+  email: 'email',
+  walletAddress: 'walletAddress',
   isBanned: 'isBanned',
-  reputation: 'reputation',
   identityTier: 'identityTier',
   identityVerifiedAt: 'identityVerifiedAt'
 };
 
+exports.Prisma.ProfileScalarFieldEnum = {
+  id: 'id',
+  handle: 'handle',
+  displayName: 'displayName',
+  bio: 'bio',
+  avatar: 'avatar',
+  type: 'type',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  isBanned: 'isBanned',
+  reportCount: 'reportCount',
+  isVerified: 'isVerified',
+  reputation: 'reputation'
+};
+
+exports.Prisma.ProfileMemberScalarFieldEnum = {
+  id: 'id',
+  accountId: 'accountId',
+  profileId: 'profileId',
+  role: 'role',
+  createdAt: 'createdAt'
+};
+
 exports.Prisma.IdentityCheckScalarFieldEnum = {
   id: 'id',
-  userId: 'userId',
+  accountId: 'accountId',
   provider: 'provider',
   externalId: 'externalId',
   tier: 'tier',
@@ -154,7 +218,7 @@ exports.Prisma.IdentityCheckScalarFieldEnum = {
 
 exports.Prisma.PostScalarFieldEnum = {
   id: 'id',
-  userId: 'userId',
+  profileId: 'profileId',
   content: 'content',
   mediaUrls: 'mediaUrls',
   mediaType: 'mediaType',
@@ -169,7 +233,7 @@ exports.Prisma.PostScalarFieldEnum = {
 exports.Prisma.CommentScalarFieldEnum = {
   id: 'id',
   postId: 'postId',
-  userId: 'userId',
+  profileId: 'profileId',
   content: 'content',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt',
@@ -179,7 +243,7 @@ exports.Prisma.CommentScalarFieldEnum = {
 exports.Prisma.LikeScalarFieldEnum = {
   id: 'id',
   postId: 'postId',
-  userId: 'userId',
+  profileId: 'profileId',
   createdAt: 'createdAt'
 };
 
@@ -192,7 +256,7 @@ exports.Prisma.FollowScalarFieldEnum = {
 
 exports.Prisma.NFTScalarFieldEnum = {
   id: 'id',
-  userId: 'userId',
+  profileId: 'profileId',
   postId: 'postId',
   objectId: 'objectId',
   packageId: 'packageId',
@@ -239,6 +303,20 @@ exports.IdentityTier = exports.$Enums.IdentityTier = {
   ARTIST: 'ARTIST'
 };
 
+exports.ProfileType = exports.$Enums.ProfileType = {
+  MUSICIAN: 'MUSICIAN',
+  VENUE: 'VENUE',
+  PROMOTER: 'PROMOTER',
+  VISUAL_ARTIST: 'VISUAL_ARTIST',
+  BAND: 'BAND'
+};
+
+exports.ProfileRole = exports.$Enums.ProfileRole = {
+  OWNER: 'OWNER',
+  ADMIN: 'ADMIN',
+  MEMBER: 'MEMBER'
+};
+
 exports.IdentityCheckStatus = exports.$Enums.IdentityCheckStatus = {
   PENDING: 'PENDING',
   APPROVED: 'APPROVED',
@@ -262,7 +340,13 @@ exports.NFTType = exports.$Enums.NFTType = {
 };
 
 exports.Prisma.ModelName = {
-  User: 'User',
+  AuthUser: 'AuthUser',
+  Session: 'Session',
+  AuthAccount: 'AuthAccount',
+  Verification: 'Verification',
+  Account: 'Account',
+  Profile: 'Profile',
+  ProfileMember: 'ProfileMember',
   IdentityCheck: 'IdentityCheck',
   Post: 'Post',
   Comment: 'Comment',

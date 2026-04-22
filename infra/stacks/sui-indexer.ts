@@ -1,36 +1,34 @@
+import { vpc } from './vpc';
 import { secrets } from './secrets';
 
-// ── SUI Indexer (ECS Fargate) ─────────────────────────────────────────────────
+// ── SUI Indexer (ECS Fargate Spot) ───────────────────────────────────────────
 // Long-running service that:
 //   1. Subscribes to SUI blockchain events (NFT minted, listed, transferred)
 //   2. Syncs on-chain identity credentials (IdentityCredential objects)
 //   3. Publishes events to Upstash Kafka → consumed by API
 //
-// Why ECS not Lambda:
-//   - SUI event subscription requires a persistent WebSocket connection
-//   - Lambda max timeout is 15 min; indexers need to run indefinitely
+// Fargate Spot on arm64: ~$6/month. AWS may reclaim with 2min warning —
+// acceptable for an indexer that can resume from last checkpoint.
 //
 // STUB: Service definition only. Container image not yet built.
 // To activate:
 //   1. Create services/sui-indexer/ with Dockerfile
-//   2. Uncomment the cluster.addService() call below
+//   2. Uncomment the Service below
 //   3. Set SUI_NETWORK and SUI_PACKAGE_ID secrets
 
-// ── ECS Cluster ──────────────────────────────────────────────────────────────
-// Shared cluster - add more services here as the SUI layer grows
-// (e.g. stake monitor, NFT price oracle)
-const vpc = new sst.aws.Vpc('IndexerVpc', {
-  nat: 'ec2',
-});
-
-export const cluster = new sst.aws.Cluster('SuiCluster', { vpc });
-
-// TODO: Uncomment when services/sui-indexer is ready
+// TODO: Uncomment cluster + service when services/sui-indexer is ready
 //
-// cluster.addService('SuiIndexer', {
-//   link: [
-//     ...secrets,
-//   ],
+// export const cluster = new sst.aws.Cluster('SuiCluster', { vpc });
+//
+// export const indexerService = new sst.aws.Service('SuiIndexer', {
+//   cluster,
+//   link: [...secrets],
+//   architecture: 'arm64',
+//   capacity: $app.stage === 'production'
+//     ? { fargate: { weight: 1, base: 1 }, spot: { weight: 1 } }
+//     : 'spot',
+//   cpu: '0.25 vCPU',
+//   memory: '0.5 GB',
 //   image: {
 //     context: 'services/sui-indexer',
 //     dockerfile: 'Dockerfile',
@@ -40,11 +38,10 @@ export const cluster = new sst.aws.Cluster('SuiCluster', { vpc });
 //     SUI_RPC_URL: $app.stage === 'production'
 //       ? 'https://fullnode.mainnet.sui.io'
 //       : 'https://fullnode.testnet.sui.io',
-//     // SUI_PACKAGE_ID: set once contracts are deployed
 //   },
 //   scaling: {
 //     min: 1,
-//     max: 2, // Scale up during high chain activity
+//     max: 2,
 //     cpuUtilization: 70,
 //   },
 // });

@@ -10,9 +10,10 @@
     "lambda:build": "esbuild src/lambda.ts --bundle --platform=node --target=node20 --outfile=dist/lambda.js"
   },
   "dependencies": {
-    "@repo/auth": "*",
-    "@repo/database": "*",
-    "@repo/identity": "*",
+    "@repo/auth": "workspace:*",
+    "@repo/database": "workspace:*",
+    "@repo/identity": "workspace:*",
+    "@repo/schemas": "workspace:*",
     "@trpc/server": "^11.0.0",
     "zod": "^3.24.1"
   },
