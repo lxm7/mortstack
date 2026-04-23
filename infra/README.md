@@ -14,8 +14,8 @@ Multi-cloud setup using SST Ion (v3).
 | Kafka              | Upstash         | Inter-service event bus                     |
 | Content moderation | AWS Rekognition | No viable alternative                       |
 | SUI indexer        | AWS ECS Fargate | Persistent WebSocket to SUI RPC             |
-| Real-time          | AWS API Gateway  | WebSocket API, scales to zero              |
-| Push notifications | Expo Push API   | Free, wraps APNs + FCM                     |
+| Real-time          | AWS API Gateway | WebSocket API, scales to zero               |
+| Push notifications | Expo Push API   | Free, wraps APNs + FCM                      |
 
 ## Stacks
 
@@ -61,11 +61,13 @@ export CLOUDFLARE_API_TOKEN=...  # Needs R2 read/write permissions
 ### 1. Create `.env` files
 
 `packages/database/.env`:
+
 ```bash
 DATABASE_URL="postgresql://user:pass@ep-xxx.eu-west-1.aws.neon.tech/sessions?sslmode=require"
 ```
 
 `services/api/.env`:
+
 ```bash
 DATABASE_URL="postgresql://user:pass@ep-xxx.eu-west-1.aws.neon.tech/sessions?sslmode=require"
 BETTER_AUTH_SECRET="generate-a-random-32-char-string-here"
@@ -88,7 +90,7 @@ pnpm --filter api dev
 ### 4. Start RN app
 
 ```bash
-cd apps/rn-tamagui
+cd apps/mobile
 npx expo start --dev-client
 ```
 
@@ -96,14 +98,14 @@ npx expo start --dev-client
 
 All accounts use password `password123`:
 
-| Email               | Tier    | Profiles                                    |
-| ------------------- | ------- | ------------------------------------------- |
-| alice@example.com   | ARTIST  | alice-music, alice-studio                   |
-| bob@example.com     | CREATOR | bob-beats, the-collective (owner)           |
-| carol@example.com   | CREATOR | carol-creates, the-collective (member)      |
-| dave@example.com    | BASIC   | fabric-london                               |
-| eve@example.com     | BASIC   | warehouse-events                            |
-| frank@example.com   | NONE    | none (new user edge case)                   |
+| Email             | Tier    | Profiles                               |
+| ----------------- | ------- | -------------------------------------- |
+| alice@example.com | ARTIST  | alice-music, alice-studio              |
+| bob@example.com   | CREATOR | bob-beats, the-collective (owner)      |
+| carol@example.com | CREATOR | carol-creates, the-collective (member) |
+| dave@example.com  | BASIC   | fabric-london                          |
+| eve@example.com   | BASIC   | warehouse-events                       |
+| frank@example.com | NONE    | none (new user edge case)              |
 
 ## Deployment Setup (first time)
 
@@ -130,23 +132,23 @@ sst deploy --stage production
 
 ## Stages
 
-| Stage        | Purpose           | Notes                                     |
-| ------------ | ----------------- | ----------------------------------------- |
-| `dev`        | Local development | Neon dev branch, SUI testnet              |
-| `staging`    | Pre-production    | Neon staging branch, SUI testnet          |
-| `production` | Live app          | Neon main branch, SUI mainnet, retained   |
+| Stage        | Purpose           | Notes                                   |
+| ------------ | ----------------- | --------------------------------------- |
+| `dev`        | Local development | Neon dev branch, SUI testnet            |
+| `staging`    | Pre-production    | Neon staging branch, SUI testnet        |
+| `production` | Live app          | Neon main branch, SUI mainnet, retained |
 
 ## Cost Estimate (monthly, low traffic)
 
-| Service               | Free tier          | ~1k users |
-| --------------------- | ------------------ | --------- |
-| AWS Lambda            | 1M requests        | < $1      |
+| Service               | Free tier          | ~1k users                |
+| --------------------- | ------------------ | ------------------------ |
+| AWS Lambda            | 1M requests        | < $1                     |
 | AWS ECS (SUI indexer) | —                  | ~$6 (Fargate Spot arm64) |
-| AWS Rekognition       | 1000 images        | ~$1       |
-| AWS API GW WebSocket  | 1M msgs / 750K min | Free      |
-| Cloudflare R2         | 10GB + 1M ops      | Free      |
-| Cloudflare CDN        | Unlimited egress   | Free      |
-| Neon PostgreSQL       | 0.5GB compute      | Free      |
-| Upstash Redis         | 10k req/day        | Free      |
-| Upstash Kafka         | 10k messages/day   | Free      |
-| **Total**             |                    | **~$8/mo** |
+| AWS Rekognition       | 1000 images        | ~$1                      |
+| AWS API GW WebSocket  | 1M msgs / 750K min | Free                     |
+| Cloudflare R2         | 10GB + 1M ops      | Free                     |
+| Cloudflare CDN        | Unlimited egress   | Free                     |
+| Neon PostgreSQL       | 0.5GB compute      | Free                     |
+| Upstash Redis         | 10k req/day        | Free                     |
+| Upstash Kafka         | 10k messages/day   | Free                     |
+| **Total**             |                    | **~$8/mo**               |

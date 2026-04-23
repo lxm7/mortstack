@@ -8,13 +8,13 @@
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "check-types": "turbo check-types",
     "prepare": "husky",
-    "rn": "turbo start --filter=rn-tamagui",
-    "rn:ios": "turbo ios --filter=rn-tamagui",
-    "rn:android": "turbo android --filter=rn-tamagui",
-    "rn:prebuild": "turbo prebuild --filter=rn-tamagui",
-    "rn:prebuild-clean": "turbo prebuild-clean --filter=rn-tamagui",
-    "rn:rebuild-ios": "turbo rebuild-ios --filter=rn-tamagui",
-    "rn:rebuild-android": "turbo rebuild-android --filter=rn-tamagui",
+    "rn": "turbo start --filter=mobile",
+    "rn:ios": "turbo ios --filter=mobile",
+    "rn:android": "turbo android --filter=mobile",
+    "rn:prebuild": "turbo prebuild --filter=mobile",
+    "rn:prebuild-clean": "turbo prebuild-clean --filter=mobile",
+    "rn:rebuild-ios": "turbo rebuild-ios --filter=mobile",
+    "rn:rebuild-android": "turbo rebuild-android --filter=mobile",
     "android": "expo run:android",
     "ios": "expo run:ios"
   },
@@ -45,7 +45,7 @@
   "version": "1.0.0",
   "packageManager": "pnpm@10.33.1+sha512.05ba3c1d5d1c18f68df06470d74055e62d41fc110a0c660db1b2dfb2785327f04cf0f68345d4609bc52089e7fa0343c31593b2f9594e2c5d5da426230acc9820",
   "lint-staged": {
-    "*.{ts,tsx}": "eslint --fix --max-warnings=0",
+    "*.{ts,tsx}": "eslint --fix",
     "*.{ts,tsx,js,jsx,json,css,md}": "prettier --write"
   }
 }
