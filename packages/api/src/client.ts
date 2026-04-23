@@ -1,13 +1,13 @@
-import { createTRPCClient, httpBatchLink } from '@trpc/client';
-import type { AppRouter } from 'api/src/router';
+import { createTRPCClient, httpBatchLink } from "@trpc/client";
+import type { AppRouter } from "api/src/router";
 
 function getBaseUrl() {
-  if (typeof window !== 'undefined') {
+  if (typeof window !== "undefined") {
     // Browser: use relative path
-    return '';
+    return "";
   }
   // Server: use full URL
-  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+  return process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 }
 
 export const trpc = createTRPCClient<AppRouter>({
@@ -17,8 +17,8 @@ export const trpc = createTRPCClient<AppRouter>({
       headers: () => {
         // Get token from storage (implement based on your storage strategy)
         const token =
-          typeof window !== 'undefined'
-            ? localStorage.getItem('accessToken')
+          typeof window !== "undefined"
+            ? localStorage.getItem("accessToken")
             : null;
 
         return token

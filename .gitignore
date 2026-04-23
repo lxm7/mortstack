@@ -34,10 +34,11 @@ yarn-error.log*
 *.pem
 *.tsbuildinfo
 
-# NX
-.nx/cache
-.nx/workspace-data
-nx-graph.html
+# Turbo
+.turbo/
+
+# Claude
+.claude/
 
 # SST
 .sst/

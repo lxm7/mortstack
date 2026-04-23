@@ -23,7 +23,7 @@ For templating multiple on same machine:
 ```
 sessions/
 ├── apps/
-│   ├── rn-tamagui/        # React Native (Expo + Tamagui) — primary mobile app
+│   ├── mobile/        # React Native (Expo + Tamagui) — primary mobile app
 │   ├── mobile/             # React Native (Expo + NativeWind) — legacy
 │   ├── web/                # Next.js web app
 │   └── docs/               # Documentation site
@@ -99,7 +99,7 @@ Server runs at http://localhost:3001
 
 ```bash
 # Mobile (Expo dev client)
-cd apps/rn-tamagui
+cd apps/mobile
 npx expo start --dev-client
 
 # Web
