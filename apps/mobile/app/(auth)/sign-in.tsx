@@ -1,14 +1,6 @@
 import { useState } from "react";
 import { router } from "expo-router";
-import {
-  YStack,
-  XStack,
-  Text,
-  Button,
-  Input,
-  Separator,
-  Spinner,
-} from "tamagui";
+import { YStack, Text, Button, Input, Spinner } from "tamagui";
 import { useAuthStore } from "@/store/auth";
 import { authClient } from "@/lib/auth/client";
 
@@ -30,21 +22,6 @@ export default function SignIn() {
       router.replace("/(tabs)");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Sign in failed");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleWalletSignIn() {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await authClient.suiWallet.signIn();
-      if (result.error) throw new Error(result.error.message);
-      setSession(result.data);
-      router.replace("/(tabs)");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Wallet sign in failed");
     } finally {
       setLoading(false);
     }
@@ -101,26 +78,6 @@ export default function SignIn() {
           Sign in
         </Button>
       </YStack>
-
-      <XStack ai="center" gap="$3">
-        <Separator f={1} />
-        <Text color="$placeholderColor" fontSize="$3">
-          or
-        </Text>
-        <Separator f={1} />
-      </XStack>
-
-      <Button
-        size="$5"
-        variant="outlined"
-        borderColor="$brand"
-        // @ts-expect-error -- color is in ButtonContext but not yet in exported prop type (Tamagui RC)
-        color="$brand"
-        onPress={handleWalletSignIn}
-        disabled={loading}
-      >
-        Connect SUI Wallet
-      </Button>
 
       <Button
         size="$4"

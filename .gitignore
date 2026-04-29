@@ -64,3 +64,6 @@ apps/mobile/ios/
 
 # Metro
 .metro-health-check*
+
+# Internal proposals (not shipped)
+docs/proposals/

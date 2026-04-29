@@ -4,17 +4,17 @@
   "private": true,
   "main": "./src/index.ts",
   "scripts": {
-    "dev": "tsx watch src/server.ts",
+    "dev": "tsx watch --env-file=.env src/server.ts",
     "build": "tsc",
     "start": "node dist/index.js",
     "lambda:build": "esbuild src/lambda.ts --bundle --platform=node --target=node20 --outfile=dist/lambda.js"
   },
   "dependencies": {
-    "@repo/auth": "workspace:*",
     "@repo/database": "workspace:*",
     "@repo/identity": "workspace:*",
     "@repo/schemas": "workspace:*",
     "@trpc/server": "^11.0.0",
+    "better-auth": "^1.3.4",
     "zod": "^3.24.1"
   },
   "devDependencies": {

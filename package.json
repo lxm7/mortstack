@@ -8,6 +8,7 @@
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "check-types": "turbo check-types",
     "prepare": "husky",
+    "api": "pnpm --filter api dev",
     "rn": "turbo start --filter=mobile",
     "rn:ios": "turbo ios --filter=mobile",
     "rn:android": "turbo android --filter=mobile",
