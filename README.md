@@ -1,4 +1,4 @@
-# MortStack
+# Sessions
 
 For templating multiple on same machine:
 
@@ -10,35 +10,26 @@ For templating multiple on same machine:
 
 - **Monorepo**: Turborepo + pnpm workspaces
 - **Mobile**: React Native (Expo) + Tamagui
-- **Web**: Next.js
 - **Backend**: tRPC + Better Auth + Prisma
 - **Database**: Neon (serverless PostgreSQL)
 - **Cache/Events**: Upstash Redis + Kafka
 - **Media**: Cloudflare R2 + CDN
-- **Blockchain**: SUI (wallet auth, NFTs)
+- **Blockchain**: SUI (deferred — see `docs/proposals/sui-auth-plugin.md`)
 - **Infrastructure**: SST v3 (Pulumi) → AWS + Cloudflare
 
-## Project Structure
+## Run
+
+### RN/Expo - (stdout doesnt work running from root with pnpm)
+
+cd apps/mobile
+pnpm prebuild-clean && npx expo run:android
+
+### Server/API
+
+pnpm api
 
 ```
-sessions/
-├── apps/
-│   ├── mobile/        # React Native (Expo + Tamagui) — primary mobile app
-│   ├── mobile/             # React Native (Expo + NativeWind) — legacy
-│   ├── web/                # Next.js web app
-│   └── docs/               # Documentation site
-│
-├── packages/
-│   ├── database/           # Prisma schema, client, migrations, seed
-│   ├── auth/               # Password hashing, JWT helpers
-│   ├── ui/                 # Shared UI components
-│   ├── eslint-config/      # ESLint configs
-│   └── typescript-config/  # Shared tsconfig
-│
-├── services/
-│   └── api/                # tRPC + Better Auth server (deploys to Lambda)
-│
-└── infra/                  # SST v3 stacks (see infra/README.md)
+cd apps
 ```
 
 ## Prerequisites
@@ -74,6 +65,7 @@ DATABASE_URL="postgresql://user:pass@ep-xxx.eu-west-1.aws.neon.tech/sessions?ssl
 ```bash
 DATABASE_URL="postgresql://user:pass@ep-xxx.eu-west-1.aws.neon.tech/sessions?sslmode=require"
 BETTER_AUTH_SECRET="generate-a-random-32-char-string-here"
+BETTER_AUTH_URL="http://localhost:3001"
 TRUSTED_ORIGINS="http://localhost:3000,http://localhost:8081"
 ```
 
@@ -95,20 +87,30 @@ Server runs at http://localhost:3001
 - tRPC: http://localhost:3001/trpc
 - Better Auth: http://localhost:3001/auth
 
-### 6. Start app
+### 6. Start mobile app
 
 ```bash
-# Mobile (Expo dev client)
 cd apps/mobile
 npx expo start --dev-client
-
-# Web
-pnpm --filter web dev
 ```
 
-## Test Credentials (seeded)
+## Auth
 
-All accounts use password `password123`:
+Authentication is handled by **Better Auth** (email/password only for now). SUI wallet auth is deferred — see `docs/proposals/sui-auth-plugin.md`.
+
+There is no external auth page. The mobile app has built-in sign-in/sign-up screens (`apps/mobile/app/(auth)/`) that call Better Auth's API directly.
+
+To create an account locally, use the sign-up screen in the app or POST directly:
+
+```bash
+curl -X POST http://localhost:3001/auth/sign-up/email \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","password":"password123","name":"Dev"}'
+```
+
+## Seed Data
+
+The seed creates test accounts, profiles, posts, follows, comments, likes, and NFTs. Seed accounts have placeholder password hashes and **cannot be used to log in via Better Auth** — sign up fresh instead. The seed data is useful for testing feed rendering, profile views, and data relationships.
 
 | Email             | Tier    | Profiles                               |
 | ----------------- | ------- | -------------------------------------- |
@@ -173,9 +175,11 @@ ECS Fargate Spot (SUI Indexer) → SUI event stream → Kafka → DB
 ### Authentication
 
 - **Better Auth** with DB-backed sessions (fully revocable)
-- **Email/password**: sign up → creates AuthUser + domain Account
-- **SUI wallet**: challenge/response (nonce → sign → verify)
-- **Bearer tokens** for React Native (no cookies)
+- **Email/password**: sign up → creates AuthUser + domain Account (active)
+- **SUI wallet (SIWS)**: challenge/response — implemented, deferred
+- **zkLogin (Google/Apple → SUI address)**: proposed — see `docs/proposals/sui-auth-plugin.md`
+- **Bearer tokens** for React Native (no cookies, stored in SecureStore)
+- Session validated in tRPC context via `auth.api.getSession({ headers })`
 
 ### Key Design Decisions
 

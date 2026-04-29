@@ -2,11 +2,13 @@ import { createAuthClient } from "better-auth/client";
 import { loadSessionToken, saveSessionToken } from "./session";
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3001";
-
+console.log({ API_URL });
 // Better Auth client configured for React Native:
 // - No cookies (RN has no cookie jar)
 // - Session token stored in expo-secure-store
 // - Bearer token sent via Authorization header
+//
+// SUI wallet plugin deferred — see docs/proposals/sui-auth-plugin.md
 export const authClient = createAuthClient({
   baseURL: `${API_URL}/auth`,
   fetchOptions: {
@@ -25,76 +27,4 @@ export const authClient = createAuthClient({
       }
     },
   },
-  plugins: [suiWalletClientPlugin()],
 });
-
-// ── SUI wallet client plugin ──────────────────────────────────────────────────
-// Matches the server-side sui-auth-plugin endpoints.
-// $InferServerPlugin is intentionally omitted — we use getActions for custom
-// nonce/verify flow rather than auto-generated routes.
-function suiWalletClientPlugin() {
-  return {
-    id: "sui-wallet" as const,
-    getActions: (
-      $fetch: (path: string, options?: RequestInit) => Promise<Response>,
-    ) => ({
-      suiWallet: {
-        signIn: async () => {
-          try {
-            // 1. Get nonce from server
-            const nonceRes = await $fetch("/sui/get-nonce", { method: "POST" });
-            if (!nonceRes.ok) {
-              return { data: null, error: { message: "Failed to get nonce" } };
-            }
-            const { nonce } = await nonceRes.json();
-
-            // 2. Sign with wallet — calls into @mysten/dapp-kit or custom wallet adapter
-            const { walletAddress, signature, message } =
-              await signWithSuiWallet(nonce);
-
-            // 3. Verify on server → creates session
-            const verifyRes = await $fetch("/sui/verify", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ walletAddress, signature, message }),
-            });
-            if (!verifyRes.ok) {
-              const err = await verifyRes.json();
-              return {
-                data: null,
-                error: { message: err.message ?? "Verification failed" },
-              };
-            }
-
-            const sessionData = await verifyRes.json();
-            if (sessionData.token) {
-              await saveSessionToken(sessionData.token);
-            }
-            return { data: sessionData, error: null };
-          } catch (e) {
-            return { data: null, error: { message: String(e) } };
-          }
-        },
-      },
-    }),
-  };
-}
-
-// ── SUI wallet signing ────────────────────────────────────────────────────────
-// Wire this up to your wallet adapter of choice (e.g. @mysten/dapp-kit,
-// a custom hardware wallet, or zkLogin). Returns the triple needed by the server.
-
-async function signWithSuiWallet(_nonce: string): Promise<{
-  walletAddress: string;
-  signature: string;
-  message: string;
-}> {
-  // TODO: integrate @mysten/sui wallet adapter
-  // Example with @mysten/dapp-kit:
-  //   const { mutateAsync: signPersonalMessage } = useSignPersonalMessage()
-  //   const account = useCurrentAccount()
-  //   const message = `Sign in to Sessions\nNonce: ${nonce}`
-  //   const { signature } = await signPersonalMessage({ message: toBytes(message) })
-  //   return { walletAddress: account.address, signature, message }
-  throw new Error("SUI wallet adapter not configured — see lib/auth/client.ts");
-}
