@@ -41,7 +41,9 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (url.startsWith("/auth")) {
-    console.log(`[auth] ${req.method} ${url}`);
+    console.info(
+      `[auth] ${req.method} ${url} | Origin: ${req.headers.origin ?? "NULL"}`,
+    );
     return authHandler(req, res);
   }
 
@@ -49,6 +51,6 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT);
-console.log(`Server running on http://localhost:${PORT}`);
-console.log(`  tRPC:        http://localhost:${PORT}/trpc`);
-console.log(`  Better Auth: http://localhost:${PORT}/auth`);
+console.info(`Server running on http://localhost:${PORT}`);
+console.info(`  tRPC:        http://localhost:${PORT}/trpc`);
+console.info(`  Better Auth: http://localhost:${PORT}/auth`);
