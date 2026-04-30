@@ -2,7 +2,6 @@ import { createAuthClient } from "better-auth/client";
 import { loadSessionToken, saveSessionToken } from "./session";
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3001";
-console.log({ API_URL });
 // Better Auth client configured for React Native:
 // - No cookies (RN has no cookie jar)
 // - Session token stored in expo-secure-store
@@ -14,6 +13,9 @@ export const authClient = createAuthClient({
   fetchOptions: {
     // Attach stored session token to every request
     onRequest: async (ctx) => {
+      // RN doesn't send Origin header — set it so better-auth CSRF check passes
+      ctx.headers.set("Origin", API_URL);
+
       const token = await loadSessionToken();
       if (token) {
         ctx.headers.set("Authorization", `Bearer ${token}`);
