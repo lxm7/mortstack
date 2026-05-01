@@ -1,5 +1,4 @@
-import { vpc } from './vpc';
-import { secrets } from './secrets';
+import { secrets } from "./secrets";
 
 // ── Content Moderation ────────────────────────────────────────────────────────
 // AWS Rekognition for image/video moderation.
@@ -28,23 +27,23 @@ import { secrets } from './secrets';
 // SST attaches these automatically when you `link` AWS service permissions
 // For now we define the moderation function stub
 
-export const moderationFunction = new sst.aws.Function('Moderation', {
-  handler: 'services/moderation/src/lambda.handler',
-  runtime: 'nodejs22.x',
-  architecture: 'arm64',
-  memory: 1024,             // Rekognition image analysis is memory-intensive
-  timeout: '5 minutes',
+export const moderationFunction = new sst.aws.Function("Moderation", {
+  handler: "services/moderation/src/lambda.handler",
+  runtime: "nodejs22.x",
+  architecture: "arm64",
+  memory: "1024 MB", // Rekognition image analysis is memory-intensive
+  timeout: "5 minutes",
   link: [...secrets],
   permissions: [
     {
       // Grant access to Rekognition
       actions: [
-        'rekognition:DetectModerationLabels',
-        'rekognition:DetectLabels',
-        'rekognition:StartContentModeration',
-        'rekognition:GetContentModeration',
+        "rekognition:DetectModerationLabels",
+        "rekognition:DetectLabels",
+        "rekognition:StartContentModeration",
+        "rekognition:GetContentModeration",
       ],
-      resources: ['*'],
+      resources: ["*"],
     },
   ],
   // TODO: Uncomment when services/moderation is created

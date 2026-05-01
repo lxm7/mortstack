@@ -113,15 +113,21 @@ All accounts use password `password123`:
 # 1. Set all secrets for your stage
 sst secret set DatabaseUrl "postgresql://..." --stage production
 sst secret set BetterAuthSecret "$(openssl rand -hex 32)" --stage production
+// console.upstash.com → create Redis DB
 sst secret set UpstashRedisUrl "rediss://..." --stage production
 sst secret set UpstashRedisToken "..." --stage production
+// console.upstash.com → create Kafka cluster
 sst secret set UpstashKafkaUrl "..." --stage production
 sst secret set UpstashKafkaUsername "..." --stage production
 sst secret set UpstashKafkaPassword "..." --stage production
+
+// generate locally jwt both - $ openssl rand -hex 32
 sst secret set JwtSecret "$(openssl rand -hex 32)" --stage production
 sst secret set JwtRefreshSecret "$(openssl rand -hex 32)" --stage production
+//
 sst secret set CloudflareR2AccessKeyId "..." --stage production
 sst secret set CloudflareR2SecretAccessKey "..." --stage production
+
 
 # 2. Preview what will be deployed (no changes made)
 sst diff --stage production
