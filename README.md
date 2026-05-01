@@ -12,7 +12,7 @@ For templating multiple on same machine:
 - **Mobile**: React Native (Expo) + Tamagui
 - **Backend**: tRPC + Better Auth + Prisma
 - **Database**: Neon (serverless PostgreSQL)
-- **Cache/Events**: Upstash Redis + Kafka
+- **Events**: AWS SNS + SQS (fan-out pattern, replaces Upstash Kafka)
 - **Media**: Cloudflare R2 + CDN
 - **Blockchain**: SUI (deferred — see `docs/proposals/sui-auth-plugin.md`)
 - **Infrastructure**: SST v3 (Pulumi) → AWS + Cloudflare
@@ -37,7 +37,7 @@ cd apps
 - Node.js >= 18
 - pnpm (`corepack use pnpm@latest`)
 - Neon account (free) — https://neon.tech
-- Upstash account (free) — https://console.upstash.com (Redis + Kafka)
+- AWS account — SNS + SQS used for event bus (free tier: 1M requests/mo each)
 
 ## Setup
 
@@ -159,17 +159,18 @@ Requires `@expo/ngrok`. Slower but works on any network.
 
 ```
 RN App → Lambda (API) → Neon Postgres
-       │              → Upstash Redis
-       │              → Upstash Kafka → Lambda (Moderation)
-       │                              → Lambda (Notifications)
-       │
-       ├→ API GW WebSocket → Lambda ($connect/$disconnect)
+       │              → SNS topics (event bus)
+       │                  → SQS ModerationQueue  → Lambda (Moderation)
+       │                  → SQS NotificationQueue → Lambda (Notifications)
        │
        ├→ Lambda (Upload) → Cloudflare R2 → CDN
        │
        └→ SUI RPC (direct, client-signed transactions)
 
-ECS Fargate Spot (SUI Indexer) → SUI event stream → Kafka → DB
+ECS Fargate Spot (SUI Indexer) → SUI event stream → SNS → DB
+
+Real-time: Push notifications (Expo Push) + client polling
+           WebSocket deferred — see infra/stacks/realtime.ts
 ```
 
 ### Authentication
@@ -185,7 +186,7 @@ ECS Fargate Spot (SUI Indexer) → SUI event stream → Kafka → DB
 
 - **Account ≠ Profile**: one account can own multiple profiles (musician, band, venue)
 - **Identity tiers**: BASIC → CREATOR → ARTIST (gates features like NFT minting)
-- **Event-driven**: Kafka decouples services (moderation, notifications, indexing)
+- **Event-driven**: SNS + SQS fan-out decouples services (moderation, notifications, indexing)
 - **Media upload**: presigned URLs → client uploads direct to R2 → no Lambda in the read path
 
 ## Infrastructure

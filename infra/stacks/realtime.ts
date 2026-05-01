@@ -1,41 +1,17 @@
-import { vpc } from './vpc';
-import { secrets } from './secrets';
-
-// ── WebSocket API (API Gateway v2) ──────────────────────────────────────────
-// Serverless WebSocket — scales to zero, pay per message.
-// Free tier: 1M messages + 750K connection-minutes/month (12 months).
+// ── Real-time Updates ────────────────────────────────────────────────────────
+// Strategy: Push notifications (Expo Push) + client-side polling for feeds.
 //
-// Flow:
-//   Client connects → $connect Lambda stores connectionId in Upstash Redis
-//   Client disconnects → $disconnect Lambda removes connectionId
-//   Server-side event → fan-out Lambda reads connections from Redis,
-//                       calls postToConnection for each
+// WebSocket is DEFERRED — API Gateway WebSocket costs ~$13,000/mo at 10M users
+// (300K concurrent connections). Push notifications + polling covers 95% of
+// social media UX (Instagram, TikTok, early Twitter all used this pattern).
 //
-// STUB: Lambda handlers not yet implemented.
-// To activate:
-//   1. Create services/realtime/src/connect.ts
-//   2. Create services/realtime/src/disconnect.ts
-//   3. Create services/realtime/src/broadcast.ts
-//   4. Uncomment below
-
-// export const ws = new sst.aws.ApiGatewayWebSocket('Realtime');
+// If real-time WebSocket is needed later (chat, live art auctions, live streams):
+//   - Deploy WebSocket server on ECS Fargate (~10x cheaper than API GW at scale)
+//   - Use DynamoDB for connectionId store (TTL, no VPC needed)
+//   - Fan-out via SNS "UserActivity" → SQS "BroadcastQueue" → Fargate WebSocket
 //
-// ws.route('$connect', {
-//   handler: 'services/realtime/src/connect.handler',
-//   link: [...secrets],
-// });
-//
-// ws.route('$disconnect', {
-//   handler: 'services/realtime/src/disconnect.handler',
-//   link: [...secrets],
-// });
-//
-// // Called by other Lambdas (via function invoke or Kafka consumer)
-// // to push events to connected clients
-// export const broadcastFunction = new sst.aws.Function('Broadcast', {
-//   handler: 'services/realtime/src/broadcast.handler',
-//   link: [...secrets],
-//   environment: {
-//     WEBSOCKET_API_ENDPOINT: ws.managementEndpoint,
-//   },
-// });
+// Current real-time flow:
+//   1. User action → API Lambda → SNS topic
+//   2. SNS → SQS NotificationQueue → Notification Lambda → Expo Push API
+//   3. Client receives push notification
+//   4. Client pulls fresh data on next feed refresh
