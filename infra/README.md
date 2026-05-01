@@ -4,31 +4,32 @@ Multi-cloud setup using SST Ion (v3).
 
 ## Provider Map
 
-| What               | Provider        | Why                                         |
-| ------------------ | --------------- | ------------------------------------------- |
-| API (Lambda)       | AWS             | tRPC + Better Auth handler                  |
-| Media storage      | Cloudflare R2   | Zero egress fees vs S3                      |
-| CDN                | Cloudflare      | Global, fast, free egress                   |
-| PostgreSQL         | Neon            | Serverless, branches per PR, scales to zero |
-| Redis              | Upstash         | Serverless, pay-per-request                 |
-| Kafka              | Upstash         | Inter-service event bus                     |
-| Content moderation | AWS Rekognition | No viable alternative                       |
-| SUI indexer        | AWS ECS Fargate | Persistent WebSocket to SUI RPC             |
-| Real-time          | AWS API Gateway | WebSocket API, scales to zero               |
-| Push notifications | Expo Push API   | Free, wraps APNs + FCM                      |
+| What               | Provider            | Why                                             |
+| ------------------ | ------------------- | ----------------------------------------------- |
+| API (Lambda)       | AWS                 | tRPC + Better Auth handler                      |
+| Event bus (SNS)    | AWS                 | Fan-out topics, native Lambda triggers          |
+| Event queues (SQS) | AWS                 | Per-consumer queues, independent retry/DLQ      |
+| Media storage      | Cloudflare R2       | Zero egress fees vs S3                          |
+| CDN                | Cloudflare          | Global, fast, free egress                       |
+| PostgreSQL         | Neon                | Serverless, branches per PR, scales to zero     |
+| Content moderation | AWS Rekognition     | No viable alternative                           |
+| SUI indexer        | AWS ECS Fargate     | Persistent WebSocket to SUI RPC                 |
+| Real-time          | Expo Push + polling | WebSocket deferred (API GW too costly at scale) |
+| Push notifications | Expo Push API       | Free, wraps APNs + FCM                          |
 
 ## Stacks
 
 ```
 infra/stacks/
 ├── vpc.ts            Shared VPC for all AWS compute
-├── secrets.ts        All external credentials (Neon, Upstash, JWT, Cloudflare)
+├── secrets.ts        All external credentials (Neon, JWT, Cloudflare)
 ├── storage.ts        Cloudflare R2 buckets (media, NFT metadata)
+├── events.ts         SNS topics + SQS queues (event bus, fan-out pattern)
 ├── api.ts            AWS Lambda (tRPC API + upload presigner)
 ├── sui-indexer.ts    AWS ECS Fargate Spot (SUI blockchain event listener) [STUB]
-├── moderation.ts     AWS Rekognition content moderation [STUB]
-├── realtime.ts       API Gateway WebSocket for live updates [STUB]
-└── notifications.ts  Push notifications via Expo Push API [STUB]
+├── moderation.ts     AWS Rekognition content moderation [STUB — subscribes via events.ts]
+├── realtime.ts       Real-time strategy (push notifs + polling, WebSocket deferred)
+└── notifications.ts  Push notifications via Expo Push API [STUB — subscribes via events.ts]
 ```
 
 ## Prerequisites
@@ -36,8 +37,6 @@ infra/stacks/
 ### 1. Create external accounts
 
 - **Neon**: https://neon.tech — create a project, get connection string
-- **Upstash Redis**: https://console.upstash.com — create a Redis database
-- **Upstash Kafka**: https://console.upstash.com — create a Kafka cluster (1 topic, name it `events`)
 
 ### 2. AWS credentials
 
@@ -50,6 +49,8 @@ export AWS_DEFAULT_REGION=eu-west-1
 ```
 
 ### 3. Cloudflare credentials
+
+These are **provider env vars** (not SST secrets) — needed by the Cloudflare provider to provision R2 buckets.
 
 ```bash
 export CLOUDFLARE_ACCOUNT_ID=...
@@ -109,30 +110,31 @@ All accounts use password `password123`:
 
 ## Deployment Setup (first time)
 
+### Provider env vars (set before `sst deploy`)
+
 ```bash
-# 1. Set all secrets for your stage
+export CLOUDFLARE_ACCOUNT_ID=...
+export CLOUDFLARE_API_TOKEN=...
+```
+
+### SST secrets (runtime values passed to Lambdas)
+
+```bash
 sst secret set DatabaseUrl "postgresql://..." --stage production
 sst secret set BetterAuthSecret "$(openssl rand -hex 32)" --stage production
-// console.upstash.com → create Redis DB
-sst secret set UpstashRedisUrl "rediss://..." --stage production
-sst secret set UpstashRedisToken "..." --stage production
-// console.upstash.com → create Kafka cluster
-sst secret set UpstashKafkaUrl "..." --stage production
-sst secret set UpstashKafkaUsername "..." --stage production
-sst secret set UpstashKafkaPassword "..." --stage production
-
-// generate locally jwt both - $ openssl rand -hex 32
 sst secret set JwtSecret "$(openssl rand -hex 32)" --stage production
 sst secret set JwtRefreshSecret "$(openssl rand -hex 32)" --stage production
-//
 sst secret set CloudflareR2AccessKeyId "..." --stage production
 sst secret set CloudflareR2SecretAccessKey "..." --stage production
+```
 
+### Deploy
 
-# 2. Preview what will be deployed (no changes made)
+```bash
+# Preview what will be deployed (no changes made)
 sst diff --stage production
 
-# 3. Deploy (only when ready)
+# Deploy (only when ready)
 sst deploy --stage production
 ```
 
@@ -146,15 +148,15 @@ sst deploy --stage production
 
 ## Cost Estimate (monthly, low traffic)
 
-| Service               | Free tier          | ~1k users                |
-| --------------------- | ------------------ | ------------------------ |
-| AWS Lambda            | 1M requests        | < $1                     |
-| AWS ECS (SUI indexer) | —                  | ~$6 (Fargate Spot arm64) |
-| AWS Rekognition       | 1000 images        | ~$1                      |
-| AWS API GW WebSocket  | 1M msgs / 750K min | Free                     |
-| Cloudflare R2         | 10GB + 1M ops      | Free                     |
-| Cloudflare CDN        | Unlimited egress   | Free                     |
-| Neon PostgreSQL       | 0.5GB compute      | Free                     |
-| Upstash Redis         | 10k req/day        | Free                     |
-| Upstash Kafka         | 10k messages/day   | Free                     |
-| **Total**             |                    | **~$8/mo**               |
+| Service               | Free tier        | ~1k users                |
+| --------------------- | ---------------- | ------------------------ |
+| AWS Lambda            | 1M requests      | < $1                     |
+| AWS ECS (SUI indexer) | —                | ~$6 (Fargate Spot arm64) |
+| AWS Rekognition       | 1000 images      | ~$1                      |
+| AWS SNS               | 1M publishes     | Free                     |
+| AWS SQS               | 1M requests      | Free                     |
+| Cloudflare R2         | 10GB + 1M ops    | Free                     |
+| Cloudflare CDN        | Unlimited egress | Free                     |
+| Neon PostgreSQL       | 0.5GB compute    | Free                     |
+| Expo Push             | Unlimited        | Free                     |
+| **Total**             |                  | **~$8/mo**               |

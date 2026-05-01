@@ -1,12 +1,12 @@
+// eslint-disable-next-line @typescript-eslint/triple-slash-reference
 /// <reference path="./.sst/platform/config.d.ts" />
 
 // Multi-cloud infrastructure config
 // Providers:
 //   AWS         → Lambda (API, moderation, notifications), ECS (SUI indexer),
-//                 API Gateway WebSocket (real-time)
+//                 SNS + SQS (event bus)
 //   Cloudflare  → R2 (media storage, zero egress), CDN
 //   Neon        → PostgreSQL (external, connected via secret)
-//   Upstash     → Redis + Kafka (external, connected via secret)
 //
 // DO NOT RUN `sst deploy` without confirming environment setup.
 // Use `sst dev` for local development.
@@ -15,13 +15,13 @@
 export default $config({
   app(input) {
     return {
-      name: 'sessions',
-      removal: input?.stage === 'production' ? 'retain' : 'remove',
-      protect: ['production'].includes(input?.stage),
-      home: 'aws',
+      name: "sessions",
+      removal: input?.stage === "production" ? "retain" : "remove",
+      protect: ["production"].includes(input?.stage),
+      home: "aws",
       providers: {
         aws: {
-          region: 'eu-west-1',
+          region: "eu-west-1",
         },
         cloudflare: {
           accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
@@ -31,29 +31,32 @@ export default $config({
   },
 
   async run() {
-    // Shared VPC — all AWS compute uses this
-    await import('./infra/stacks/vpc');
+    // Shared VPC — all AWS compute uses this - for SUI
+    await import("./infra/stacks/vpc");
 
-    // Secrets (Neon, Upstash, Cloudflare, Better Auth)
-    const { secrets } = await import('./infra/stacks/secrets');
+    // Secrets (Neon, Cloudflare, Better Auth)
+    await import("./infra/stacks/secrets");
 
     // Storage (Cloudflare R2 buckets + CDN)
-    const { storage } = await import('./infra/stacks/storage');
+    const { storage } = await import("./infra/stacks/storage");
+
+    // Event bus (SNS topics + SQS queues — fan-out pattern)
+    await import("./infra/stacks/events");
 
     // API (Lambda — tRPC + Better Auth)
-    const { api } = await import('./infra/stacks/api');
+    const { api } = await import("./infra/stacks/api");
 
     // SUI blockchain indexer (ECS Fargate Spot — stub)
-    await import('./infra/stacks/sui-indexer');
+    //  await import("./infra/stacks/sui-indexer");
 
-    // Content moderation (Lambda + Rekognition — stub)
-    await import('./infra/stacks/moderation');
+    // Content moderation (Rekognition — stub, subscribes via events.ts)
+    // await import("./infra/stacks/moderation");
 
-    // Real-time WebSocket (API Gateway v2 — stub)
-    await import('./infra/stacks/realtime');
+    // Real-time (deferred — using push notifications + polling)
+    // await import("./infra/stacks/realtime");
 
-    // Push notifications (Lambda + Expo Push — stub)
-    await import('./infra/stacks/notifications');
+    // Push notifications (stub, subscribes via events.ts)
+    // await import("./infra/stacks/notifications");
 
     return {
       api: api.url,
