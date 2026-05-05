@@ -10,12 +10,12 @@ For templating multiple on same machine:
 
 - **Monorepo**: Turborepo + pnpm workspaces
 - **Mobile**: React Native (Expo) + Tamagui
-- **Backend**: tRPC + Better Auth + Prisma
-- **Database**: Neon (serverless PostgreSQL)
-- **Events**: AWS SNS + SQS (fan-out pattern, replaces Upstash Kafka)
-- **Media**: Cloudflare R2 + CDN
-- **Blockchain**: SUI (deferred — see `docs/proposals/sui-auth-plugin.md`)
-- **Infrastructure**: SST v3 (Pulumi) → AWS + Cloudflare
+- **Backend**: tRPC + Better Auth + Prisma (Neon HTTP driver adapter)
+- **Database**: Neon (serverless PostgreSQL, accessed over HTTP — no VPC required)
+- **Events**: AWS SNS + SQS (fan-out pattern)
+- **Media**: Cloudflare R2 + CDN (zero egress)
+- **Blockchain**: SUI (indexer deferred — see `docs/proposals/sui-auth-plugin.md`)
+- **Infrastructure**: SST v3 (Pulumi) → AWS Lambda + Cloudflare
 
 ## Run
 
@@ -157,21 +157,71 @@ Requires `@expo/ngrok`. Slower but works on any network.
 
 ## Architecture
 
-```
-RN App → Lambda (API) → Neon Postgres
-       │              → SNS topics (event bus)
-       │                  → SQS ModerationQueue  → Lambda (Moderation)
-       │                  → SQS NotificationQueue → Lambda (Notifications)
-       │
-       ├→ Lambda (Upload) → Cloudflare R2 → CDN
-       │
-       └→ SUI RPC (direct, client-signed transactions)
+The infrastructure is staged. Phase 1 is what runs today and carries the app from
+zero to ~10k DAU on a near-zero monthly bill. Phase 2 layers the scale primitives
+that become necessary somewhere between 10k and 1M DAU. We add Phase 2 components
+only when concrete signals appear (see triggers below) — not preemptively.
 
-ECS Fargate Spot (SUI Indexer) → SUI event stream → SNS → DB
+### Phase 1 — Current (0 → ~10k DAU, ~$5-10/mo)
 
-Real-time: Push notifications (Expo Push) + client polling
-           WebSocket deferred — see infra/stacks/realtime.ts
 ```
+RN App ──► Lambda (API, public)            ──► Neon Postgres (HTTP driver)
+       │                                   ──► SNS topics (event bus)
+       │                                          ├─► SQS ModerationQueue   (consumer stub)
+       │                                          └─► SQS NotificationQueue (consumer stub)
+       │
+       ├──► Lambda (Upload, public)        ──► Cloudflare R2 ──► Cloudflare CDN
+       │
+       └──► SUI RPC (direct, client-signed transactions)
+
+Real-time:   Expo Push + client polling
+WebSocket:   deferred (see infra/stacks/realtime.ts)
+SUI indexer: deferred (see infra/stacks/sui-indexer.ts)
+VPC:         deferred — provisioned only when ECS Fargate (indexer) ships
+```
+
+**Why no VPC.** Lambda reaches Neon over public HTTPS via the `@prisma/adapter-neon`
+HTTP driver. Removing the VPC kills NAT gateway costs (~$32/mo prod, ~$3-5/mo dev)
+and the 1-3s cold-start penalty Lambda pays when attached to a VPC. R2 is also
+public-internet, so nothing else in the API tier needs private subnets either.
+
+**Why no Redis.** Session lookups against Neon are fast over HTTP at this scale,
+and SNS+SQS already covers async event flow. Redis pays off when DAU >5k or feed
+read latency starts to hurt — neither yet true.
+
+### Phase 2 — Scale (10k → 1M DAU)
+
+Activate components individually when their trigger fires. Each is independent.
+
+```
+                              ┌─► Cloudflare Workers (read API, edge cache)
+RN App ─► CF (DNS/WAF) ──────► │
+                              └─► Lambda (write API)  ─► Neon (HTTP, +read replicas)
+                                          │
+                                          ├─► Upstash Redis (sessions, rate limit, feed cache)
+                                          ├─► SNS / SQS  (event bus, unchanged)
+                                          ├─► Search (Typesense / Meilisearch on Fargate)
+                                          └─► OpenTelemetry → Axiom / Sentry
+
+Cloudflare Durable Objects ──► WebSocket / chat / live auctions
+
+ECS Fargate Spot (SUI Indexer) ─► SUI checkpoint stream ─► SNS chainEvent ─► DB
+SUI Move contracts            ─► escrow / reputation / DAO governance
+
+Timeline service (fan-out-on-write) ─► Redis lists per follower ─► hydrate from Postgres
+```
+
+| Phase 2 component                     | Trigger to add                             | Approx cost at 100k DAU                           |
+| ------------------------------------- | ------------------------------------------ | ------------------------------------------------- |
+| Upstash Redis                         | session p50 >50ms or DAU >5k               | $5-30/mo                                          |
+| SUI indexer (Fargate Spot)            | first NFT/escrow feature ships             | $3-5/mo                                           |
+| Search (Typesense / Meilisearch)      | Postgres trigram exhausted                 | $19/mo (Cloud) or $5/mo (self-host)               |
+| Observability (OTel + Sentry/Axiom)   | first paid user                            | free tier → $26/mo                                |
+| Timeline fan-out                      | feed query p95 >300ms                      | Redis already paid                                |
+| Cloudflare Workers (read tier)        | global DAU + p95 latency >250ms outside EU | $5/mo + 100k req/day free                         |
+| Cloudflare Durable Objects            | live chat / auctions / streams ship        | $5/mo + per-DO usage                              |
+| Tiered moderation (OSS → Rekognition) | image volume >10k/day                      | $5-50/mo Fargate, Rekognition only on uncertainty |
+| Multi-region Neon read replicas       | non-EU DAU >20%                            | +$19/mo per replica                               |
 
 ### Authentication
 
@@ -185,9 +235,12 @@ Real-time: Push notifications (Expo Push) + client polling
 ### Key Design Decisions
 
 - **Account ≠ Profile**: one account can own multiple profiles (musician, band, venue)
-- **Identity tiers**: BASIC → CREATOR → ARTIST (gates features like NFT minting)
+- **Identity tiers**: NONE → BASIC → CREATOR → ARTIST (gates features like NFT minting)
 - **Event-driven**: SNS + SQS fan-out decouples services (moderation, notifications, indexing)
 - **Media upload**: presigned URLs → client uploads direct to R2 → no Lambda in the read path
+- **Neon over HTTP**: Prisma uses `@prisma/adapter-neon` with `poolQueryViaFetch`, so
+  the API Lambda makes a regular `fetch()` to Neon — no VPC, no connection pool,
+  no `linux-arm64` Prisma engine binary copied into the bundle.
 
 ## Infrastructure
 
