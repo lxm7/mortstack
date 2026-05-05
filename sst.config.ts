@@ -23,16 +23,16 @@ export default $config({
         aws: {
           region: "eu-west-1",
         },
-        cloudflare: {
-          accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
-        },
+        cloudflare: true,
       },
     };
   },
 
   async run() {
-    // Shared VPC — all AWS compute uses this - for SUI
-    await import("./infra/stacks/vpc");
+    // VPC deferred — nothing currently runs inside it. Reactivate when the
+    // SUI indexer (ECS Fargate) ships. A provisioned VPC with NAT costs
+    // ~$32/mo on managed mode, ~$3-5/mo on EC2 mode, even when idle.
+    // await import("./infra/stacks/vpc");
 
     // Secrets (Neon, Cloudflare, Better Auth)
     await import("./infra/stacks/secrets");
