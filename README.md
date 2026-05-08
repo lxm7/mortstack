@@ -14,7 +14,7 @@ For templating multiple on same machine:
 - **Database**: Neon (serverless PostgreSQL, accessed over HTTP — no VPC required)
 - **Events**: AWS SNS + SQS (fan-out pattern)
 - **Media**: Cloudflare R2 + CDN (zero egress)
-- **Blockchain**: SUI (indexer deferred — see `docs/proposals/sui-auth-plugin.md`)
+- **Blockchain**: SUI — client-signed transactions live; on-chain indexer deferred until first NFT/escrow ships
 - **Infrastructure**: SST v3 (Pulumi) → AWS Lambda + Cloudflare
 
 ## Run
@@ -96,7 +96,7 @@ npx expo start --dev-client
 
 ## Auth
 
-Authentication is handled by **Better Auth** (email/password only for now). SUI wallet auth is deferred — see `docs/proposals/sui-auth-plugin.md`.
+Authentication is handled by **Better Auth** (email/password live). SUI wallet auth (SIWS) and zkLogin (Google/Apple → SUI address) are planned — implementation deferred until identity tier flows require an on-chain handle.
 
 There is no external auth page. The mobile app has built-in sign-in/sign-up screens (`apps/mobile/app/(auth)/`) that call Better Auth's API directly.
 
@@ -228,7 +228,7 @@ Timeline service (fan-out-on-write) ─► Redis lists per follower ─► hydra
 - **Better Auth** with DB-backed sessions (fully revocable)
 - **Email/password**: sign up → creates AuthUser + domain Account (active)
 - **SUI wallet (SIWS)**: challenge/response — implemented, deferred
-- **zkLogin (Google/Apple → SUI address)**: proposed — see `docs/proposals/sui-auth-plugin.md`
+- **zkLogin (Google/Apple → SUI address)**: planned — keyless on-chain identity for users without a wallet
 - **Bearer tokens** for React Native (no cookies, stored in SecureStore)
 - Session validated in tRPC context via `auth.api.getSession({ headers })`
 
