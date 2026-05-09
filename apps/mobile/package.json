@@ -19,6 +19,11 @@
   "dependencies": {
     "@expo-google-fonts/ibm-plex-sans": "^0.3.0",
     "@mysten/sui": "^1.15.0",
+    "@repo/chat": "workspace:*",
+    "@repo/chat-calls": "workspace:*",
+    "@repo/chat-crypto": "workspace:*",
+    "@repo/chat-db": "workspace:*",
+    "@repo/chat-transport": "workspace:*",
     "@repo/schemas": "workspace:*",
     "@tamagui/animations-react-native": "^2.0.0-rc.41",
     "@tamagui/config": "^2.0.0-rc.41",
