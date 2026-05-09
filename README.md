@@ -79,7 +79,7 @@ pnpm --filter @repo/database db:seed
 ### 5. Start API server
 
 ```bash
-pnpm --filter api dev
+pnpm --filter @repo/api-server dev
 ```
 
 Server runs at http://localhost:3001

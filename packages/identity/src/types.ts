@@ -1,9 +1,9 @@
-import type { IdentityTier } from '@repo/database';
+import type { IdentityTier } from "@repo/database";
 
 // Core result shape all providers must return
 export interface IdentityCheckResult {
-  externalId: string;       // Provider's reference ID (store in IdentityCheck.externalId)
-  status: 'approved' | 'rejected' | 'pending';
+  externalId: string; // Provider's reference ID (store in IdentityCheck.externalId)
+  status: "approved" | "rejected" | "pending";
   tier: IdentityTier;
   expiresAt?: Date;
   providerPayload?: Record<string, unknown>; // Raw provider response for audit
@@ -12,8 +12,8 @@ export interface IdentityCheckResult {
 // Initiation result - some providers return a URL to redirect the user to
 export interface IdentityCheckInit {
   externalId: string;
-  redirectUrl?: string;     // Present for redirect-based flows (World ID, Gitcoin)
-  clientToken?: string;     // Present for embedded flows (phone OTP)
+  redirectUrl?: string; // Present for redirect-based flows (World ID, Gitcoin)
+  clientToken?: string; // Present for embedded flows (phone OTP)
 }
 
 // The interface every provider must implement
@@ -26,7 +26,10 @@ export interface IdentityProvider {
    * Start a verification session.
    * For phone: sends OTP. For World ID: returns redirect URL. For stake: records intent.
    */
-  initiate(userId: string, metadata?: Record<string, unknown>): Promise<IdentityCheckInit>;
+  initiate(
+    userId: string,
+    metadata?: Record<string, unknown>,
+  ): Promise<IdentityCheckInit>;
 
   /**
    * Complete or verify the check.
@@ -41,13 +44,16 @@ export interface IdentityProvider {
 }
 
 // Content permission map - what each tier can do
-export const TIER_PERMISSIONS: Record<IdentityTier, {
-  canPostText: boolean;
-  canPostImage: boolean;
-  canUploadAudio: boolean;
-  canUploadVideo: boolean;
-  canMintNFT: boolean;
-}> = {
+export const TIER_PERMISSIONS: Record<
+  IdentityTier,
+  {
+    canPostText: boolean;
+    canPostImage: boolean;
+    canUploadAudio: boolean;
+    canUploadVideo: boolean;
+    canMintNFT: boolean;
+  }
+> = {
   NONE: {
     canPostText: true,
     canPostImage: false,
@@ -81,7 +87,7 @@ export const TIER_PERMISSIONS: Record<IdentityTier, {
 // Helper to check if a given tier has a specific permission
 export function hasPermission(
   tier: IdentityTier,
-  permission: keyof typeof TIER_PERMISSIONS.NONE
+  permission: keyof typeof TIER_PERMISSIONS.NONE,
 ): boolean {
-  return TIER_PERMISSIONS[tier][permission];
+  return TIER_PERMISSIONS[tier]![permission];
 }
