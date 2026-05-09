@@ -14,8 +14,17 @@ import {
   IBMPlexSans_700Bold_Italic,
 } from "@expo-google-fonts/ibm-plex-sans";
 import { Providers } from "@/providers";
+import { ChatCrypto } from "@repo/chat-crypto";
+import { ChatDb } from "@repo/chat-db";
+import { ChatCalls } from "@repo/chat-calls";
 
 SplashScreen.preventAutoHideAsync();
+
+console.log("[chat-mvp/M0]", {
+  crypto: ChatCrypto.hello(),
+  db: ChatDb.hello(),
+  calls: ChatCalls.hello(),
+});
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
