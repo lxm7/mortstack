@@ -1,5 +1,5 @@
 import { createTRPCClient, httpBatchLink } from "@trpc/client";
-import type { AppRouter } from "api/src/router";
+import type { AppRouter } from "@repo/api-server";
 
 function getBaseUrl() {
   if (typeof window !== "undefined") {

@@ -13,7 +13,8 @@
     "rebuild-ios": "expo prebuild --clean && expo run:ios",
     "rebuild-android": "expo prebuild --clean && expo run:android",
     "lint": "eslint .",
-    "check-types": "tsc --noEmit"
+    "check-types": "tsc --noEmit",
+    "test": "echo \"no tests yet\" && exit 0"
   },
   "dependencies": {
     "@expo-google-fonts/ibm-plex-sans": "^0.3.0",

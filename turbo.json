@@ -41,6 +41,10 @@
     "check-types": {
       "dependsOn": ["^check-types"],
       "outputs": []
+    },
+    "test": {
+      "dependsOn": ["^test"],
+      "outputs": ["coverage/**"]
     }
   }
 }

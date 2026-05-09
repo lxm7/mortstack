@@ -85,7 +85,7 @@ pnpm --filter @repo/database db:seed
 ### 3. Start API
 
 ```bash
-pnpm --filter api dev
+pnpm --filter @repo/api-server dev
 ```
 
 ### 4. Start RN app

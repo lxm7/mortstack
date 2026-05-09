@@ -11,7 +11,10 @@
     "db:migrate:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "lint": "eslint .",
+    "check-types": "tsc --noEmit",
+    "test": "echo \"no tests yet\" && exit 0"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4",
@@ -20,6 +23,9 @@
   },
   "devDependencies": {
     "@faker-js/faker": "^10.3.0",
+    "@repo/eslint-config": "workspace:*",
+    "@repo/typescript-config": "workspace:*",
+    "eslint": "^9.39.1",
     "prisma": "^6.1.0",
     "tsx": "^4.19.2",
     "typescript": "5.9.2"

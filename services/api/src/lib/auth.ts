@@ -40,16 +40,23 @@ export const auth = betterAuth({
     enabled: true,
     requireEmailVerification: false, // set true when email provider is wired
     minPasswordLength: 8,
-    // On new email signup, create linked domain Account
-    onUserCreated: async ({ user }) => {
-      await prisma.account.upsert({
-        where: { authUserId: user.id },
-        update: {},
-        create: {
-          authUserId: user.id,
-          email: user.email,
+  },
+
+  // On new email signup, create linked domain Account
+  databaseHooks: {
+    user: {
+      create: {
+        after: async (user) => {
+          await prisma.account.upsert({
+            where: { authUserId: user.id },
+            update: {},
+            create: {
+              authUserId: user.id,
+              email: user.email,
+            },
+          });
         },
-      });
+      },
     },
   },
 

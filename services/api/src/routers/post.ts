@@ -1,7 +1,12 @@
-import { z } from 'zod';
-import { router, publicProcedure, profileProcedure, tierProcedure } from '../trpc';
-import { TRPCError } from '@trpc/server';
-import { FeedSchema, PostSchema, FeedPostSchema, CommentSchema } from '@repo/schemas';
+import { z } from "zod";
+import {
+  router,
+  publicProcedure,
+  profileProcedure,
+  tierProcedure,
+} from "../trpc";
+import { TRPCError } from "@trpc/server";
+import { FeedSchema, PostSchema, CommentSchema } from "@repo/schemas";
 
 const profileSelect = {
   id: true,
@@ -26,15 +31,14 @@ export const postRouter = router({
     )
     .output(FeedSchema)
     .query(async ({ input, ctx }) => {
-      const followedIds =
-        ctx.activeProfile
-          ? (
-              await ctx.prisma.follow.findMany({
-                where: { followerId: ctx.activeProfile.id },
-                select: { followingId: true },
-              })
-            ).map((f) => f.followingId)
-          : undefined;
+      const followedIds = ctx.activeProfile
+        ? (
+            await ctx.prisma.follow.findMany({
+              where: { followerId: ctx.activeProfile.id },
+              select: { followingId: true },
+            })
+          ).map((f) => f.followingId)
+        : undefined;
 
       const posts = await ctx.prisma.post.findMany({
         where: {
@@ -43,7 +47,7 @@ export const postRouter = router({
         },
         take: input.limit + 1,
         cursor: input.cursor ? { id: input.cursor } : undefined,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
         select: {
           id: true,
           content: true,
@@ -85,7 +89,7 @@ export const postRouter = router({
           profile: { select: profileSelect },
           comments: {
             where: { isHidden: false },
-            orderBy: { createdAt: 'desc' },
+            orderBy: { createdAt: "desc" },
             take: 20,
             select: {
               id: true,
@@ -98,7 +102,7 @@ export const postRouter = router({
       });
 
       if (!post || post.isHidden) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Post not found' });
+        throw new TRPCError({ code: "NOT_FOUND", message: "Post not found" });
       }
 
       return post;
@@ -107,29 +111,31 @@ export const postRouter = router({
   // ── Create post ───────────────────────────────────────────────────────────────
   // Media type determines required identity tier — checked via tierProcedure
 
-  create: tierProcedure('canPostImage') // minimum gate — further check inside
+  create: tierProcedure("canPostImage") // minimum gate — further check inside
     .input(
       z.object({
         content: z.string().min(1).max(5000),
         mediaUrls: z.array(z.string().url()).max(10).default([]),
-        mediaType: z.enum(['TEXT', 'IMAGE', 'VIDEO', 'AUDIO', 'PERFORMANCE']).default('TEXT'),
+        mediaType: z
+          .enum(["TEXT", "IMAGE", "VIDEO", "AUDIO", "PERFORMANCE"])
+          .default("TEXT"),
       }),
     )
     .use(async ({ ctx, input, next }) => {
       const permissionMap = {
         TEXT: null,
-        IMAGE: 'canPostImage',
-        AUDIO: 'canUploadAudio',
-        VIDEO: 'canUploadVideo',
-        PERFORMANCE: 'canUploadVideo',
+        IMAGE: "canPostImage",
+        AUDIO: "canUploadAudio",
+        VIDEO: "canUploadVideo",
+        PERFORMANCE: "canUploadVideo",
       } as const;
 
       const required = permissionMap[input.mediaType];
       if (required) {
-        const { hasPermission } = await import('@repo/identity');
+        const { hasPermission } = await import("@repo/identity");
         if (!hasPermission(ctx.account.identityTier, required)) {
           throw new TRPCError({
-            code: 'FORBIDDEN',
+            code: "FORBIDDEN",
             message: `Uploading ${input.mediaType.toLowerCase()} requires account verification`,
           });
         }
@@ -163,12 +169,15 @@ export const postRouter = router({
     .mutation(async ({ input, ctx }) => {
       const existing = await ctx.prisma.like.findUnique({
         where: {
-          postId_profileId: { postId: input.postId, profileId: ctx.activeProfile.id },
+          postId_profileId: {
+            postId: input.postId,
+            profileId: ctx.activeProfile.id,
+          },
         },
       });
 
       if (existing) {
-        throw new TRPCError({ code: 'CONFLICT', message: 'Already liked' });
+        throw new TRPCError({ code: "CONFLICT", message: "Already liked" });
       }
 
       await ctx.prisma.$transaction([
@@ -250,14 +259,22 @@ export const postRouter = router({
         where: {
           isHidden: false,
           OR: [
-            { content: { contains: input.query, mode: 'insensitive' } },
-            { profile: { displayName: { contains: input.query, mode: 'insensitive' } } },
-            { profile: { handle: { contains: input.query, mode: 'insensitive' } } },
+            { content: { contains: input.query, mode: "insensitive" } },
+            {
+              profile: {
+                displayName: { contains: input.query, mode: "insensitive" },
+              },
+            },
+            {
+              profile: {
+                handle: { contains: input.query, mode: "insensitive" },
+              },
+            },
           ],
         },
         take: input.limit + 1,
         cursor: input.cursor ? { id: input.cursor } : undefined,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
         select: {
           id: true,
           content: true,
