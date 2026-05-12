@@ -1,4 +1,4 @@
-import { PrismaClient } from "../src/generated";
+import { PrismaClient } from "@prisma/client";
 import { faker } from "@faker-js/faker";
 import crypto from "node:crypto";
 import { hashPassword } from "better-auth/crypto";
@@ -263,7 +263,23 @@ async function main() {
 
   // ── Posts ─────────────────────────────────────────────────────────────────────
 
-  const posts: Record<string, { id: string }> = {};
+  const posts = {} as {
+    aliceTrack: { id: string };
+    aliceGig: { id: string };
+    aliceThought: { id: string };
+    aliceVisual: { id: string };
+    bobMix: { id: string };
+    bobText: { id: string };
+    carolProcess: { id: string };
+    carolThought: { id: string };
+    carolNftPreview: { id: string };
+    collectivePerformance: { id: string };
+    collectiveAnnounce: { id: string };
+    fabricLineup: { id: string };
+    fabricRecap: { id: string };
+    warehouseEvent: { id: string };
+    warehouseText: { id: string };
+  };
 
   // alice-music — AUDIO and IMAGE (ARTIST tier)
   posts.aliceTrack = await prisma.post.create({

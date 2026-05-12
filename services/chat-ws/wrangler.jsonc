@@ -1,0 +1,25 @@
+{
+  // Local dev only. Production deploys are managed by SST
+  // (`infra/stacks/chat-ws.ts`); SST owns the binding shape and migrations.
+  // Keep this file in sync with the SST stack so `wrangler dev` matches prod.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "chat-ws-dev",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-04-15",
+  "durable_objects": {
+    "bindings": [
+      { "name": "CHAT", "class_name": "Chat" },
+      { "name": "USER_INBOX", "class_name": "UserInbox" }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["Chat", "UserInbox"]
+    }
+  ],
+  "vars": {
+    // Override locally via .dev.vars for the dev API URL.
+    "API_INTERNAL_URL": "http://localhost:3001"
+  }
+}

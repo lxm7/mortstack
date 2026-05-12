@@ -1,11 +1,16 @@
+// Legacy `prisma-client-js` generator. Default output (`node_modules/.prisma/
+// client` + `@prisma/client` re-export). Engine binary is bundled per
+// `binaryTargets`; the Neon HTTP adapter handles queries at runtime so the
+// engine is loaded but unused. See ADR-009 for the engine-less follow-up plan.
 generator client {
-  provider = "prisma-client-js"
-  output   = "../src/generated"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-arm64-openssl-3.0.x"]
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // ── Better Auth models ────────────────────────────────────────────────────────
@@ -354,4 +359,64 @@ enum NFTType {
   PERFORMANCE
   ART
   COLLECTIBLE
+}
+
+// ── Chat ──────────────────────────────────────────────────────────────────────
+// Direct + small group chats. End-to-end encrypted: server stores only
+// ciphertext + nonce, never plaintext or keys.
+//
+// Membership is at the AuthUser level, not Profile. A person owns the chat,
+// not their persona, so identity-tier badges and persona switches do not
+// fragment chat history.
+
+model Chat {
+  id        String   @id @default(cuid())
+  kind      ChatKind @default(DIRECT)
+  // Group chats may set a name; direct chats render from the other member.
+  name      String?
+  createdAt DateTime @default(now())
+
+  members  ChatMember[]
+  messages ChatMessage[]
+
+  @@index([createdAt])
+}
+
+enum ChatKind {
+  DIRECT
+  GROUP
+}
+
+model ChatMember {
+  id     String @id @default(cuid())
+  chatId String
+  chat   Chat   @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  // Member identified by Better Auth user id. Matches the value the chat-ws
+  // Worker derives from the bearer token at WS upgrade time.
+  userId String
+  // For unread counts + read-receipt UX. Updated by the API on read events.
+  lastReadAt DateTime?
+  joinedAt   DateTime  @default(now())
+
+  @@unique([chatId, userId])
+  @@index([userId])
+}
+
+model ChatMessage {
+  // serverMsgId — handed back to the sender in the `ack` frame.
+  id          String @id @default(cuid())
+  chatId      String
+  chat        Chat   @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  // Sender is an AuthUser id (matches Session.userId from Better Auth).
+  senderId    String
+  // Client-generated dedup key (nanoid). Replays after reconnect must not
+  // produce duplicate rows — uniqueness is per (chatId, senderId, clientMsgId).
+  clientMsgId String
+  // Opaque ciphertext + nonce. Server cannot decrypt.
+  ciphertext  Bytes
+  nonce       Bytes
+  createdAt   DateTime @default(now())
+
+  @@unique([chatId, senderId, clientMsgId])
+  @@index([chatId, createdAt])
 }

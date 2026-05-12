@@ -66,3 +66,8 @@ apps/mobile/ios/
 
 # Metro
 .metro-health-check*
+
+ # Cloudflare Wrangler
+.dev.vars
+.dev.vars.*
+.wrangler/
