@@ -52,8 +52,10 @@ export default $config({
     // Content moderation (Rekognition — stub, subscribes via events.ts)
     // await import("./infra/stacks/moderation");
 
-    // Real-time (deferred — using push notifications + polling)
-    // await import("./infra/stacks/realtime");
+    // Chat WebSocket transport (Cloudflare Worker + Durable Objects)
+    // M1 of the chat MVP. Per-user inbox DO + per-chat DO; await-then-ack
+    // persistence with 100ms batching.
+    const { chatWs } = await import("./infra/stacks/chat-ws");
 
     // Push notifications (stub, subscribes via events.ts)
     // await import("./infra/stacks/notifications");
@@ -61,6 +63,7 @@ export default $config({
     return {
       api: api.url,
       uploadUrl: api.uploadUrl,
+      chatWs: chatWs.url,
       mediaBucket: storage.mediaBucket.name,
       cdnUrl: storage.cdnUrl,
     };

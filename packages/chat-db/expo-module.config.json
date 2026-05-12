@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["ChatDbModule"]
+  },
+  "android": {
+    "modules": ["io.sessions.chatdb.ChatDbModule"]
+  }
+}

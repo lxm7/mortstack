@@ -1,6 +1,6 @@
 import { neonConfig } from "@neondatabase/serverless";
 import { PrismaNeon } from "@prisma/adapter-neon";
-import { PrismaClient } from "./generated";
+import { PrismaClient } from "@prisma/client";
 
 // Use fetch instead of WebSockets for pool queries — required in Lambda
 // where the runtime supplies global fetch but no WebSocket implementation.
@@ -30,4 +30,4 @@ if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
 }
 
-export type { PrismaClient } from "./generated";
+export type { PrismaClient } from "@prisma/client";
