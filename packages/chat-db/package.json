@@ -10,6 +10,11 @@
     "check-types": "tsc --noEmit",
     "test": "echo \"no tests yet\" && exit 0"
   },
+  "dependencies": {
+    "@op-engineering/op-sqlite": "^14.1.0",
+    "expo-crypto": "~15.0.0",
+    "expo-secure-store": "~15.0.0"
+  },
   "devDependencies": {
     "@repo/eslint-config": "workspace:*",
     "@repo/typescript-config": "workspace:*",
