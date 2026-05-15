@@ -28,6 +28,14 @@ export const chainEventTopic = new sst.aws.SnsTopic("ChainEvent");
 /** Fired after moderation Lambda processes media (flagged/approved). */
 export const moderationResultTopic = new sst.aws.SnsTopic("ModerationResult");
 
+/**
+ * Fired by chat-ws Worker (Chat DO) after a message batch is persisted
+ * to Neon (ADR-013). Payload contains ciphertext + nonce + recipientIds;
+ * the chat-push Lambda decides who is offline and dispatches APNs/FCM.
+ * Plaintext never crosses the bus — push relay is content-blind.
+ */
+export const chatDeliveredTopic = new sst.aws.SnsTopic("ChatDelivered");
+
 // ── SQS Queues ──────────────────────────────────────────────────────────────
 
 /** Moderation queue — consumes media.uploaded, triggers Rekognition analysis. */
@@ -37,6 +45,16 @@ export const moderationQueue = new sst.aws.Queue("ModerationQueue", {
 
 /** Notification queue — consumes user.activity + chain.event, sends Expo push. */
 export const notificationQueue = new sst.aws.Queue("NotificationQueue", {
+  visibilityTimeout: "1 minute",
+});
+
+/**
+ * Chat push queue — consumes chat.msg.delivered, dispatches encrypted
+ * payloads to FCM/APNs for offline recipients (ADR-013).
+ * Decoupled from notificationQueue so chat push latency doesn't compete
+ * with social-activity push throughput.
+ */
+export const chatPushQueue = new sst.aws.Queue("ChatPushQueue", {
   visibilityTimeout: "1 minute",
 });
 
@@ -54,6 +72,9 @@ userActivityTopic.subscribeQueue(
 
 // chain.event → notification queue (NFT sold, minted)
 chainEventTopic.subscribeQueue("ChainNotifyConsumer", notificationQueue.arn);
+
+// chat.msg.delivered → chat push queue (ADR-013)
+chatDeliveredTopic.subscribeQueue("ChatPushConsumer", chatPushQueue.arn);
 
 // ── Queue → Lambda Subscriptions ────────────────────────────────────────────
 // These wire SQS queues to Lambda consumers.
@@ -88,11 +109,26 @@ chainEventTopic.subscribeQueue("ChainNotifyConsumer", notificationQueue.arn);
 //   link: [...secrets],
 // });
 
+// chat-push Lambda — APNs/FCM dispatch for offline chat recipients.
+// Activates when M6 (push notifications) ships; the handler decrypts nothing,
+// only routes ciphertext to device tokens for users not currently attached.
+//
+// chatPushQueue.subscribe({
+//   handler: 'services/chat-push/src/lambda.handler',
+//   runtime: 'nodejs22.x',
+//   architecture: 'arm64',
+//   memory: '256 MB',
+//   timeout: '30 seconds',
+//   link: [...secrets],
+// });
+
 export const events = {
   mediaUploadedTopic,
   userActivityTopic,
   chainEventTopic,
   moderationResultTopic,
+  chatDeliveredTopic,
   moderationQueue,
   notificationQueue,
+  chatPushQueue,
 };

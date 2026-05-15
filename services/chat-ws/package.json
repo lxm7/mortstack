@@ -10,10 +10,13 @@
     "lint": "eslint .",
     "check-types": "tsc --noEmit",
     "test": "echo \"no tests yet\" && exit 0",
-    "smoke:m1": "node scripts/smoke-m1.mjs"
+    "smoke:m1": "node scripts/smoke-m1.mjs",
+    "smoke:m2": "node scripts/smoke-m2.mjs"
   },
   "dependencies": {
     "@repo/chat-transport": "workspace:*",
+    "@repo/db-edge": "workspace:*",
+    "aws4fetch": "^1.0.20",
     "ulid": "^2.3.0"
   },
   "devDependencies": {

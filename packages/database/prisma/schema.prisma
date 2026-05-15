@@ -377,7 +377,9 @@ model Chat {
   createdAt DateTime @default(now())
 
   members  ChatMember[]
-  messages ChatMessage[]
+  // No `messages ChatMessage[]` back-relation: ChatMessage drops the FK to
+  // simplify partitioning (ADR-014). Messages are queried by chatId via
+  // packages/db-edge, never via Prisma joins.
 
   @@index([createdAt])
 }
@@ -402,21 +404,34 @@ model ChatMember {
   @@index([userId])
 }
 
+// ChatMessage is range-partitioned by month on `createdAt` (ADR-014).
+// Prisma manages the parent table schema; partition tables are created by raw
+// migration SQL and a scheduled Worker (see `services/chat-ws` future cron).
+//
+// PK is composite per ADR-012:
+//   - chatId      : partition routing key prefix
+//   - serverSerial: DO-assigned monotonic counter per chatId (BIGINT)
+//   - createdAt   : included in PK so Postgres accepts unique constraints on a
+//                   partitioned table (the partition key must be part of every
+//                   unique index).
+//
+// No FK to Chat — Postgres FKs across partitions are per-partition objects and
+// fight Prisma's migration model. Membership integrity is enforced at the
+// application layer (Worker validates chat exists before insert).
 model ChatMessage {
-  // serverMsgId — handed back to the sender in the `ack` frame.
-  id          String @id @default(cuid())
-  chatId      String
-  chat        Chat   @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  chatId       String
+  serverSerial BigInt
   // Sender is an AuthUser id (matches Session.userId from Better Auth).
-  senderId    String
+  senderId     String
   // Client-generated dedup key (nanoid). Replays after reconnect must not
-  // produce duplicate rows — uniqueness is per (chatId, senderId, clientMsgId).
-  clientMsgId String
+  // produce duplicate rows — uniqueness is per (chatId, clientMsgId).
+  clientMsgId  String
   // Opaque ciphertext + nonce. Server cannot decrypt.
-  ciphertext  Bytes
-  nonce       Bytes
-  createdAt   DateTime @default(now())
+  ciphertext   Bytes
+  nonce        Bytes
+  createdAt    DateTime @default(now()) @db.Timestamptz()
 
-  @@unique([chatId, senderId, clientMsgId])
-  @@index([chatId, createdAt])
+  @@id([chatId, serverSerial, createdAt])
+  @@unique([chatId, clientMsgId, createdAt])
+  @@index([chatId, serverSerial])
 }

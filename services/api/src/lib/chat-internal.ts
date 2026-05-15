@@ -1,23 +1,16 @@
 // Internal endpoints called by the Cloudflare chat-ws Worker.
-// Two routes, both gated by a shared HMAC header (Resource.ChatWsHmacSecret).
 //
 //   POST /internal/chat/verify-session
 //     body: { token }
 //     200:  { userId }
 //     401:  unauthenticated bearer
 //
-//   POST /internal/chat/persist
-//     body: { chatId, messages: [{ clientMsgId, senderId, ciphertext, nonce }] }
-//     200:  { rows: [{ clientMsgId, serverMsgId, ts }], pushTargets: [userId] }
-//     401:  bad HMAC
-//     409:  sender not a member of chatId
-//
-// ciphertext + nonce are base64-encoded over the wire (JSON has no native
-// bytes type) and decoded back to Bytes columns on insert.
+// The /internal/chat/persist endpoint was removed in M2 per ADR-010 — the
+// chat-ws Worker now writes directly to Neon via @repo/db-edge, skipping this
+// Lambda hop. Verify-session remains because Better Auth's session validation
+// owns the bearer-token contract.
 
 import { Resource } from "sst";
-
-import { prisma } from "@repo/database";
 
 import { auth } from "./auth";
 
@@ -34,21 +27,6 @@ declare module "sst" {
 }
 
 const SECRET_HEADER = "x-chat-ws-secret";
-
-interface PersistRequest {
-  chatId: string;
-  messages: Array<{
-    clientMsgId: string;
-    senderId: string;
-    ciphertext: string;
-    nonce: string;
-  }>;
-}
-
-interface PersistResponse {
-  rows: Array<{ clientMsgId: string; serverMsgId: string; ts: number }>;
-  pushTargets: string[];
-}
 
 interface VerifySessionRequest {
   token: string;
@@ -87,8 +65,6 @@ export async function handleChatInternal(
   switch (sub) {
     case "verify-session":
       return handleVerifySession(request);
-    case "persist":
-      return handlePersist(request);
     default:
       return new Response("not found", { status: 404 });
   }
@@ -112,72 +88,6 @@ async function handleVerifySession(request: Request): Promise<Response> {
   }
 
   const out: VerifySessionResponse = { userId: session.user.id };
-  return new Response(JSON.stringify(out), {
-    status: 200,
-    headers: { "content-type": "application/json" },
-  });
-}
-
-async function handlePersist(request: Request): Promise<Response> {
-  let body: PersistRequest;
-  try {
-    body = (await request.json()) as PersistRequest;
-  } catch {
-    return new Response("bad json", { status: 400 });
-  }
-  if (
-    !body?.chatId ||
-    !Array.isArray(body.messages) ||
-    body.messages.length === 0
-  ) {
-    return new Response("bad request", { status: 400 });
-  }
-
-  // Membership check — every senderId in the batch must belong to chatId.
-  // Cheaper than per-row: fetch the member set once.
-  const members = await prisma.chatMember.findMany({
-    where: { chatId: body.chatId },
-    select: { userId: true },
-  });
-  const memberIds = new Set(members.map((m) => m.userId));
-  for (const m of body.messages) {
-    if (!memberIds.has(m.senderId)) {
-      return new Response(
-        JSON.stringify({ error: "not a member", senderId: m.senderId }),
-        { status: 409, headers: { "content-type": "application/json" } },
-      );
-    }
-  }
-
-  // Insert all rows in one transaction. createMany is faster but Prisma
-  // does not return inserted IDs from createMany on Postgres; we need them
-  // for the ack frame, so fall back to per-row create inside a transaction
-  // for now. Optimisation later: raw SQL with RETURNING.
-  const inserted = await prisma.$transaction(
-    body.messages.map((m) =>
-      prisma.chatMessage.create({
-        data: {
-          chatId: body.chatId,
-          senderId: m.senderId,
-          clientMsgId: m.clientMsgId,
-          ciphertext: Buffer.from(m.ciphertext, "base64"),
-          nonce: Buffer.from(m.nonce, "base64"),
-        },
-        select: { id: true, clientMsgId: true, createdAt: true },
-      }),
-    ),
-  );
-
-  const rows = inserted.map((row) => ({
-    clientMsgId: row.clientMsgId,
-    serverMsgId: row.id,
-    ts: row.createdAt.getTime(),
-  }));
-
-  // pushTargets: stub for now. Real impl checks recent device-presence (via
-  // Worker → API heartbeat or Better Auth session.lastSeen) and returns
-  // userIds we should fan to APNs/FCM. M6 owns the actual push pipeline.
-  const out: PersistResponse = { rows, pushTargets: [] };
   return new Response(JSON.stringify(out), {
     status: 200,
     headers: { "content-type": "application/json" },

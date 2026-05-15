@@ -28,6 +28,10 @@ export default $config({
     };
   },
 
+  // The object returned at the bottom is what SST prints after every
+  // `sst deploy` / `sst dev` and writes to `.sst/outputs.json`. SST v3 has no
+  // `sst output <name>` subcommand — read the JSON or re-run deploy.
+  // At runtime, linked code reads via `Resource.<Name>` from the sst SDK.
   async run() {
     // VPC deferred — nothing currently runs inside it. Reactivate when the
     // SUI indexer (ECS Fargate) ships. A provisioned VPC with NAT costs

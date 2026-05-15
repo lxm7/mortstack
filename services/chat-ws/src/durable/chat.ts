@@ -1,13 +1,19 @@
 import { DurableObject } from "cloudflare:workers";
 
-import { persistBatch } from "../persist";
+import { getPersistClient, type PersistMessageInput } from "../persist";
+import { bytesToBase64, publishChatDelivered } from "../push-publish";
 
 // Per-chat DO. Owns:
 //   - The set of user inboxes currently attached (member set, dynamic)
 //   - The 100ms send batch buffer (per F1 / Y with batching)
-//   - Calling Lambda /internal/chat/persist and dispatching ack + msg frames
+//   - In-memory monotonic `serverSerial` counter (ADR-012)
+//   - Writing batches to Neon HTTP via @repo/db-edge (ADR-010)
+//   - Dispatching ack + msg frames to UserInbox DOs (batched per recipient)
 //
-// State lives in ctx.storage so the DO can hibernate freely between bursts.
+// State that must survive hibernation lives in ctx.storage:
+//   - "attached"   : string[]  — user ids attached to this chat
+//   - "buffer"     : PendingSend[] — unflushed sends (recovery after eviction)
+//   - "nextSerial" : string (BigInt) — next serverSerial to assign
 
 interface PendingSend {
   senderId: string;
@@ -18,15 +24,16 @@ interface PendingSend {
 }
 
 const ATTACHED_KEY = "attached";
+const BUFFER_KEY = "buffer";
+const NEXT_SERIAL_KEY = "nextSerial";
 const BATCH_FLUSH_MS = 100;
 
 export class Chat extends DurableObject<Env> {
-  // In-memory while DO is hot; rebuilt from storage if hibernated mid-batch.
-  // For M1 simplicity, a hibernation that drops a pending batch surfaces as
-  // a `PERSIST_FAILED` to senders — they can retry. Future: persist the
-  // buffer to ctx.storage on each enqueue so no sends are lost across
-  // eviction.
+  // In-memory mirrors of ctx.storage. Loaded lazily on first use after a hot
+  // start; refreshed transparently after hibernation.
   private buffer: PendingSend[] = [];
+  private bufferLoaded = false;
+  private nextSerial: bigint | null = null;
   private flushTimer: number | null = null;
 
   // ── RPC: attach / detach UserInbox membership ─────────────────────────────
@@ -51,10 +58,11 @@ export class Chat extends DurableObject<Env> {
     ciphertext: Uint8Array;
     nonce: Uint8Array;
   }): Promise<void> {
-    this.buffer.push({
-      ...input,
-      enqueuedAt: Date.now(),
-    });
+    await this.ensureBufferLoaded();
+    this.buffer.push({ ...input, enqueuedAt: Date.now() });
+    // Persist buffer so hibernation mid-batch doesn't drop sends. The flush
+    // path is responsible for clearing it atomically with the serial advance.
+    await this.ctx.storage.put(BUFFER_KEY, this.buffer);
     this.scheduleFlush();
   }
 
@@ -63,92 +71,198 @@ export class Chat extends DurableObject<Env> {
     if (this.flushTimer !== null) return;
     this.flushTimer = setTimeout(() => {
       this.flushTimer = null;
-      // Fire-and-forget; flush errors are surfaced inside flush()
       void this.flush();
     }, BATCH_FLUSH_MS) as unknown as number;
   }
 
   private async flush(): Promise<void> {
+    await this.ensureBufferLoaded();
     if (this.buffer.length === 0) return;
+
     const batch = this.buffer;
-    this.buffer = [];
-
-    // chatId derived from this DO's identity. We rely on idFromName(chatId)
-    // upstream, so the name is the chatId.
+    // Don't clear in-memory buffer until persist succeeds AND ctx.storage
+    // advance lands. If flush throws, next scheduled flush picks up the same
+    // entries (idempotent via clientMsgId unique constraint + ON CONFLICT).
     const chatId = this.ctx.id.name ?? this.ctx.id.toString();
+    const db = getPersistClient(this.env);
 
-    let result: Awaited<ReturnType<typeof persistBatch>>;
-    try {
-      result = await persistBatch(this.env, {
-        chatId,
-        messages: batch.map((b) => ({
-          clientMsgId: b.clientMsgId,
-          senderId: b.senderId,
-          ciphertext: b.ciphertext,
-          nonce: b.nonce,
-        })),
+    await this.ensureSerialRecovered(chatId, db);
+
+    interface AssignedSend {
+      entry: PendingSend;
+      serverSerial: bigint;
+      ts: Date;
+    }
+    const assigned: AssignedSend[] = [];
+
+    for (const entry of batch) {
+      const row = await this.insertWithRetry(db, chatId, entry);
+      if (!row) {
+        // Persist failed twice — surface to the sender via err frame. Leaves
+        // the entry in the buffer (caller may retry via flush rescheduling).
+        await this.dispatchErr(
+          [entry.senderId],
+          "PERSIST_FAILED",
+          "could not persist after retry",
+        );
+        return;
+      }
+      assigned.push({
+        entry,
+        serverSerial: row.serverSerial,
+        ts: row.createdAt,
       });
-    } catch (err) {
-      // Best-effort error surfacing to the senders. Senders' clients may
-      // re-send (server dedupes by clientMsgId, so safe).
-      await this.dispatchErr(
-        batch.map((b) => b.senderId),
-        "PERSIST_FAILED",
-        (err as Error).message,
-      );
-      return;
     }
 
-    // Pair each persisted row with the original send for fanout.
-    const sendBySerial = new Map(
-      result.rows.map((r) => [r.clientMsgId, r] as const),
-    );
+    // Atomic: clear buffer + advance counter together. If this transaction
+    // fails, in-memory state still matches storage (counter was already
+    // bumped to nextSerial); next cold start recovers via ON CONFLICT path.
+    await this.ctx.storage.transaction(async (tx) => {
+      await tx.delete(BUFFER_KEY);
+      await tx.put(NEXT_SERIAL_KEY, this.nextSerial!.toString());
+    });
+    this.buffer = [];
+
+    // ── Fanout (ADR-010, Track C batched) ──────────────────────────────────
+    // Collapse N×M individual RPCs into one deliverBatch per recipient.
     const attached = await this.loadAttached();
-    const ts = Date.now();
+    const perRecipient = new Map<
+      string,
+      Parameters<UserInbox["deliverBatch"]>[0]
+    >();
+    const perSender = new Map<string, Parameters<UserInbox["ackBatch"]>[0]>();
 
-    await Promise.all(
-      batch.map(async (entry) => {
-        const persisted = sendBySerial.get(entry.clientMsgId);
-        if (!persisted) return;
+    for (const a of assigned) {
+      const serverMsgId = a.serverSerial.toString();
+      const tsMs = a.ts.getTime();
 
-        // Ack the sender (their UserInbox routes to all their devices).
-        const senderInbox = this.env.USER_INBOX.get(
-          this.env.USER_INBOX.idFromName(entry.senderId),
-        );
-        await senderInbox.ack({
-          t: "ack",
-          clientMsgId: persisted.clientMsgId,
-          serverMsgId: persisted.serverMsgId,
-          ts: persisted.ts,
-        });
+      // Ack for the sender's devices.
+      let acks = perSender.get(a.entry.senderId);
+      if (!acks) {
+        acks = [];
+        perSender.set(a.entry.senderId, acks);
+      }
+      acks.push({
+        clientMsgId: a.entry.clientMsgId,
+        serverMsgId,
+        ts: tsMs,
+      });
 
-        // Fan out to every other attached member's UserInbox.
-        const fanout: Promise<unknown>[] = [];
-        for (const userId of attached) {
-          if (userId === entry.senderId) continue;
-          const stub = this.env.USER_INBOX.get(
-            this.env.USER_INBOX.idFromName(userId),
-          );
-          fanout.push(
-            stub.deliver({
-              t: "msg",
-              chatId,
-              serverMsgId: persisted.serverMsgId,
-              senderId: entry.senderId,
-              ciphertext: entry.ciphertext,
-              nonce: entry.nonce,
-              ts: persisted.ts,
-            }),
-          );
+      // Msg fanout to every other attached member.
+      for (const userId of attached) {
+        if (userId === a.entry.senderId) continue;
+        let msgs = perRecipient.get(userId);
+        if (!msgs) {
+          msgs = [];
+          perRecipient.set(userId, msgs);
         }
-        await Promise.all(fanout);
-      }),
-    );
+        msgs.push({
+          chatId,
+          serverMsgId,
+          senderId: a.entry.senderId,
+          ciphertext: a.entry.ciphertext,
+          nonce: a.entry.nonce,
+          ts: tsMs,
+        });
+      }
+    }
 
-    // Push enqueueing for offline targets is owned by the API Lambda
-    // (it knows session + push-token state). result.pushTargets is returned
-    // for observability only; no action here.
-    void ts;
+    const acks = [...perSender.entries()].map(([userId, frames]) => {
+      const stub = this.env.USER_INBOX.get(
+        this.env.USER_INBOX.idFromName(userId),
+      );
+      return stub.ackBatch(frames);
+    });
+    const fanout = [...perRecipient.entries()].map(([userId, frames]) => {
+      const stub = this.env.USER_INBOX.get(
+        this.env.USER_INBOX.idFromName(userId),
+      );
+      return stub.deliverBatch(frames);
+    });
+    await Promise.all([...acks, ...fanout]);
+
+    // ── Push fanout (ADR-013) ─────────────────────────────────────────────
+    // SNS publish per persisted message. The chat-push Lambda (deferred to
+    // M6) decides which recipients are actually offline and dispatches
+    // APNs/FCM. Publish failures are non-fatal — message is already
+    // persisted; a reconciliation Worker will catch any drops.
+    const allMembers = await db.memberIds(chatId);
+    for (const a of assigned) {
+      const recipients = allMembers.filter((u) => u !== a.entry.senderId);
+      if (recipients.length === 0) continue;
+      // Fire-and-forget. Awaited inside Promise.all so DO doesn't yield
+      // before the queued requests start; we don't block ack on the result.
+      void publishChatDelivered(this.env, {
+        chatId,
+        serverMsgId: a.serverSerial.toString(),
+        senderId: a.entry.senderId,
+        recipientIds: recipients,
+        ciphertextB64: bytesToBase64(a.entry.ciphertext),
+        nonceB64: bytesToBase64(a.entry.nonce),
+        ts: a.ts.getTime(),
+      });
+    }
+  }
+
+  // Insert a row. On PK conflict (counter regression after a prior partial
+  // failure), recover via MAX(serverSerial)+1 and retry once. After two
+  // failures we give up and surface PERSIST_FAILED to the sender.
+  private async insertWithRetry(
+    db: ReturnType<typeof getPersistClient>,
+    chatId: string,
+    entry: PendingSend,
+  ): Promise<{ serverSerial: bigint; createdAt: Date } | null> {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const serial = this.nextSerial!;
+      const input: PersistMessageInput = {
+        chatId,
+        serverSerial: serial,
+        senderId: entry.senderId,
+        clientMsgId: entry.clientMsgId,
+        ciphertext: entry.ciphertext,
+        nonce: entry.nonce,
+      };
+      try {
+        const ok = await db.insertMessage(input);
+        if (ok) {
+          this.nextSerial = serial + 1n;
+          return { serverSerial: serial, createdAt: new Date() };
+        }
+      } catch {
+        // Network / transient error — retry with same serial.
+        if (attempt === 0) continue;
+        return null;
+      }
+      // Conflict: serial collided. Recover and retry once.
+      const actualMax = await db.maxSerial(chatId);
+      this.nextSerial = actualMax + 1n;
+    }
+    return null;
+  }
+
+  // ── State recovery ────────────────────────────────────────────────────────
+  private async ensureBufferLoaded(): Promise<void> {
+    if (this.bufferLoaded) return;
+    const stored =
+      (await this.ctx.storage.get<PendingSend[]>(BUFFER_KEY)) ?? [];
+    this.buffer = stored;
+    this.bufferLoaded = true;
+  }
+
+  private async ensureSerialRecovered(
+    chatId: string,
+    db: ReturnType<typeof getPersistClient>,
+  ): Promise<void> {
+    if (this.nextSerial !== null) return;
+    const stored = await this.ctx.storage.get<string>(NEXT_SERIAL_KEY);
+    if (stored !== undefined) {
+      this.nextSerial = BigInt(stored);
+      return;
+    }
+    // Cold start with no persisted counter — recover from DB MAX. First-ever
+    // message in this chat sees MAX = 0n, so nextSerial = 1n.
+    const max = await db.maxSerial(chatId);
+    this.nextSerial = max + 1n;
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
@@ -168,26 +282,12 @@ export class Chat extends DurableObject<Env> {
         const stub = this.env.USER_INBOX.get(
           this.env.USER_INBOX.idFromName(userId),
         );
-        // Reuse the ack RPC channel — it just forwards an arbitrary frame
-        // typed as `msg | ack`. For errors we send via deliver with an err
-        // payload; UserInbox's deliver only accepts `msg`. So we add a
-        // dedicated rpc for errors instead.
-        return stub.deliver({
-          t: "msg",
-          chatId: this.ctx.id.name ?? this.ctx.id.toString(),
-          serverMsgId: "",
-          senderId: "system",
-          ciphertext: new Uint8Array(),
-          nonce: new Uint8Array(),
-          ts: Date.now(),
-        });
-        // NOTE: Replace with dedicated err RPC in the next iteration. For M1
-        // we surface persist failures via the `err` frame from UserInbox to
-        // the sender's WS path; this method exists as a placeholder for
-        // future cross-DO error fanout.
+        return stub.error({ code, msg });
       }),
     );
-    void msg;
-    void code;
   }
 }
+
+// Forward-declared type so the perRecipient/perSender Maps typecheck against
+// UserInbox's RPC surface. The real UserInbox lives in ../durable/user-inbox.
+type UserInbox = import("./user-inbox").UserInbox;

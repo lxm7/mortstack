@@ -1,70 +1,26 @@
-// Chat DO calls this to persist a batch of messages to Postgres via the API
-// Lambda. HMAC-signed (shared secret in env.CHAT_WS_HMAC_SECRET) so the
-// internal endpoint can refuse anything not coming from the Worker.
+// Chat persistence — Worker → Neon HTTP direct (ADR-010).
 //
-// Per F1 (await-then-ack): the Chat DO awaits a successful response before
-// sending `ack` frames to senders or fanning out `msg` frames to recipients.
-// On failure, the caller should send `err` frames and decide on retry policy.
+// Replaces the M1 path (Chat DO → Lambda /internal/chat/persist → Neon). The
+// Lambda hop is gone; Chat DO writes to Neon over HTTPS via @repo/db-edge.
+//
+// Module owns the cached ChatPersistClient instance — the neon() factory is
+// cheap but caching saves a function-call per flush, and lets future cross-DO
+// instrumentation (metrics, slow-query logging) live in one place.
 
-export interface PersistBatchInput {
-  chatId: string;
-  messages: Array<{
-    clientMsgId: string;
-    senderId: string;
-    ciphertext: Uint8Array;
-    nonce: Uint8Array;
-  }>;
-}
+import { ChatPersistClient } from "@repo/db-edge";
 
-export interface PersistedRow {
-  clientMsgId: string;
-  serverMsgId: string;
-  ts: number;
-}
+let cached: { url: string; client: ChatPersistClient } | null = null;
 
-export interface PersistBatchResult {
-  rows: PersistedRow[];
-  // Member userIds the API determined need to be notified by push (offline at
-  // persist time). Empty when everyone is currently connected.
-  pushTargets: string[];
-}
-
-export async function persistBatch(
-  env: Env,
-  input: PersistBatchInput,
-): Promise<PersistBatchResult> {
-  const url = `${env.API_INTERNAL_URL.replace(/\/$/, "")}/internal/chat/persist`;
-
-  // ciphertext + nonce are bytes — encode as base64 for JSON transport. The
-  // Lambda decodes back to bytea on the way into Postgres.
-  const body = JSON.stringify({
-    chatId: input.chatId,
-    messages: input.messages.map((m) => ({
-      clientMsgId: m.clientMsgId,
-      senderId: m.senderId,
-      ciphertext: bytesToBase64(m.ciphertext),
-      nonce: bytesToBase64(m.nonce),
-    })),
-  });
-
-  const resp = await fetch(url, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-chat-ws-secret": env.CHAT_WS_HMAC_SECRET,
-    },
-    body,
-  });
-
-  if (!resp.ok) {
-    throw new Error(`persist failed: ${resp.status} ${await resp.text()}`);
+export function getPersistClient(env: Env): ChatPersistClient {
+  if (!env.DATABASE_URL) {
+    throw new Error("DATABASE_URL not set on chat-ws Worker env");
   }
-
-  return (await resp.json()) as PersistBatchResult;
+  if (cached && cached.url === env.DATABASE_URL) return cached.client;
+  cached = {
+    url: env.DATABASE_URL,
+    client: new ChatPersistClient(env.DATABASE_URL),
+  };
+  return cached.client;
 }
 
-function bytesToBase64(bytes: Uint8Array): string {
-  let bin = "";
-  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]!);
-  return btoa(bin);
-}
+export type { PersistMessageInput, PersistedMessageRow } from "@repo/db-edge";
