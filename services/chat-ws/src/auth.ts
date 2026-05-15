@@ -1,9 +1,15 @@
 // Verify a Better Auth bearer token by asking the API Lambda. Cheap on connect
 // (one round-trip per WS open) — never per message.
 //
+// HMAC secret comes from `Resource.ChatWsHmacSecret.value` — SST `link`s on
+// Cloudflare Workers expose secrets via the Resource module, not as runtime
+// env bindings (unlike AWS Lambda).
+//
 // Future: short-lived JWT minted by Lambda at login + verified at the edge with
 // shared HS256 secret would remove this round-trip entirely. Defer until WS
 // connect latency is measured under load.
+
+import { Resource } from "sst";
 
 export interface VerifySessionResult {
   userId: string;
@@ -18,7 +24,7 @@ export async function verifySession(
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "x-chat-ws-secret": env.CHAT_WS_HMAC_SECRET,
+      "x-chat-ws-secret": Resource.ChatWsHmacSecret.value,
     },
     body: JSON.stringify({ token: bearerToken }),
   });

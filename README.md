@@ -476,3 +476,15 @@ Integration:
 3. **Signal Protocol port maintenance**: confirm during M3 which Swift/Kotlin port is actively maintained before committing in M3.5.
 4. **DO connection budgeting at scale**: a single DO holds WS sockets in 128MB RAM; plan sharding for any future broadcast-style channels (>10k members).
 5. **SQLCipher binary size**: adds ~3MB; acceptable but tracked.
+
+#### Wranger Logs
+
+First, log in:  
+ pnpm --filter @repo/chat-ws exec wrangler login  
+ Opens browser → authorize → returns.
+
+Then tail:  
+ pnpm --filter @repo/chat-ws exec wrangler tail  
+ sessions-dev-chatwsscript-wwtawvxu --format pretty
+
+Run smoke in another terminal, watch logs.

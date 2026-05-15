@@ -1,17 +1,24 @@
 import { apiFunction } from "./api";
+import {
+  chatWsAwsAccessKeyId,
+  chatWsAwsSecretAccessKey,
+} from "./chat-push-credentials";
 import { chatWsHmacSecret } from "./chat-secrets";
+import { chatDeliveredTopic } from "./events";
+import { databaseUrl } from "./secrets";
 
 // ── Chat WebSocket Worker (Cloudflare DO) ────────────────────────────────────
-// M1 — End-to-end transport for the chat MVP.
+// M2 — Worker → Neon HTTP direct (ADR-010). Lambda hop on persist removed.
 //
 // Topology (per E1 / Option A):
 //   device ──WS──► UserInbox<userId> ──RPC──► Chat<chatId> ──RPC──► UserInbox<otherUser> ──WS──► device
 //
 //   - One WS per device. UserInbox holds device sockets, fan-routes per chat.
 //   - Chat DO owns the per-chat fanout. Hibernates when idle.
-//   - Persistence is await-then-ack (per F1 / Option Y) with 100ms DO batching:
-//       Chat DO buffers sends for ~100ms, POSTs HMAC-signed batch to Lambda
-//       /internal/chat/persist, awaits success, then acks sender + broadcasts.
+//   - Persistence: Chat DO buffers sends for ~100ms, writes batch directly to
+//     Neon via @repo/db-edge (@neondatabase/serverless), then acks sender +
+//     broadcasts. server_serial is DO-assigned (ADR-012).
+//   - API_INTERNAL_URL kept only for /internal/chat/verify-session callback.
 //
 // Cost shape:
 //   - Hibernation API → idle DOs cost $0.
@@ -25,11 +32,22 @@ import { chatWsHmacSecret } from "./chat-secrets";
 export const chatWsWorker = new sst.cloudflare.Worker("ChatWs", {
   handler: "services/chat-ws/src/index.ts",
   url: true,
-  link: [chatWsHmacSecret],
+  link: [chatWsHmacSecret, chatWsAwsAccessKeyId, chatWsAwsSecretAccessKey],
   environment: {
-    // Worker needs to know where to POST persist + verify requests.
+    // Worker needs the API URL for /internal/chat/verify-session only.
     // apiFunction.url is a Pulumi Output<string> — interpolated at deploy time.
     API_INTERNAL_URL: apiFunction.url.apply((u) => u ?? ""),
+    // Neon HTTP connection string for direct persist (ADR-010). The neon()
+    // factory in @repo/db-edge reads this and issues stateless HTTPS queries.
+    DATABASE_URL: databaseUrl.value,
+    // Push fanout (ADR-013) — Chat DO publishes chat.msg.delivered to this
+    // topic after a successful Neon write. SigV4-signed via aws4fetch from
+    // the Worker; chat-push Lambda (deferred to M6) consumes and dispatches.
+    CHAT_DELIVERED_TOPIC_ARN: chatDeliveredTopic.arn,
+    // IAM credentials for the Worker-side SigV4 publisher. Sourced from a
+    // dedicated IAM user with sns:Publish scoped to this topic only.
+    // Provisioned out-of-band; secrets are set via `sst secret set`.
+    AWS_REGION: $app.providers?.aws?.region ?? "eu-west-1",
   },
   transform: {
     worker: (args) => {
@@ -58,9 +76,18 @@ export const chatWsWorker = new sst.cloudflare.Worker("ChatWs", {
       // Subsequent class changes (rename, delete, transition non-SQLite →
       // SQLite) require setting oldTag = current tag, newTag = next tag,
       // and the appropriate fields (renamedClasses, deletedClasses, etc.).
+      // Tag-only bumps — each deploy that changes no DO classes still has to
+      // advance the tag because Pulumi diffs the migrations object. Chat +
+      // UserInbox already exist as SQLite-backed DO classes; do NOT re-declare
+      // them in newSqliteClasses (CF error 10074: "already depended on by
+      // existing Durable Objects"). On error 10079 ("got tag X expected Y"),
+      // align oldTag with the current deployed tag and bump newTag.
       args.migrations = {
-        newTag: "v1",
-        newSqliteClasses: ["Chat", "UserInbox"],
+        oldTag: "v5",
+        newTag: "v6",
+        newSqliteClasses: [],
+        renamedClasses: [],
+        deletedClasses: [],
       };
 
       // Compatibility date with WebSocket auto-reply-to-close behaviour

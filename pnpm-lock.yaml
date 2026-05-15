@@ -427,6 +427,25 @@ importers:
         specifier: 5.9.2
         version: 5.9.2
 
+  packages/db-edge:
+    dependencies:
+      '@neondatabase/serverless':
+        specifier: 0.10.4
+        version: 0.10.4
+    devDependencies:
+      '@repo/eslint-config':
+        specifier: workspace:*
+        version: link:../eslint-config
+      '@repo/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
+      eslint:
+        specifier: ^9.39.1
+        version: 9.39.4(jiti@2.7.0)
+      typescript:
+        specifier: 5.9.2
+        version: 5.9.2
+
   packages/eslint-config:
     devDependencies:
       '@eslint/js':
@@ -581,6 +600,12 @@ importers:
       '@repo/chat-transport':
         specifier: workspace:*
         version: link:../../packages/chat-transport
+      '@repo/db-edge':
+        specifier: workspace:*
+        version: link:../../packages/db-edge
+      aws4fetch:
+        specifier: ^1.0.20
+        version: 1.0.20
       ulid:
         specifier: ^2.3.0
         version: 2.4.0
@@ -4476,6 +4501,9 @@ packages:
 
   aws4fetch@1.0.18:
     resolution: {integrity: sha512-3Cf+YaUl07p24MoQ46rFwulAmiyCwH2+1zw1ZyPAX5OtJ34Hh185DwB8y/qRLb6cYYYtSFJ9pthyLc0MD4e8sQ==}
+
+  aws4fetch@1.0.20:
+    resolution: {integrity: sha512-/djoAN709iY65ETD6LKCtyyEI04XIBP5xVvfmNxsEP0uJB5tyaGBztSryRr4HqMStr9R06PisQE7m9zDTXKu6g==}
 
   babel-jest@29.7.0:
     resolution: {integrity: sha512-BrvGY3xZSwEcCzKvKsCi2GgHqDqsYkOP4/by5xCgIwGXQxIEh+8ew3gmrE1y7XRR6LHZIj6yLYnUi/mm2KXKBg==}
@@ -13801,6 +13829,8 @@ snapshots:
       xml2js: 0.6.2
 
   aws4fetch@1.0.18: {}
+
+  aws4fetch@1.0.20: {}
 
   babel-jest@29.7.0(@babel/core@7.29.0):
     dependencies:

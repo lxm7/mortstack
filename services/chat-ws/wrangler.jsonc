@@ -22,4 +22,6 @@
     // Override locally via .dev.vars for the dev API URL.
     "API_INTERNAL_URL": "http://localhost:3001"
   }
+  // DATABASE_URL must be set in .dev.vars locally (not committed). SST
+  // injects it in deployed stages; see infra/stacks/chat-ws.ts.
 }

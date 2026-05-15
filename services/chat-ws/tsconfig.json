@@ -7,6 +7,6 @@
     "moduleResolution": "Bundler",
     "noEmit": true
   },
-  "include": ["src", "worker-configuration.d.ts"],
+  "include": ["src", "worker-configuration.d.ts", "sst-env.d.ts"],
   "exclude": ["node_modules"]
 }

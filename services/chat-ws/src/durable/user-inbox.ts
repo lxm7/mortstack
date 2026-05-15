@@ -4,6 +4,7 @@ import {
   encodeFrame,
   type ClientToServer,
   type ServerToClient,
+  type ChatErrorCode,
 } from "@repo/chat-transport";
 
 // Per-user inbox DO. Holds 1..N device WebSocket connections for a single user
@@ -13,6 +14,11 @@ import {
 // Hibernation: enabled via ctx.acceptWebSocket(). Subscriptions are persisted
 // in ctx.storage so they survive eviction. Per-WS userId is kept on the
 // WebSocket attachment.
+//
+// RPC surface (called by Chat DO):
+//   - deliverBatch(frames[]) — fan a list of `msg` frames to all sockets
+//   - ackBatch(frames[])     — fan a list of `ack` frames to all sockets
+//   - error({ code, msg })   — single `err` frame, soft error (connection stays)
 
 interface SocketAttachment {
   userId: string;
@@ -21,6 +27,11 @@ interface SocketAttachment {
 }
 
 const SUB_KEY = "subscriptions";
+
+type MsgFrame = Extract<ServerToClient, { t: "msg" }>;
+type AckFrame = Extract<ServerToClient, { t: "ack" }>;
+type MsgPayload = Omit<MsgFrame, "t">;
+type AckPayload = Omit<AckFrame, "t">;
 
 export class UserInbox extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
@@ -61,10 +72,6 @@ export class UserInbox extends DurableObject<Env> {
       } satisfies ServerToClient),
     );
 
-    // Re-apply prior subscriptions (UserInbox may have had them before
-    // hibernating). New device connections see an empty hello + must sub
-    // again — we still keep prior subscriptions so any inbound `msg` from
-    // chats this user is in still routes to all attached sockets.
     return new Response(null, { status: 101, webSocket: client });
   }
 
@@ -129,8 +136,6 @@ export class UserInbox extends DurableObject<Env> {
     const added = chatIds.filter((id) => !currentSet.has(id));
     const removed = current.filter((id) => !desiredSet.has(id));
 
-    // Attach this user to each newly-subscribed chat DO so the Chat DO knows
-    // who to broadcast to.
     await Promise.all(
       added.map((chatId) => {
         const stub = this.env.CHAT.get(this.env.CHAT.idFromName(chatId));
@@ -161,8 +166,7 @@ export class UserInbox extends DurableObject<Env> {
         ciphertext: env.ciphertext,
         nonce: env.nonce,
       });
-      // ack is delivered async by Chat DO via this.ack() — no immediate ack
-      // here, since Y semantics require the persist to land first.
+      // ack arrives async via ackBatch() after Chat DO persists.
     } catch {
       this.sendErr(ws, "PERSIST_FAILED", "send rejected");
     }
@@ -170,13 +174,18 @@ export class UserInbox extends DurableObject<Env> {
 
   // ── RPC entrypoints (called by Chat DO) ───────────────────────────────────
 
-  // Fan a delivered message to every connected device of this user.
-  async deliver(payload: Extract<ServerToClient, { t: "msg" }>): Promise<void> {
+  // Fan a list of `msg` frames to every socket of this user. One RPC carries
+  // N messages so a chat batch of 10 msgs to 50 recipients = 50 RPCs (not 500).
+  async deliverBatch(payloads: MsgPayload[]): Promise<void> {
+    if (payloads.length === 0) return;
     const sockets = this.ctx.getWebSockets();
     if (sockets.length === 0) return;
-    const frame = encodeFrame(payload);
+    const frames = payloads.map((p) =>
+      encodeFrame({ t: "msg", ...p } satisfies ServerToClient),
+    );
     for (const ws of sockets) {
-      if (ws.readyState === WebSocket.READY_STATE_OPEN) {
+      if (ws.readyState !== WebSocket.READY_STATE_OPEN) continue;
+      for (const frame of frames) {
         try {
           ws.send(frame);
         } catch {
@@ -186,12 +195,18 @@ export class UserInbox extends DurableObject<Env> {
     }
   }
 
-  // Deliver an ack to the sender's devices (multi-device sender sees ack on
-  // every device, so they all flip optimistic → confirmed).
-  async ack(payload: Extract<ServerToClient, { t: "ack" }>): Promise<void> {
-    const frame = encodeFrame(payload);
-    for (const ws of this.ctx.getWebSockets()) {
-      if (ws.readyState === WebSocket.READY_STATE_OPEN) {
+  // Fan a list of `ack` frames to every socket of this user (multi-device
+  // sender sees acks on every device, flipping optimistic → confirmed).
+  async ackBatch(payloads: AckPayload[]): Promise<void> {
+    if (payloads.length === 0) return;
+    const sockets = this.ctx.getWebSockets();
+    if (sockets.length === 0) return;
+    const frames = payloads.map((p) =>
+      encodeFrame({ t: "ack", ...p } satisfies ServerToClient),
+    );
+    for (const ws of sockets) {
+      if (ws.readyState !== WebSocket.READY_STATE_OPEN) continue;
+      for (const frame of frames) {
         try {
           ws.send(frame);
         } catch {
@@ -201,12 +216,28 @@ export class UserInbox extends DurableObject<Env> {
     }
   }
 
+  // Send a single `err` frame to every socket of this user. Connection stays
+  // open — errors are soft and routed by code.
+  async error(payload: { code: ChatErrorCode; msg?: string }): Promise<void> {
+    const sockets = this.ctx.getWebSockets();
+    if (sockets.length === 0) return;
+    const frame = encodeFrame({
+      t: "err",
+      code: payload.code,
+      msg: payload.msg,
+    } satisfies ServerToClient);
+    for (const ws of sockets) {
+      if (ws.readyState !== WebSocket.READY_STATE_OPEN) continue;
+      try {
+        ws.send(frame);
+      } catch {
+        // ignore
+      }
+    }
+  }
+
   // ── Internal helpers ──────────────────────────────────────────────────────
-  private sendErr(
-    ws: WebSocket,
-    code: Extract<ServerToClient, { t: "err" }>["code"],
-    msg?: string,
-  ): void {
+  private sendErr(ws: WebSocket, code: ChatErrorCode, msg?: string): void {
     try {
       ws.send(encodeFrame({ t: "err", code, msg } satisfies ServerToClient));
     } catch {
