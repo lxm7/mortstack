@@ -35,6 +35,13 @@
     "experiments": {
       "typedRoutes": true,
       "autolinkingModuleResolution": true
+    },
+    "extra": {
+      "_complianceTodos": [
+        "Before first App Store / Play public submission:",
+        "1. iOS: set ios.config.usesNonExemptEncryption = true. SQLCipher uses AES-256 → ECCN 5D002 (mass-market via License Exception ENC). US entity → file annual BIS self-classification (CSV to crypt-supp8@bis.doc.gov by Feb 1). Non-US entity → check national regime (UK ECJU / EU dual-use), usually no filing.",
+        "2. iOS: add ios.entitlements with keychain-access-groups + com.apple.security.application-groups for the shared group (e.g. 'group.io.sessions.shared'). Required so the M6 Notification Service Extension can read the SQLCipher passphrase from SecureStore."
+      ]
     }
   }
 }

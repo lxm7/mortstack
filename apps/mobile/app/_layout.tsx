@@ -15,16 +15,26 @@ import {
 } from "@expo-google-fonts/ibm-plex-sans";
 import { Providers } from "@/providers";
 import { ChatCrypto } from "@repo/chat-crypto";
-import { ChatDb } from "@repo/chat-db";
+import { getChatDb } from "@repo/chat-db";
 import { ChatCalls } from "@repo/chat-calls";
 
 SplashScreen.preventAutoHideAsync();
 
 console.log("[chat-mvp/M0]", {
   crypto: ChatCrypto.hello(),
-  db: ChatDb.hello(),
   calls: ChatCalls.hello(),
 });
+
+getChatDb()
+  .then((handle) => {
+    console.log("[chat-mvp/M2] chat-db ready", {
+      schemaVersion: handle.version,
+      keySource: handle.keySource,
+    });
+  })
+  .catch((err: unknown) => {
+    console.error("[chat-mvp/M2] chat-db init failed", err);
+  });
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
