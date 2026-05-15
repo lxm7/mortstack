@@ -488,3 +488,17 @@ Then tail:
  sessions-dev-chatwsscript-wwtawvxu --format pretty
 
 Run smoke in another terminal, watch logs.
+
+### Deep-link from Android emulator
+
+App scheme is sessions (from app.json:scheme),  
+ bundle io.sessions.app.
+
+adb shell am start -W -a android.intent.action.VIEW
+\
+ -d "sessions://chat-db-debug" io.sessions.app
+
+### iOS sim equivalent:
+
+xcrun simctl openurl booted
+sessions://chat-db-debug
