@@ -342,6 +342,16 @@ End-to-end encrypted, multi-device chat as the first major feature module. Teleg
 | Native modules approach              | Expo Modules API; scaffold via `pnpm create expo-module packages/<name> --no-example`                           | Autolinking + monorepo dedup works out of the box on SDK 54+                                                                         |
 | Server-side persistence              | Existing AWS Lambda (tRPC) writes to Neon; DO is transport + transient state only                               | Source of truth stays in Postgres; if DO restarts, history is intact                                                                 |
 
+### Crypto invariants (apply to every milestone M3 → M8)
+
+1. **Servers never hold plaintext.** Lambda, DO, R2 see ciphertext + opaque metadata only. Push relays (APNs/FCM) get ciphertext bodies.
+2. **Servers never hold private keys.** All private key material lives in the device's secure enclave / Keychain / Keystore. Recovery flows (if ever added) use user-held mnemonic, not server escrow.
+3. **Server-side validators are cheap and content-blind.** Workers/Lambda enforce byte-length and signature shape on crypto envelopes; they never attempt to parse plaintext.
+4. **Zero new infra services for crypto.** All crypto state (pubkey directory, prekey bundles in M3.5) reuses Postgres + existing tRPC Lambda. CDN/CF KV mirrors are added only on scale triggers (≥100k DAU), not for correctness.
+5. **Forward-compat with the next milestone.** Every crypto frame carries a `v` version byte so M3 → M3.5 upgrade can negotiate per-chat without breaking history.
+
+"Signal" in this document = the Signal Foundation messenger and its open-source [Signal Protocol](https://signal.org/docs/) (X3DH + Double Ratchet + Sender Keys). Not network signalling, not WebRTC SDP signalling.
+
 ### Package layout
 
 ```
@@ -403,12 +413,88 @@ Integration:
 
 #### M3 — MVP crypto with libsodium (2 weeks)
 
-- `@repo/chat-crypto` native module wrapping libsodium (Swift + Kotlin).
-- Surface: `generateIdentity()`, `box(plain, theirPub, mySecret)`, `boxOpen(...)`, `randomNonce()`.
-- Identity keypair generated on first launch; public key registered with the API; private key in shared keychain.
-- Per-message AEAD nonce; ciphertext is what crosses the wire and what the server stores.
-- 1:1 only for now; group chat is documented as server-trust until M3.5.
-- Acceptance: two devices DM each other; server logs and database show only ciphertext; manual decrypt with the wrong key fails.
+- `@repo/chat-crypto` native module wrapping libsodium via **Swift-Sodium (iOS)** + **lazysodium-android (Android)**.
+- Surface: `generateIdentity()`, `box(plain, theirPub, mySecret)`, `boxOpen(...)`, `randomNonce()`, `signKeyBundle(...)`. All sync, `Uint8Array` in/out.
+- Single 32-byte seed per device → derive Ed25519 (identity/sign) + X25519 (encrypt). Forward-compat with M3.5 Signal X3DH (same Ed25519 key is reused).
+- Seed persisted in shared Keychain group `io.sessions.chat` set up in M2 (alias `chat-identity-seed-v1`, `AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY`).
+- **Multi-device per user**: Postgres table `UserDevice(userId, deviceId, ed25519Pub, x25519Pub, addedAt)`. Outbound send = fanout-encrypt to every device of every recipient. Cheap at our scale (Postgres column read), Signal-shaped.
+- Pubkey directory = tRPC routes `user.keys.publish` / `user.keys.byUserIds(batch)`. Better Auth bearer–authed. Client caches peer pubkeys in `chat-db.peer_keys` table (TTL 24h).
+- Per-message random 24-byte XSalsa20 nonce. Plaintext frame `{v: 1, text, ts}` msgpack-encoded then boxed.
+- 1:1 only for now; group sends carry explicit `unencrypted: true` envelope flag and a UI banner ("Not encrypted — upgrading soon") until M3.5.
+- Server-side validators: DO/Worker rejects `len(nonce) != 24` or `len(ciphertext) < 17`.
+- Acceptance: two devices DM each other; server logs and database show only ciphertext; manual decrypt with the wrong key fails; multi-device fanout works (same user logged in on 2 devices both receive their copy).
+
+#: 1  
+ Chunk: Native binding — Swift-Sodium pod +  
+ lazysodium gradle, replace hello() stub with  
+ generateIdentity / box / boxOpen / randomNonce /
+signKeyBundle  
+ Why first: Biggest risk = native build config on  
+ both platforms. Fail fast. Smoke test =
+round-trip  
+ in chat-db-debug screen.
+Est: 3–4 days  
+ ────────────────────────────────────────  
+ #: 2  
+ Chunk: Identity lifecycle — seed gen + keychain
+group write + derive Ed25519/X25519 on read  
+ Why first: Trivial once #1 lands. Unlocks
+everything  
+ downstream.  
+ Est: 0.5 day
+────────────────────────────────────────
+#: 3  
+ Chunk: Prisma schema + UserDevice table + migration
+Why first: Server-side prerequisite. Can run in  
+ parallel with #1 if I split.
+Est: 0.5 day  
+ ────────────────────────────────────────  
+ #: 4  
+ Chunk: tRPC user.keys.publish / user.keys.byUserIds
+
+    + Better Auth bearer wiring
+
+Why first: Tied to #3.  
+ Est: 1 day  
+ ────────────────────────────────────────
+#: 5  
+ Chunk: chat-db peer_keys table + cache layer
+Why first: Client side of directory.  
+ Est: 0.5 day
+────────────────────────────────────────
+#: 6  
+ Chunk: Crypto pipeline
+(packages/chat/src/crypto-pipe.ts) + plaintext  
+ frame {v:1,text,ts} + outbound/inbound wrap
+around  
+ chat-transport  
+ Why first: The bit that actually encrypts.
+Est: 1.5 days
+────────────────────────────────────────
+#: 7
+Chunk: DO/Worker validators (len(nonce)==24,
+len(ciphertext)>=17, group unencrypted:true flag)
+Why first: Defensive, server-side.
+Est: 0.5 day
+────────────────────────────────────────
+#: 8
+Chunk: Acceptance harness — extend chat-db-debug:
+local fingerprint, peer fingerprint, last cipher
+hex, wrong-key decrypt button. Two-device manual
+verify.
+Why first: Locks in acceptance criteria.
+Est: 0.5 day
+
+##### Cost + scale model (M3, additive over Phase 1 baseline)
+
+| DAU         | Pubkey reads/sec | Pubkey storage | Additive cost | Path                                                                                                      |
+| ----------- | ---------------- | -------------- | ------------- | --------------------------------------------------------------------------------------------------------- |
+| 0–100       | <1               | ~20 KB         | **$0/mo**     | Neon free tier column, AWS Lambda free tier, on-device privkey, no new infra service.                     |
+| 5k (Ph2 in) | ~50              | ~500 KB        | $0/mo         | Still Neon HTTP + tRPC Lambda; client cache absorbs reads.                                                |
+| 100k        | ~1k (mostly hit) | ~10 MB         | ~$1/mo        | Add CF KV mirror of pubkeys (write-through on publish). Fits the Phase 2 trigger row already in README.   |
+| 1M          | ~10k (cached)    | ~100 MB        | ~$5–10/mo     | CF KV becomes primary read path; Postgres = source of truth. Pubkey publish stays on the slower API path. |
+
+Privkey ops are 100% client-side at every scale — server cost from private-key handling = $0 forever.
 
 #### M3.5 — Signal Protocol upgrade (3-4 weeks, before public launch)
 
@@ -416,6 +502,26 @@ Integration:
 - Add Sender Keys protocol for group chats so groups are E2E too.
 - X3DH-style prekey exchange via the API; prekey bundles uploaded on registration and topped up periodically.
 - Either port `libsignal-protocol-c` into a custom Expo module, or build a thin native wrapper around an existing maintained Swift/Kotlin port — decide after M3 based on what's actively maintained at the time.
+- Reuses the Ed25519 identity key generated in M3 as Signal's long-term identity key — no fresh keygen, no UX-visible migration of identity.
+- Prekey bundle storage = same Postgres-column pattern as M3's pubkey directory, extended to a `prekey_bundles` table. Bundles are self-signed → CDN/CF-KV cacheable on the same scale trigger as M3 pubkeys (≥100k DAU). No new infra needed at MVP.
+- Q7 — Native ABI shape
+  Picked: sync Expo Function(...) returning  
+  Uint8Array.
+  Alt: AsyncFunction (Promise)  
+  Cost / Risk: Bridge overhead per call. Sodium ops
+  sub-ms — async hides nothing.  
+  ────────────────────────────────────────  
+  Alt: Raw JSI host objects (quick-crypto style)  
+  Cost / Risk: Fastest, zero-copy. Bypasses Expo  
+   autolinking, more native code to own. Overkill at
+  MVP msg rate.  
+  ────────────────────────────────────────
+  Alt: NitroModules (JSI generator)  
+  Cost / Risk: Newer Expo-friendly JSI route. Young,
+  adds dep. Re-evaluate at M3.5 only if profiler  
+   flags.
+
+- `v` version byte introduced in M3's plaintext frame is used here to negotiate per-chat upgrade without breaking already-sent history.
 - Migration path for accounts already on libsodium: re-key on next login, archive old ciphertext as not-recoverable, surface a UI explanation.
 - Acceptance: Signal-protocol-compliant message exchange verified against a known-good test vector; old keys revoked end-to-end; recovery flow documented.
 
@@ -441,7 +547,7 @@ Integration:
 #### M6 — Push notifications with E2E decryption (2 weeks)
 
 - `expo-notifications` for token registration; tokens stored on the API and tied to the device session.
-- iOS Notification Service Extension in `apps/mobile/modules/notification-service/` (Swift). Runs outside the JS runtime; reads the user's private key from the shared Keychain group set up in M2; decrypts the payload; presents the plaintext notification.
+- iOS Notification Service Extension in `apps/mobile/modules/notification-service/` (Swift). Runs outside the JS runtime; reads the identity seed written in M3 from the shared Keychain group `io.sessions.chat` (set up in M2, populated in M3) — no re-prompt, no JS bridge. Decrypts the payload and presents the plaintext notification.
 - Android: data-only FCM messages handled in a foreground/background Kotlin service; same decrypt-then-display flow.
 - Server (`services/api`): on a new message, looks up registered devices for offline members and dispatches ciphertext + minimal metadata via FCM/APNs (no plaintext).
 - Acceptance: device locked, push arrives, plaintext notification appears with sender name and message body; opening the app shows the message already decrypted in local DB.
@@ -449,6 +555,7 @@ Integration:
 #### M7 — Voice and video calls (3-4 weeks)
 
 - `react-native-webrtc` added as a config plugin; rebuild required.
+- DTLS-SRTP fingerprint is signed by the Ed25519 identity key generated in M3 — same long-term identity ties together chat, push decryption, and call peer auth.
 - `react-native-callkeep` for CallKit (iOS) and ConnectionService (Android) — proper system call UI, lock-screen ringing.
 - Signaling over the existing chat-ws DO channel (no new transport).
 - STUN free (Google or CF), TURN via Cloudflare Calls or self-hosted coturn — decide based on cost vs control trade-off when this milestone starts.
@@ -500,5 +607,6 @@ adb shell am start -W -a android.intent.action.VIEW
 
 ### iOS sim equivalent:
 
+xcrun simctl terminate booted io.sessions.app
 xcrun simctl openurl booted
 sessions://chat-db-debug
