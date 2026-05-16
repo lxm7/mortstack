@@ -16,3 +16,13 @@ android {
     abortOnError false
   }
 }
+
+repositories {
+  mavenCentral()
+}
+
+dependencies {
+  // terl/lazysodium-android — JNA-wrapped libsodium prebuilt for Android ABIs.
+  implementation "com.goterl:lazysodium-android:5.1.4@aar"
+  implementation "net.java.dev.jna:jna:5.17.0@aar"
+}
