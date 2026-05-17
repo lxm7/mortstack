@@ -14,25 +14,40 @@ import {
   IBMPlexSans_700Bold_Italic,
 } from "@expo-google-fonts/ibm-plex-sans";
 import { Providers } from "@/providers";
-import { ChatCrypto, SEED_BYTES } from "@repo/chat-crypto";
 import { getChatDb } from "@repo/chat-db";
 import { ChatCalls } from "@repo/chat-calls";
+import { getOrCreateChatIdentity } from "@/lib/chat/identity";
+import { publishMyChatDevice } from "@/lib/chat/publish";
+import { loadSessionToken } from "@/lib/auth/session";
 
 SplashScreen.preventAutoHideAsync();
 
-try {
-  const seed = ChatCrypto.generateIdentitySeed();
-  const keys = ChatCrypto.derivePublicKeys(seed);
-  console.log("[chat-mvp/M3] chat-crypto ready", {
-    seedBytes: seed.length,
-    seedOk: seed.length === SEED_BYTES,
-    ed25519PubBytes: keys.ed25519Pub.length,
-    x25519PubBytes: keys.x25519Pub.length,
-    calls: ChatCalls.hello(),
+getOrCreateChatIdentity()
+  .then(async (id) => {
+    console.log("[chat-mvp/M3] chat-identity ready", {
+      source: id.source,
+      deviceId: id.deviceId,
+      ed25519PubBytes: id.ed25519Pub.length,
+      x25519PubBytes: id.x25519Pub.length,
+      calls: ChatCalls.hello(),
+    });
+
+    // Only attempt publish if we already have a session — first-launch users
+    // are pre-signup. Post-login screen should call publishMyChatDevice()
+    // directly once a session token is written.
+    const hasSession = (await loadSessionToken()) !== null;
+    if (!hasSession) return;
+
+    try {
+      const result = await publishMyChatDevice();
+      console.log("[chat-mvp/M3] device keys published", result);
+    } catch (err) {
+      console.error("[chat-mvp/M3] device keys publish failed", err);
+    }
+  })
+  .catch((err: unknown) => {
+    console.error("[chat-mvp/M3] chat-identity init failed", err);
   });
-} catch (err) {
-  console.error("[chat-mvp/M3] chat-crypto smoke failed", err);
-}
 
 getChatDb()
   .then((handle) => {

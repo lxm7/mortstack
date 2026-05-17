@@ -524,6 +524,19 @@ Privkey ops are 100% client-side at every scale — server cost from private-key
 - `v` version byte introduced in M3's plaintext frame is used here to negotiate per-chat upgrade without breaking already-sent history.
 - Migration path for accounts already on libsodium: re-key on next login, archive old ciphertext as not-recoverable, surface a UI explanation.
 - Acceptance: Signal-protocol-compliant message exchange verified against a known-good test vector; old keys revoked end-to-end; recovery flow documented.
+- ❌ Not spec'd anywhere: PIN-based recovery (Signal SVR),  
+  biometric gate, key escrow. Threat model accepts: lose  
+  phone/uninstall = lose identity. M3 doesn't solve this — likely
+  M3.5 or later.
+- ❌ Not spec'd: JS-string seed memory not zeroable. Acceptable
+  per Signal RN precedent. Could revisit in M3.5 with a  
+  seed-handle-based ChatCrypto API (pass keychain alias instead of
+  bytes), but spec passes Uint8Array.
+
+  Recommendation update: stay hex in SecureStore for M2 parity
+  (one-engineer codebase, consistency > 20 bytes saved). Plan  
+  base64 for wire format in chunks 3-4 to match SUI and save  
+  bandwidth at 1M scale.
 
 #### M4 — Chat UI: 1:1 + group text (3 weeks)
 
