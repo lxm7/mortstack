@@ -117,10 +117,36 @@ model Account {
   // Relations
   profiles       ProfileMember[]
   identityChecks IdentityCheck[]
+  devices        UserDevice[]
 
   @@index([authUserId])
   @@index([walletAddress])
   @@index([email])
+}
+
+// ── UserDevice ────────────────────────────────────────────────────────────────
+// One row per physical device an Account has signed in on. Stores the device's
+// long-term Ed25519 (identity/sign) + X25519 (encrypt) public keys, plus a
+// self-signed bundle signature the server verifies at publish time.
+//
+// Outbound chat send fans-out to every device of every recipient — see
+// README §M3 Multi-device. Private keys never leave the device's secure
+// enclave / Keychain group `io.sessions.chat`; this table holds public material
+// only.
+model UserDevice {
+  id              String   @id @default(cuid())
+  accountId       String
+  deviceId        String   // client-generated UUID; stable across re-installs only if seed survives
+  ed25519Pub      Bytes    // 32 bytes raw
+  x25519Pub       Bytes    // 32 bytes raw
+  bundleSignature Bytes    // 64-byte Ed25519 detached sig over 0x01 ‖ deviceId-utf8 ‖ ed25519Pub ‖ x25519Pub
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, deviceId])
+  @@index([accountId])
 }
 
 // ── Profile ───────────────────────────────────────────────────────────────────

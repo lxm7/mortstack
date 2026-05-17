@@ -10,7 +10,7 @@ import Clibsodium
 
 // MARK: - Errors
 
-private enum ChatCryptoError: Error, CustomStringConvertible {
+private enum ChatCryptoError: Error, LocalizedError, CustomStringConvertible {
   case sodiumInitFailed
   case invalidSeedLength(Int)
   case invalidPublicKeyLength(Int)
@@ -22,6 +22,7 @@ private enum ChatCryptoError: Error, CustomStringConvertible {
   case decryptionFailed
   case signFailed
   case hashFailed
+  case keychainError(OSStatus)
 
   var description: String {
     switch self {
@@ -47,9 +48,29 @@ private enum ChatCryptoError: Error, CustomStringConvertible {
       return "crypto_sign_detached failed"
     case .hashFailed:
       return "crypto_generichash failed"
+    case .keychainError(let status):
+      return "Keychain SecItem call failed with OSStatus \(status)"
     }
   }
+
+  // LocalizedError → bridges to NSError.localizedDescription so the JS-side
+  // sees the real message instead of "<EnumType> error <ordinal>".
+  var errorDescription: String? { description }
 }
+
+// MARK: - Keychain constants
+
+// Service name pins the alias the README §M3 spec mandates. Bumping the v1
+// suffix is a destructive identity rotation — coordinate with chat-db key
+// versioning before changing.
+private let SEED_KEYCHAIN_SERVICE = "chat-identity-seed-v1"
+private let SEED_KEYCHAIN_ACCOUNT = "default"
+
+// Shared keychain access group suffix. iOS keychain APIs need the FULL
+// access-group string ("<TEAMID>.io.sessions.chat") at write/read time.
+// The team prefix is discovered at runtime from the keychain itself —
+// see `resolvedSeedAccessGroup()` below.
+private let SEED_KEYCHAIN_ACCESS_GROUP_SUFFIX = "io.sessions.chat"
 
 // MARK: - Sizes
 
@@ -217,6 +238,24 @@ public class ChatCryptoModule: Module {
       try self.ensureInit()
       return try self.randomBytes(NONCE_BYTES)
     }
+
+    // MARK: - Seed persistence (iOS Keychain, shared access group)
+
+    Function("saveSeed") { (seed: Data) throws -> Void in
+      try self.ensureInit()
+      try self.require(seed, expected: SEED_BYTES, name: "seed")
+      try self.keychainSaveSeed(seed)
+    }
+
+    Function("loadSeed") { () throws -> Data? in
+      try self.ensureInit()
+      return try self.keychainLoadSeed()
+    }
+
+    Function("clearSeed") { () throws -> Bool in
+      try self.ensureInit()
+      return try self.keychainClearSeed()
+    }
   }
 
   // MARK: - Helpers
@@ -303,5 +342,101 @@ public class ChatCryptoModule: Module {
     }
     if kpRc != 0 { throw ChatCryptoError.keypairDerivationFailed("x25519") }
     return (pub, sec)
+  }
+
+  // MARK: - Keychain helpers
+
+  // Cached "<TEAMID>.io.sessions.chat" — resolved once on first use, since
+  // the team prefix doesn't change for the lifetime of the process.
+  private static var cachedAccessGroup: String?
+
+  private func keychainBaseQuery() throws -> [String: Any] {
+    return [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: SEED_KEYCHAIN_SERVICE,
+      kSecAttrAccount as String: SEED_KEYCHAIN_ACCOUNT,
+      kSecAttrAccessGroup as String: try resolvedSeedAccessGroup(),
+    ]
+  }
+
+  // Discover the team prefix by adding a throwaway keychain item without an
+  // explicit access group, reading back its assigned kSecAttrAccessGroup
+  // (which iOS fills in as "<TEAMID>.<defaultBundle>"), and splitting on the
+  // first dot. Standard pattern documented widely in iOS SDK discussions.
+  private func resolvedSeedAccessGroup() throws -> String {
+    if let cached = Self.cachedAccessGroup { return cached }
+
+    let probeQuery: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: "io.sessions.chat.prefix-probe",
+      kSecAttrAccount as String: "probe",
+    ]
+    SecItemDelete(probeQuery as CFDictionary)
+
+    var addAttrs = probeQuery
+    addAttrs[kSecValueData as String] = Data([0x00])
+    addAttrs[kSecReturnAttributes as String] = true
+    addAttrs[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+
+    var result: CFTypeRef?
+    let addStatus = SecItemAdd(addAttrs as CFDictionary, &result)
+    defer { SecItemDelete(probeQuery as CFDictionary) }
+
+    guard addStatus == errSecSuccess,
+      let attrs = result as? [String: Any],
+      let assignedGroup = attrs[kSecAttrAccessGroup as String] as? String,
+      let prefix = assignedGroup.split(separator: ".").first
+    else {
+      throw ChatCryptoError.keychainError(addStatus)
+    }
+
+    let full = "\(prefix).\(SEED_KEYCHAIN_ACCESS_GROUP_SUFFIX)"
+    Self.cachedAccessGroup = full
+    return full
+  }
+
+  private func keychainSaveSeed(_ seed: Data) throws {
+    var add = try keychainBaseQuery()
+    add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+    add[kSecValueData as String] = seed
+
+    let addStatus = SecItemAdd(add as CFDictionary, nil)
+    if addStatus == errSecSuccess { return }
+
+    // Existing item → overwrite. Update the value + accessibility together so
+    // a stale accessibility class from an earlier install can't pin the item.
+    if addStatus == errSecDuplicateItem {
+      let update: [String: Any] = [
+        kSecValueData as String: seed,
+        kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+      ]
+      let updStatus = SecItemUpdate(try keychainBaseQuery() as CFDictionary, update as CFDictionary)
+      if updStatus != errSecSuccess {
+        throw ChatCryptoError.keychainError(updStatus)
+      }
+      return
+    }
+
+    throw ChatCryptoError.keychainError(addStatus)
+  }
+
+  private func keychainLoadSeed() throws -> Data? {
+    var query = try keychainBaseQuery()
+    query[kSecReturnData as String] = true
+    query[kSecMatchLimit as String] = kSecMatchLimitOne
+
+    var item: CFTypeRef?
+    let status = SecItemCopyMatching(query as CFDictionary, &item)
+    if status == errSecItemNotFound { return nil }
+    if status != errSecSuccess { throw ChatCryptoError.keychainError(status) }
+    guard let data = item as? Data else { return nil }
+    return data
+  }
+
+  private func keychainClearSeed() throws -> Bool {
+    let status = SecItemDelete(try keychainBaseQuery() as CFDictionary)
+    if status == errSecSuccess { return true }
+    if status == errSecItemNotFound { return false }
+    throw ChatCryptoError.keychainError(status)
   }
 }

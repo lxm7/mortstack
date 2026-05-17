@@ -1,5 +1,9 @@
 package io.sessions.chatcrypto
 
+import android.content.Context
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
+import android.util.Base64
 import com.goterl.lazysodium.LazySodiumAndroid
 import com.goterl.lazysodium.SodiumAndroid
 import com.goterl.lazysodium.interfaces.Box
@@ -8,6 +12,11 @@ import com.goterl.lazysodium.interfaces.Sign
 import expo.modules.kotlin.exception.CodedException
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import java.security.KeyStore
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
+import javax.crypto.spec.GCMParameterSpec
 
 private class ChatCryptoException(message: String) :
   CodedException("ERR_CHAT_CRYPTO", message, null)
@@ -25,6 +34,18 @@ private const val MAC_BYTES = Box.MACBYTES.toInt()                     // 16
 // suffix only on a breaking key-identity migration.
 private val X25519_DERIVATION_CONTEXT: ByteArray =
   "sessions/x25519/v1".toByteArray(Charsets.UTF_8)
+
+// Seed persistence: AndroidKeystore-backed AES/GCM wrap of the 32-byte seed.
+// Android has no keychain-access-group analogue (the M7 iOS NSE is iOS-only
+// — Android FCM `data` messages decrypt inside the main app process), so we
+// just isolate the key in AndroidKeystore and hand it back to the app on
+// load. Same alias version suffix as iOS (chat-identity-seed-v1).
+private const val SEED_KEYSTORE_ALIAS = "chat-identity-seed-v1"
+private const val SEED_PREFS_NAME = "io.sessions.chat.identity"
+private const val SEED_PREFS_KEY = "seed-v1"
+private const val ANDROID_KEYSTORE = "AndroidKeyStore"
+private const val AES_GCM_TAG_BITS = 128
+private const val AES_GCM_IV_BYTES = 12
 
 class ChatCryptoModule : Module() {
   private val lazySodium = LazySodiumAndroid(SodiumAndroid())
@@ -130,6 +151,21 @@ class ChatCryptoModule : Module() {
     Function("randomNonce") { ->
       randomBytes(NONCE_BYTES)
     }
+
+    // ----- Seed persistence (AndroidKeystore-wrapped AES/GCM) -----
+
+    Function("saveSeed") { seed: ByteArray ->
+      requireLen(seed, SEED_BYTES, "seed")
+      keystoreSaveSeed(seed)
+    }
+
+    Function("loadSeed") { ->
+      keystoreLoadSeed()
+    }
+
+    Function("clearSeed") { ->
+      keystoreClearSeed()
+    }
   }
 
   // ----- helpers -----
@@ -173,5 +209,77 @@ class ChatCryptoModule : Module() {
     val ok2 = sodium.crypto_box_seed_keypair(pub, sec, subSeed)
     if (ok2 != 0) throw ChatCryptoException("crypto_box_seed_keypair failed (code $ok2)")
     return pub to sec
+  }
+
+  // ----- Keystore helpers -----
+
+  private val androidContext: Context
+    get() = appContext.reactContext
+      ?: throw ChatCryptoException("Android Context unavailable")
+
+  private fun getOrCreateKeystoreKey(): SecretKey {
+    val ks = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
+    val existing = ks.getKey(SEED_KEYSTORE_ALIAS, null) as? SecretKey
+    if (existing != null) return existing
+
+    val gen = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
+    val spec = KeyGenParameterSpec.Builder(
+      SEED_KEYSTORE_ALIAS,
+      KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
+    )
+      .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+      .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+      .setKeySize(256)
+      .setRandomizedEncryptionRequired(true)
+      .build()
+    gen.init(spec)
+    return gen.generateKey()
+  }
+
+  private fun keystoreSaveSeed(seed: ByteArray) {
+    val key = getOrCreateKeystoreKey()
+    val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply {
+      init(Cipher.ENCRYPT_MODE, key)
+    }
+    val iv = cipher.iv
+    val ct = cipher.doFinal(seed)
+    val packed = ByteArray(iv.size + ct.size).also {
+      System.arraycopy(iv, 0, it, 0, iv.size)
+      System.arraycopy(ct, 0, it, iv.size, ct.size)
+    }
+    val encoded = Base64.encodeToString(packed, Base64.NO_WRAP)
+    androidContext
+      .getSharedPreferences(SEED_PREFS_NAME, Context.MODE_PRIVATE)
+      .edit()
+      .putString(SEED_PREFS_KEY, encoded)
+      .apply()
+  }
+
+  private fun keystoreLoadSeed(): ByteArray? {
+    val encoded = androidContext
+      .getSharedPreferences(SEED_PREFS_NAME, Context.MODE_PRIVATE)
+      .getString(SEED_PREFS_KEY, null) ?: return null
+    val packed = Base64.decode(encoded, Base64.NO_WRAP)
+    if (packed.size <= AES_GCM_IV_BYTES) {
+      throw ChatCryptoException("stored seed payload too short (${packed.size}B)")
+    }
+    val iv = packed.copyOfRange(0, AES_GCM_IV_BYTES)
+    val ct = packed.copyOfRange(AES_GCM_IV_BYTES, packed.size)
+    val key = getOrCreateKeystoreKey()
+    val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply {
+      init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(AES_GCM_TAG_BITS, iv))
+    }
+    return cipher.doFinal(ct)
+  }
+
+  private fun keystoreClearSeed(): Boolean {
+    val prefs = androidContext.getSharedPreferences(SEED_PREFS_NAME, Context.MODE_PRIVATE)
+    val had = prefs.contains(SEED_PREFS_KEY)
+    prefs.edit().remove(SEED_PREFS_KEY).apply()
+    runCatching {
+      val ks = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
+      if (ks.containsAlias(SEED_KEYSTORE_ALIAS)) ks.deleteEntry(SEED_KEYSTORE_ALIAS)
+    }
+    return had
   }
 }

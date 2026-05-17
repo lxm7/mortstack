@@ -52,5 +52,10 @@
   "lint-staged": {
     "*.{ts,tsx}": "eslint --fix",
     "*.{ts,tsx,js,jsx,json,css,md}": "prettier --write"
+  },
+  "dependencies": {
+    "expo": "~54.0.34",
+    "react": "19.1.0",
+    "react-native": "0.81.5"
   }
 }

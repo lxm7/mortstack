@@ -47,6 +47,27 @@ declare class ChatCryptoModule extends NativeModule<ChatCryptoModuleEvents> {
   // Random 24-byte XSalsa20 nonce. Exposed for callers that need a nonce
   // ahead of time (e.g. content-key envelopes in M5 media).
   randomNonce(): Uint8Array;
+
+  // Persist the 32-byte identity seed to platform secure storage.
+  // iOS: Keychain item in the `io.sessions.chat` shared access group,
+  //   AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY, service `chat-identity-seed-v1`.
+  //   Readable by the M7 Notification Service Extension without re-prompt.
+  // Android: AES/GCM wrapped with an AndroidKeystore-bound 256-bit key,
+  //   ciphertext in app-private SharedPreferences (`io.sessions.chat.identity`).
+  // Overwrites any existing seed at the same alias.
+  saveSeed(seed: Uint8Array): void;
+
+  // Returns the persisted seed, or `null` if no seed has been stored on this
+  // device yet (fresh install / after `clearSeed`). Throws on storage errors
+  // (e.g. keychain corruption, GCM auth failure) — those are not silently
+  // recoverable since identity would be rotated.
+  loadSeed(): Uint8Array | null;
+
+  // Removes the persisted seed and the wrapping Keystore/Keychain entry.
+  // Returns `true` if an entry existed and was removed, `false` if there was
+  // nothing to remove. Intended for debug screens and test resets — calling
+  // this on a real install destroys the device identity.
+  clearSeed(): boolean;
 }
 
 export default requireNativeModule<ChatCryptoModule>("ChatCrypto");

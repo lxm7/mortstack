@@ -69,9 +69,17 @@ export async function handler(
     if (response) return responseToLambdaResult(response);
   }
 
-  // tRPC handles everything else
+  // tRPC handles everything else. Strip the /trpc mount prefix so the Lambda
+  // adapter sees procedure paths at the root.
+  let trpcEvent = event;
+  if (path.startsWith("/trpc/")) {
+    trpcEvent = { ...event, rawPath: path.slice("/trpc".length) };
+  } else if (path === "/trpc") {
+    trpcEvent = { ...event, rawPath: "/" };
+  }
+
   return trpcHandler(
-    event,
+    trpcEvent,
     context as never,
   ) as Promise<APIGatewayProxyResultV2>;
 }

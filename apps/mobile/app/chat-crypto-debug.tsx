@@ -1,6 +1,11 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { YStack, XStack, Text, Button, ScrollView } from "tamagui";
 import { ChatCrypto } from "@repo/chat-crypto";
+import {
+  type ChatIdentity,
+  clearChatIdentity,
+  getOrCreateChatIdentity,
+} from "@/lib/chat/identity";
 
 function hex(bytes: Uint8Array, max = 16): string {
   let s = "";
@@ -27,10 +32,35 @@ export default function ChatCryptoDebug() {
   const [aliceFp, setAliceFp] = useState("?");
   const [bobFp, setBobFp] = useState("?");
   const [lastCipher, setLastCipher] = useState("?");
+  const [identity, setIdentity] = useState<ChatIdentity | null>(null);
+  const [identityError, setIdentityError] = useState<string | null>(null);
 
   const log = (step: string, ok: boolean, detail: string) => {
     setResults((prev) => [...prev, { step, ok, detail }]);
   };
+
+  const loadIdentity = useCallback(() => {
+    setIdentityError(null);
+    getOrCreateChatIdentity()
+      .then(setIdentity)
+      .catch((err: unknown) => {
+        setIdentity(null);
+        setIdentityError(String(err));
+      });
+  }, []);
+
+  useEffect(() => {
+    loadIdentity();
+  }, [loadIdentity]);
+
+  const onClearIdentity = useCallback(() => {
+    clearChatIdentity()
+      .then(() => {
+        setIdentity(null);
+        loadIdentity();
+      })
+      .catch((err: unknown) => setIdentityError(String(err)));
+  }, [loadIdentity]);
 
   const runRoundTrip = useCallback(() => {
     setResults([]);
@@ -158,6 +188,39 @@ export default function ChatCryptoDebug() {
       <Text color="$color" fontSize="$7" fontWeight="700">
         chat-crypto debug
       </Text>
+
+      <YStack bg="$backgroundHover" p="$3" borderRadius="$3" gap="$1">
+        <Text color="$color" fontSize="$4" fontWeight="600">
+          device identity
+        </Text>
+        {identityError ? (
+          <Text color="red" fontSize="$2">
+            {identityError}
+          </Text>
+        ) : identity ? (
+          <>
+            <Text color="$color" fontSize="$2">
+              source: {identity.source}
+            </Text>
+            <Text color="$color" fontSize="$2">
+              ed25519 pub: {hex(identity.ed25519Pub, 8)}
+            </Text>
+            <Text color="$color" fontSize="$2">
+              x25519 pub: {hex(identity.x25519Pub, 8)}
+            </Text>
+          </>
+        ) : (
+          <Text color="$color" fontSize="$2">
+            loading…
+          </Text>
+        )}
+        <XStack gap="$2" mt="$2">
+          <Button size="$2" onPress={onClearIdentity}>
+            Clear identity
+          </Button>
+        </XStack>
+      </YStack>
+
       <Text color="$color" fontSize="$3">
         alice ed25519 fp: {aliceFp}
       </Text>

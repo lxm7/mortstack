@@ -14,6 +14,7 @@
     "test": "echo \"no tests yet\" && exit 0"
   },
   "dependencies": {
+    "@noble/ed25519": "^2.3.0",
     "@repo/database": "workspace:*",
     "@repo/identity": "workspace:*",
     "@repo/schemas": "workspace:*",
