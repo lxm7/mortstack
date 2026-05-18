@@ -17,13 +17,14 @@ import { Providers } from "@/providers";
 import { getChatDb } from "@repo/chat-db";
 import { ChatCalls } from "@repo/chat-calls";
 import { getOrCreateChatIdentity } from "@/lib/chat/identity";
-import { publishMyChatDevice } from "@/lib/chat/publish";
-import { loadSessionToken } from "@/lib/auth/session";
+// Side-effect import — wires publishMyChatDevice() to fire on every
+// auth-state transition (boot + sign-in + user-switch), idempotent per user.
+import "@/lib/chat/auto-publish";
 
 SplashScreen.preventAutoHideAsync();
 
 getOrCreateChatIdentity()
-  .then(async (id) => {
+  .then((id) => {
     console.log("[chat-mvp/M3] chat-identity ready", {
       source: id.source,
       deviceId: id.deviceId,
@@ -31,19 +32,6 @@ getOrCreateChatIdentity()
       x25519PubBytes: id.x25519Pub.length,
       calls: ChatCalls.hello(),
     });
-
-    // Only attempt publish if we already have a session — first-launch users
-    // are pre-signup. Post-login screen should call publishMyChatDevice()
-    // directly once a session token is written.
-    const hasSession = (await loadSessionToken()) !== null;
-    if (!hasSession) return;
-
-    try {
-      const result = await publishMyChatDevice();
-      console.log("[chat-mvp/M3] device keys published", result);
-    } catch (err) {
-      console.error("[chat-mvp/M3] device keys publish failed", err);
-    }
   })
   .catch((err: unknown) => {
     console.error("[chat-mvp/M3] chat-identity init failed", err);

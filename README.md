@@ -32,6 +32,18 @@ pnpm api
 cd apps
 ```
 
+## 2 simulators for chat debugging:
+
+Terminal 1: pnpm --filter @repo/api-server dev
+Terminal 2: pnpm --filter @repo/chat-ws dev  
+ Terminal 3: pnpm --filter mobile expo start # Metro — keep open
+Terminal 4: xcrun simctl spawn <UDID-1> log
+stream ... # sim 1 logs  
+ Terminal 5: xcrun simctl spawn <UDID-2> log  
+ stream ... # sim 2 logs  
+ Terminal 6: scratchpad for `expo run:ios      
+  --device <name>` when needed
+
 ## Prerequisites
 
 - Node.js >= 18
@@ -331,16 +343,16 @@ End-to-end encrypted, multi-device chat as the first major feature module. Teleg
 
 ### Confirmed architectural decisions
 
-| Decision                             | Choice                                                                                                          | Rationale                                                                                                                            |
-| ------------------------------------ | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| Native module location               | `packages/chat-*` (workspace) for reusable native code; `apps/mobile/modules/` for app-only glue (NSE, CallKit) | Matches existing `@repo/*` namespace; reusable bits are isolated, app-coupled bits stay in the app shell                             |
-| WebSocket transport                  | Cloudflare Durable Objects (one DO per chat)                                                                    | Hibernation API → idle WS connections cost $0; edge latency 30-50ms; no VPC needed; linear cost scaling; complements R2 (already CF) |
-| MVP crypto                           | libsodium box (1:1 only); group chat = server-trust until M3.5                                                  | Ship working chat fast; upgrade to Signal Protocol before public-launch privacy claims                                               |
-| Production crypto (M3.5, pre-launch) | Signal Protocol — double-ratchet for 1:1, Sender Keys for groups                                                | Forward secrecy + post-compromise security; gold standard                                                                            |
-| Push notifications                   | FCM (Android) + APNs (iOS) direct, no Expo Push relay                                                           | E2E requires that the relay never sees plaintext; Expo Push relay would break that property                                          |
-| Local database                       | `op-sqlite` with SQLCipher; key in `expo-secure-store`                                                          | SQLCipher is the established encrypted-SQLite path; op-sqlite gives best RN perf and JSI bindings                                    |
-| Native modules approach              | Expo Modules API; scaffold via `pnpm create expo-module packages/<name> --no-example`                           | Autolinking + monorepo dedup works out of the box on SDK 54+                                                                         |
-| Server-side persistence              | Existing AWS Lambda (tRPC) writes to Neon; DO is transport + transient state only                               | Source of truth stays in Postgres; if DO restarts, history is intact                                                                 |
+| Decision                             | Choice                                                                                                                                        | Rationale                                                                                                                                                                          |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Native module location               | `packages/chat-*` (workspace) for reusable native code; `apps/mobile/modules/` for app-only glue (NSE, CallKit)                               | Matches existing `@repo/*` namespace; reusable bits are isolated, app-coupled bits stay in the app shell                                                                           |
+| WebSocket transport                  | Cloudflare Durable Objects (one DO per chat)                                                                                                  | Hibernation API → idle WS connections cost $0; edge latency 30-50ms; no VPC needed; linear cost scaling; complements R2 (already CF)                                               |
+| MVP crypto                           | libsodium box (1:1 only); group chat = server-trust until M3.5                                                                                | Ship working chat fast; upgrade to Signal Protocol before public-launch privacy claims                                                                                             |
+| Production crypto (M3.5, pre-launch) | **libsignal** (Signal Foundation Rust core + official Swift / Kotlin bindings) — Double Ratchet for 1:1, Sender Keys for groups ≤ 256 members | Forward secrecy + post-compromise security; battle-tested by WhatsApp / Signal / Google Messages at billions of users. MLS evaluated at Phase 3 trigger for big groups (see M3.5). |
+| Push notifications                   | FCM (Android) + APNs (iOS) direct, no Expo Push relay                                                                                         | E2E requires that the relay never sees plaintext; Expo Push relay would break that property                                                                                        |
+| Local database                       | `op-sqlite` with SQLCipher; key in `expo-secure-store`                                                                                        | SQLCipher is the established encrypted-SQLite path; op-sqlite gives best RN perf and JSI bindings                                                                                  |
+| Native modules approach              | Expo Modules API; scaffold via `pnpm create expo-module packages/<name> --no-example`                                                         | Autolinking + monorepo dedup works out of the box on SDK 54+                                                                                                                       |
+| Server-side persistence              | Existing AWS Lambda (tRPC) writes to Neon; DO is transport + transient state only                                                             | Source of truth stays in Postgres; if DO restarts, history is intact                                                                                                               |
 
 ### Crypto invariants (apply to every milestone M3 → M8)
 
@@ -501,9 +513,10 @@ Privkey ops are 100% client-side at every scale — server cost from private-key
 - Replace libsodium box with Signal's double-ratchet for 1:1 chats: forward secrecy + post-compromise security.
 - Add Sender Keys protocol for group chats so groups are E2E too.
 - X3DH-style prekey exchange via the API; prekey bundles uploaded on registration and topped up periodically.
-- Either port `libsignal-protocol-c` into a custom Expo module, or build a thin native wrapper around an existing maintained Swift/Kotlin port — decide after M3 based on what's actively maintained at the time.
+- Use **libsignal** (Signal Foundation's Rust core with their official Swift + Kotlin bindings) wrapped in a thin Expo Module — no custom port, no protocol re-implementation. Vendor path: `libsignal-client` Swift package on iOS, `org.signal:libsignal-android` on Android. Rolling our own X3DH / Double Ratchet on libsodium primitives = classic crypto footgun and not on the table. Reason for pinning now (not "decide after M3"): the library is the only protocol impl Signal Foundation themselves run in production, audited continuously, and stable ABI — the maintenance-uncertainty hedge that justified deferral is gone.
 - Reuses the Ed25519 identity key generated in M3 as Signal's long-term identity key — no fresh keygen, no UX-visible migration of identity.
 - Prekey bundle storage = same Postgres-column pattern as M3's pubkey directory, extended to a `prekey_bundles` table. Bundles are self-signed → CDN/CF-KV cacheable on the same scale trigger as M3 pubkeys (≥100k DAU). No new infra needed at MVP.
+- **Group scaling ceiling + MLS Phase 3 trigger.** Sender Keys scales linearly with group size — fine up to ~256-member groups (Signal app cap is 1000, perf cliff before that; WhatsApp caps at 1024). For Sessions Phase 1-2 (artist DMs, small commission groups, close-fan circles) this is more than enough; no action needed. **Phase 3 trigger to evaluate MLS (RFC 9420 via OpenMLS):** activate if _either_ (a) DAU ≥ 100k _and_ groups are on the active product roadmap, _or_ (b) a product requirement lands for groups > 256 members (e.g. fan channels, public rooms, broadcast lists). When triggered, add **OpenMLS alongside libsignal** as a hybrid stack — libsignal stays for 1:1 (proven, cheap to keep), MLS takes groups (O(log N) key updates vs Sender Keys' O(N), production-validated by WhatsApp Communities + Discord new DMs + Google Messages migration as of 2026). The same Ed25519 identity key wraps as an MLS Credential — no fresh keygen, no UX-visible re-onboarding. Explicitly out of scope for M3.5; tracked as a Phase 3 watch-item only.
 - Q7 — Native ABI shape
   Picked: sync Expo Function(...) returning  
   Uint8Array.

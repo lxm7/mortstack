@@ -7,6 +7,8 @@ import {
   type ChatErrorCode,
 } from "@repo/chat-transport";
 
+import { validateSendFrame } from "../validators";
+
 // Per-user inbox DO. Holds 1..N device WebSocket connections for a single user
 // and acts as the routing point between devices and Chat DOs the user is a
 // member of.
@@ -158,6 +160,14 @@ export class UserInbox extends DurableObject<Env> {
     userId: string,
     env: Extract<ClientToServer, { t: "send" }>,
   ): Promise<void> {
+    // Server-side defensive validation — README §M3 chunk 7. Rejects malformed
+    // frames before they reach the Chat DO + Neon insert path.
+    const verdict = validateSendFrame(env);
+    if (!verdict.ok) {
+      this.sendErr(ws, "BAD_FRAME", verdict.reason);
+      return;
+    }
+
     const stub = this.env.CHAT.get(this.env.CHAT.idFromName(env.chatId));
     try {
       await stub.acceptSend({
@@ -165,6 +175,7 @@ export class UserInbox extends DurableObject<Env> {
         clientMsgId: env.clientMsgId,
         ciphertext: env.ciphertext,
         nonce: env.nonce,
+        unencrypted: env.unencrypted,
       });
       // ack arrives async via ackBatch() after Chat DO persists.
     } catch {
