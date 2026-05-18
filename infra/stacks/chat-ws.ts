@@ -93,6 +93,10 @@ export const chatWsWorker = new sst.cloudflare.Worker("ChatWs", {
       // Compatibility date with WebSocket auto-reply-to-close behaviour
       // (so we don't have to manually echo close frames).
       args.compatibilityDate = "2026-04-15";
+      // nodejs_compat — SST's `Resource` import in services/chat-ws/src/auth.ts
+      // pulls process/fs/crypto from Node built-ins. Required for both deploy
+      // and local wrangler dev (mirrored in services/chat-ws/wrangler.jsonc).
+      args.compatibilityFlags = ["nodejs_compat"];
     },
   },
 });

@@ -6,6 +6,10 @@
   "name": "chat-ws-dev",
   "main": "src/index.ts",
   "compatibility_date": "2026-04-15",
+  // SST's `Resource` import (services/chat-ws/src/auth.ts) pulls process/fs/
+  // crypto from Node built-ins. Workers needs nodejs_compat to resolve them.
+  // Mirror this in infra/stacks/chat-ws.ts to keep dev/prod parity.
+  "compatibility_flags": ["nodejs_compat"],
   "durable_objects": {
     "bindings": [
       { "name": "CHAT", "class_name": "Chat" },

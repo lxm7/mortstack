@@ -21,6 +21,10 @@ interface PendingSend {
   ciphertext: Uint8Array;
   nonce: Uint8Array;
   enqueuedAt: number;
+  // Mirror of the `unencrypted` envelope flag — propagated through fanout so
+  // recipients can skip decryption. Not persisted to ChatMessage in M3;
+  // replayed history of unencrypted group messages will need a new column.
+  unencrypted?: boolean;
 }
 
 const ATTACHED_KEY = "attached";
@@ -57,6 +61,7 @@ export class Chat extends DurableObject<Env> {
     clientMsgId: string;
     ciphertext: Uint8Array;
     nonce: Uint8Array;
+    unencrypted?: boolean;
   }): Promise<void> {
     await this.ensureBufferLoaded();
     this.buffer.push({ ...input, enqueuedAt: Date.now() });
@@ -163,6 +168,9 @@ export class Chat extends DurableObject<Env> {
           ciphertext: a.entry.ciphertext,
           nonce: a.entry.nonce,
           ts: tsMs,
+          // Only include the flag when true to keep msgpack frames small for
+          // the common 1:1 encrypted case.
+          ...(a.entry.unencrypted === true ? { unencrypted: true } : {}),
         });
       }
     }

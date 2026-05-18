@@ -12,12 +12,19 @@ export type ClientToServer =
   | { t: "sub"; chatIds: string[] }
   // Outbound message. Server assigns serverMsgId on persist; client correlates
   // by clientMsgId.
+  //
+  // `unencrypted: true` — set ONLY for group sends until M3.5 (Sender Keys).
+  // When present, the server skips the nonce/ciphertext length validators
+  // (see services/chat-ws/src/validators.ts) and the `ciphertext` bytes are
+  // a plaintext msgpack frame (no MAC). The receiver-side wrapper inspects
+  // the same flag and skips decryption. 1:1 sends MUST omit it.
   | {
       t: "send";
       chatId: string;
       clientMsgId: string;
       ciphertext: Uint8Array;
       nonce: Uint8Array;
+      unencrypted?: boolean;
     }
   // Heartbeat — answered with `pong`. Auto-handled when supported by the
   // platform; manual fallback for clients without auto-ping.
@@ -27,6 +34,9 @@ export type ServerToClient =
   // Sender ack — message persisted to Postgres + broadcast to chat DO.
   | { t: "ack"; clientMsgId: string; serverMsgId: string; ts: number }
   // Inbound message for a chat the user is subscribed to.
+  // `unencrypted: true` is propagated from the sender's `send` frame (see
+  // ClientToServer) — receivers must skip decryption and treat `ciphertext`
+  // as a plaintext msgpack frame when set.
   | {
       t: "msg";
       chatId: string;
@@ -35,6 +45,7 @@ export type ServerToClient =
       ciphertext: Uint8Array;
       nonce: Uint8Array;
       ts: number;
+      unencrypted?: boolean;
     }
   // Hello frame — server confirms connection bound to this userId. Sent once
   // immediately after WS upgrade.

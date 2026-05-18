@@ -49,3 +49,17 @@ export interface KeyMaterialRow {
   identity_priv: Uint8Array;
   created_at: number;
 }
+
+// One row per (peer account, device). Local mirror of the server's
+// UserDevice directory, refreshed via tRPC user.keys.byUserIds.
+// refreshed_at = local epoch-ms the row was last fetched (drives the 24h TTL).
+// server_updated_at = the server-side UserDevice.updatedAt (for diagnostics
+// + future "is the peer rotating frequently?" checks).
+export interface PeerDeviceRow {
+  account_id: string;
+  device_id: string;
+  ed25519_pub: Uint8Array;
+  x25519_pub: Uint8Array;
+  refreshed_at: number;
+  server_updated_at: number;
+}

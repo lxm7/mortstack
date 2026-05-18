@@ -65,6 +65,23 @@ const MIGRATIONS: Migration[] = [
       ) WITHOUT ROWID`,
     ],
   },
+  {
+    version: 2,
+    up: [
+      // Local mirror of the server pubkey directory (UserDevice). One row per
+      // (peer account, device). 24h TTL applied at read time via refreshed_at.
+      `CREATE TABLE peer_keys (
+        account_id TEXT NOT NULL,
+        device_id TEXT NOT NULL,
+        ed25519_pub BLOB NOT NULL,
+        x25519_pub BLOB NOT NULL,
+        refreshed_at INTEGER NOT NULL,
+        server_updated_at INTEGER NOT NULL,
+        PRIMARY KEY (account_id, device_id)
+      ) WITHOUT ROWID`,
+      `CREATE INDEX idx_peer_keys_refreshed ON peer_keys (refreshed_at)`,
+    ],
+  },
 ];
 
 const LAST = MIGRATIONS[MIGRATIONS.length - 1];

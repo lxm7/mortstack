@@ -11,17 +11,22 @@ import { AppState, type AppStateStatus } from "react-native";
 
 import {
   createChatTransport,
-  type ChatTransport,
   type ConnectionState,
 } from "@repo/chat-transport/client";
+import {
+  createEncryptedTransport,
+  type EncryptedChatTransport,
+} from "@repo/chat";
 
 import { loadSessionToken } from "@/lib/auth/session";
 import { useAuthStore } from "@/store/auth";
+import { getOrCreateChatIdentity } from "@/lib/chat/identity";
+import { getPeerDevices } from "@/lib/chat/peer-keys";
 
-const ChatTransportContext = createContext<ChatTransport | null>(null);
+const ChatTransportContext = createContext<EncryptedChatTransport | null>(null);
 const ChatStateContext = createContext<ConnectionState>("idle");
 
-export function useChatTransport(): ChatTransport {
+export function useChatTransport(): EncryptedChatTransport {
   const t = useContext(ChatTransportContext);
   if (!t) {
     throw new Error(
@@ -39,17 +44,34 @@ export function ChatTransportProvider({ children }: { children: ReactNode }) {
   const session = useAuthStore((s) => s.session);
   const [state, setState] = useState<ConnectionState>("idle");
 
-  // Keep one transport instance for the lifetime of the provider. URL is
-  // resolved once at construction; if you change CHAT_WS_URL at runtime you
-  // need a hard reload (acceptable for an env var).
-  const transport = useMemo<ChatTransport>(
-    () =>
-      createChatTransport({
-        url: process.env.EXPO_PUBLIC_CHAT_WS_URL ?? "ws://localhost:8787",
-        getToken: loadSessionToken,
-      }),
-    [],
-  );
+  // One raw transport + one encrypted wrapper for the lifetime of the
+  // provider. URL is resolved once at construction; if you change
+  // CHAT_WS_URL at runtime you need a hard reload (acceptable for an env var).
+  const transport = useMemo<EncryptedChatTransport>(() => {
+    const underlying = createChatTransport({
+      url: process.env.EXPO_PUBLIC_CHAT_WS_URL ?? "ws://localhost:8787",
+      getToken: loadSessionToken,
+    });
+    return createEncryptedTransport({
+      underlying,
+      getMySeed: async () => (await getOrCreateChatIdentity()).seed,
+      resolveSenderX25519Pubs: async (senderId) => {
+        const map = await getPeerDevices([senderId]);
+        return (map.get(senderId) ?? []).map((d) => d.x25519Pub);
+      },
+      onDecryptFailure: (msg, reason) => {
+        console.warn(
+          "[chat/transport] decrypt failed",
+          {
+            chatId: msg.chatId,
+            serverMsgId: msg.serverMsgId,
+            senderId: msg.senderId,
+          },
+          reason,
+        );
+      },
+    });
+  }, []);
 
   // Bridge transport state → React state.
   useEffect(() => transport.onState(setState), [transport]);
