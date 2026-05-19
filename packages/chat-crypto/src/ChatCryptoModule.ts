@@ -4,6 +4,10 @@ import type {
   BoxResult,
   ChatCryptoModuleEvents,
   DerivedPublicKeys,
+  SignalAddress,
+  SignalCiphertext,
+  SignalLocalBundle,
+  SignalPreKeyBundle,
 } from "./ChatCrypto.types";
 
 declare class ChatCryptoModule extends NativeModule<ChatCryptoModuleEvents> {
@@ -68,6 +72,64 @@ declare class ChatCryptoModule extends NativeModule<ChatCryptoModuleEvents> {
   // nothing to remove. Intended for debug screens and test resets — calling
   // this on a real install destroys the device identity.
   clearSeed(): boolean;
+
+  // ── M3.5: Signal Protocol (PQXDH) ────────────────────────────────────
+  // Chunk 1B stubs — native impl lands in chunk 1C. Calling any of these
+  // before 1C throws `M3.5 <name> not yet implemented` from the native side.
+
+  // Random uint32 for libsignal addressing. Caller persists alongside the
+  // identity seed so it survives only if the seed does (a re-install gets a
+  // new registration id, which is the desired Signal behavior).
+  signalGenerateRegistrationId(): number;
+
+  // Generates a fresh local bundle reusing the M3 identity seed as the
+  // long-term Ed25519 identity key (no UX migration of identity per
+  // README §M3.5 line 505). The caller publishes signed + kyber prekeys to
+  // the server bundle directory and stores each one-time prekey as its own
+  // row server-side; the server consumes them atomically on session start.
+  //
+  // Native side persists the matching private material into the 5 stores
+  // (Session/Identity/PreKey/SignedPreKey/KyberPreKey) so subsequent
+  // signalDecrypt calls can complete X3DH on incoming pre-key messages.
+  signalCreateBundle(
+    registrationId: number,
+    signedPreKeyId: number,
+    oneTimePreKeyIdBase: number,
+    oneTimePreKeyCount: number,
+    kyberPreKeyId: number,
+  ): SignalLocalBundle;
+
+  // Bootstraps an outbound session against a peer's published bundle. Server
+  // should have atomically removed the consumed one-time prekey before
+  // returning the bundle — caller is responsible for not double-consuming.
+  signalProcessPreKeyBundle(
+    address: SignalAddress,
+    bundle: SignalPreKeyBundle,
+  ): void;
+
+  // Encrypts plaintext for the addressed recipient (specific peer device).
+  // Auto-routes ciphertext kind: first message in a new session emits
+  // `pre-key`; subsequent emit `whisper`. Mirrors libsignal's signalEncrypt.
+  signalEncrypt(
+    address: SignalAddress,
+    plaintext: Uint8Array,
+  ): SignalCiphertext;
+
+  // Decrypts a ciphertext from the addressed sender. The `kind` discriminator
+  // selects the underlying libsignal call (signalDecryptPreKey vs
+  // signalDecrypt). Throws on MAC failure, missing session for `whisper`,
+  // or exhausted one-time prekey for `pre-key`.
+  signalDecrypt(
+    address: SignalAddress,
+    ciphertext: SignalCiphertext,
+  ): Uint8Array;
+
+  // Cheap session-state lookups for the encrypted-transport wrapper to pick
+  // v1 vs v2 frames per send, and for the prekey top-up worker to know when
+  // to refill the one-time-prekey batch.
+  signalHasSession(address: SignalAddress): boolean;
+  signalDeleteSession(address: SignalAddress): void;
+  signalRemainingOneTimePreKeys(): number;
 }
 
 export default requireNativeModule<ChatCryptoModule>("ChatCrypto");

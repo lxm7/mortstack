@@ -166,7 +166,48 @@ class ChatCryptoModule : Module() {
     Function("clearSeed") { ->
       keystoreClearSeed()
     }
+
+    // ----- M3.5 Signal Protocol stubs (chunk 1C wires libsignal) -----
+
+    Function("signalGenerateRegistrationId") { ->
+      throw signalNotImplemented("signalGenerateRegistrationId")
+    }
+
+    Function("signalCreateBundle") {
+      _: Int, _: Int, _: Int, _: Int, _: Int ->
+      throw signalNotImplemented("signalCreateBundle")
+    }
+
+    Function("signalProcessPreKeyBundle") {
+      _: Map<String, Any>, _: Map<String, Any> ->
+      throw signalNotImplemented("signalProcessPreKeyBundle")
+    }
+
+    Function("signalEncrypt") {
+      _: Map<String, Any>, _: ByteArray ->
+      throw signalNotImplemented("signalEncrypt")
+    }
+
+    Function("signalDecrypt") {
+      _: Map<String, Any>, _: Map<String, Any> ->
+      throw signalNotImplemented("signalDecrypt")
+    }
+
+    Function("signalHasSession") { _: Map<String, Any> ->
+      throw signalNotImplemented("signalHasSession")
+    }
+
+    Function("signalDeleteSession") { _: Map<String, Any> ->
+      throw signalNotImplemented("signalDeleteSession")
+    }
+
+    Function("signalRemainingOneTimePreKeys") { ->
+      throw signalNotImplemented("signalRemainingOneTimePreKeys")
+    }
   }
+
+  private fun signalNotImplemented(name: String): ChatCryptoException =
+    ChatCryptoException("M3.5 $name not yet implemented (chunk 1C pending)")
 
   // ----- helpers -----
 
