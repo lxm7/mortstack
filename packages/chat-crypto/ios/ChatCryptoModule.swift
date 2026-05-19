@@ -23,6 +23,7 @@ private enum ChatCryptoError: Error, LocalizedError, CustomStringConvertible {
   case signFailed
   case hashFailed
   case keychainError(OSStatus)
+  case signalNotImplemented(String)
 
   var description: String {
     switch self {
@@ -50,6 +51,8 @@ private enum ChatCryptoError: Error, LocalizedError, CustomStringConvertible {
       return "crypto_generichash failed"
     case .keychainError(let status):
       return "Keychain SecItem call failed with OSStatus \(status)"
+    case .signalNotImplemented(let name):
+      return "M3.5 \(name) not yet implemented (chunk 1C pending)"
     }
   }
 
@@ -255,6 +258,45 @@ public class ChatCryptoModule: Module {
     Function("clearSeed") { () throws -> Bool in
       try self.ensureInit()
       return try self.keychainClearSeed()
+    }
+
+    // MARK: - M3.5 Signal Protocol stubs (chunk 1C wires libsignal)
+
+    Function("signalGenerateRegistrationId") { () throws -> Int in
+      throw ChatCryptoError.signalNotImplemented("signalGenerateRegistrationId")
+    }
+
+    Function("signalCreateBundle") {
+      (_ regId: Int, _ signedId: Int, _ otpkBase: Int, _ otpkCount: Int, _ kyberId: Int)
+        throws -> [String: Any] in
+      throw ChatCryptoError.signalNotImplemented("signalCreateBundle")
+    }
+
+    Function("signalProcessPreKeyBundle") {
+      (_ address: [String: Any], _ bundle: [String: Any]) throws -> Void in
+      throw ChatCryptoError.signalNotImplemented("signalProcessPreKeyBundle")
+    }
+
+    Function("signalEncrypt") {
+      (_ address: [String: Any], _ plaintext: Data) throws -> [String: Any] in
+      throw ChatCryptoError.signalNotImplemented("signalEncrypt")
+    }
+
+    Function("signalDecrypt") {
+      (_ address: [String: Any], _ ciphertext: [String: Any]) throws -> Data in
+      throw ChatCryptoError.signalNotImplemented("signalDecrypt")
+    }
+
+    Function("signalHasSession") { (_ address: [String: Any]) throws -> Bool in
+      throw ChatCryptoError.signalNotImplemented("signalHasSession")
+    }
+
+    Function("signalDeleteSession") { (_ address: [String: Any]) throws -> Void in
+      throw ChatCryptoError.signalNotImplemented("signalDeleteSession")
+    }
+
+    Function("signalRemainingOneTimePreKeys") { () throws -> Int in
+      throw ChatCryptoError.signalNotImplemented("signalRemainingOneTimePreKeys")
     }
   }
 

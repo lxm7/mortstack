@@ -589,6 +589,10 @@ Privkey ops are 100% client-side at every scale — server cost from private-key
 - 1:1 only; group calls explicitly out of scope (would need an SFU like LiveKit or mediasoup — separate post-MVP roadmap item).
 - Acceptance: ring on locked screen, answer from CallKit UI, sub-300ms audio latency on wifi, clean teardown when either side hangs up or loses connection.
 
+#### M7.5 - basica AI search for gigs locally:
+
+Build a small AI feature into it — even a basic LLM-powered search or recommendation adds a genuine line to your CV and makes the project pull double duty.
+
 #### M8 — Polish (3-4 weeks, ongoing post-launch)
 
 - Animated stickers via Lottie (`lottie-react-native`); sticker pack management.
@@ -636,3 +640,26 @@ adb shell am start -W -a android.intent.action.VIEW
 xcrun simctl terminate booted io.sessions.app
 xcrun simctl openurl booted
 sessions://chat-db-debug
+
+### Native Rust libs for native wiring and corresponding toolchains:
+
+# Rust + protoc + cbindgen
+
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh  
+ brew install protobuf  
+ cargo install cbindgen --version 0.27.0
+
+# iOS targets
+
+rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
+
+# Android targets + NDK + JDK 17
+
+brew install --cask temurin@17  
+ rustup target add aarch64-linux-android armv7-linux-androideabi  
+ x86_64-linux-android
+
+# NDK install via Android Studio SDK Manager → set ANDROID_NDK_ROOT
+
+After install, dry-run the script to confirm prereqs pass before the real build:
+pnpm --filter @repo/chat-crypto exec ./scripts/build-libsignal.sh io
