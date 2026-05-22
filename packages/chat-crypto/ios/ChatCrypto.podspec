@@ -20,26 +20,37 @@ Pod::Spec.new do |s|
 
   s.dependency 'ExpoModulesCore'
 
-  # Vendored Clibsodium.xcframework lifted from jedisct1/swift-sodium master.
-  # We dropped the swift-sodium Swift wrapper because its last cocoapod
-  # release (Sodium 0.9.1, Dec 2020) shipped an xcframework whose simulator
-  # slice predated Apple Silicon and broke iOS-sim linking on arm64 Macs.
-  # Upstream now ships SPM-only, so we vendor the freshly-built C library
-  # (iOS device + iOS-sim arm64/x86_64 slices) and call libsodium C symbols
-  # directly from our Swift module.
-  s.vendored_frameworks = "Clibsodium.xcframework"
+  # Vendored xcframeworks:
+  #   Clibsodium.xcframework — libsodium primitives (M3 MVP crypto). Lifted
+  #     from jedisct1/swift-sodium master; the cocoapod release (0.9.1) shipped
+  #     a stale sim slice that broke arm64-Mac linking, and upstream now ships
+  #     SPM-only.
+  #   SignalFfi.xcframework — libsignal Rust FFI (M3.5 Signal Protocol),
+  #     produced by packages/chat-crypto/scripts/build-libsignal.sh ios. The
+  #     upstream Swift wrappers live alongside under LibSignalClient/ and
+  #     compile into this pod's Swift module (`import SignalFfi` resolves to
+  #     this xcframework). Doing it this way avoids SPM-in-Pods edge cases
+  #     under static linking — see chunk 1A rework notes.
+  #
+  # Naming convention: xcframework filename MUST match the inner
+  # .framework basename (both `SignalFfi`). CocoaPods derives the
+  # `-framework <name>` link flag from the xcframework filename without
+  # extension. A mismatch (e.g. `signal_ffi.xcframework` containing
+  # `SignalFfi.framework`) produces a "framework 'signal_ffi' not found"
+  # linker error.
+  s.vendored_frameworks = ["Clibsodium.xcframework", "SignalFfi.xcframework"]
 
   s.pod_target_xcconfig = {
     'DEFINES_MODULE' => 'YES'
     # CocoaPods auto-selects the correct xcframework slice per active SDK and
-    # adds the matching Headers/ dir to the header search path. Adding both
-    # slices manually here causes "redefinition of module 'Clibsodium'".
+    # adds the matching Headers/ dir to the header search path. Adding slices
+    # manually here causes redefinition errors.
   }
 
-  # NOTE: non-recursive on purpose — a `**` glob would walk into
-  # Clibsodium.xcframework/.../Headers and copy sodium.h + both slices' module
-  # maps into this pod's public headers, triggering "redefinition of module
-  # 'Clibsodium'" and missing-subheader errors. Vendored xcframework headers
-  # are exposed via the framework itself, not by source_files.
-  s.source_files = "*.{h,m,mm,swift,hpp,cpp}"
+  # Top-level glob is non-recursive on purpose — a `**` glob would walk into
+  # vendored xcframeworks' Headers and trigger module redefinition errors. The
+  # second glob picks up the libsignal Swift wrappers we vendor under
+  # LibSignalClient/ (recursive — that dir has subfolders by feature, and is
+  # outside any xcframework so the wildcard is safe).
+  s.source_files = ["*.{h,m,mm,swift,hpp,cpp}", "LibSignalClient/**/*.swift"]
 end

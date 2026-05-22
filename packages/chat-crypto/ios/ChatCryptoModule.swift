@@ -23,7 +23,6 @@ private enum ChatCryptoError: Error, LocalizedError, CustomStringConvertible {
   case signFailed
   case hashFailed
   case keychainError(OSStatus)
-  case signalNotImplemented(String)
 
   var description: String {
     switch self {
@@ -51,8 +50,6 @@ private enum ChatCryptoError: Error, LocalizedError, CustomStringConvertible {
       return "crypto_generichash failed"
     case .keychainError(let status):
       return "Keychain SecItem call failed with OSStatus \(status)"
-    case .signalNotImplemented(let name):
-      return "M3.5 \(name) not yet implemented (chunk 1C pending)"
     }
   }
 
@@ -94,6 +91,21 @@ private let X25519_CONTEXT: [UInt8] = Array("sessions/x25519/v1".utf8)
 
 public class ChatCryptoModule: Module {
   private var initialized = false
+
+  // M3.5 chunk 1C: lazy-constructed orchestrator for the signal* family.
+  // Held by reference so the engine's in-memory caches (loaded identity,
+  // open SQLite handle) survive across Function invocations. Built on
+  // first signal call rather than in OnCreate so the keychain helper
+  // closure can capture self safely.
+  private var signalEngine: SignalEngine?
+  private func ensureSignalEngine() -> SignalEngine {
+    if let e = signalEngine { return e }
+    let e = SignalEngine(seedProvider: { [weak self] in
+      try self?.keychainLoadSeed()
+    })
+    signalEngine = e
+    return e
+  }
 
   public func definition() -> ModuleDefinition {
     Name("ChatCrypto")
@@ -260,43 +272,66 @@ public class ChatCryptoModule: Module {
       return try self.keychainClearSeed()
     }
 
-    // MARK: - M3.5 Signal Protocol stubs (chunk 1C wires libsignal)
+    // MARK: - M3.5 Signal Protocol (PQXDH) — chunk 1C
+    //
+    // All bodies delegate to SignalEngine. Engine lazily opens SignalStore +
+    // rehydrates cached identity on first call; signalCreateBundle is the
+    // one-shot setup that must run once per install before encrypt/decrypt
+    // can succeed. signalCreateBundle gained `localName` + `localDeviceId`
+    // params relative to the chunk 1B TS stubs — libsignal's encrypt path
+    // requires our own ProtocolAddress on every call, so the native side
+    // must know it.
 
     Function("signalGenerateRegistrationId") { () throws -> Int in
-      throw ChatCryptoError.signalNotImplemented("signalGenerateRegistrationId")
+      return try self.ensureSignalEngine().signalGenerateRegistrationId()
     }
 
     Function("signalCreateBundle") {
-      (_ regId: Int, _ signedId: Int, _ otpkBase: Int, _ otpkCount: Int, _ kyberId: Int)
+      (_ localName: String, _ localDeviceId: Int, _ regId: Int,
+       _ signedId: Int, _ otpkBase: Int, _ otpkCount: Int, _ kyberId: Int)
         throws -> [String: Any] in
-      throw ChatCryptoError.signalNotImplemented("signalCreateBundle")
+      return try self.ensureSignalEngine().signalCreateBundle(
+        localName: localName,
+        localDeviceId: localDeviceId,
+        registrationId: regId,
+        signedPreKeyId: signedId,
+        oneTimePreKeyIdBase: otpkBase,
+        oneTimePreKeyCount: otpkCount,
+        kyberPreKeyId: kyberId
+      )
     }
 
     Function("signalProcessPreKeyBundle") {
       (_ address: [String: Any], _ bundle: [String: Any]) throws -> Void in
-      throw ChatCryptoError.signalNotImplemented("signalProcessPreKeyBundle")
+      try self.ensureSignalEngine().signalProcessPreKeyBundle(
+        address: address, bundle: bundle
+      )
     }
 
     Function("signalEncrypt") {
       (_ address: [String: Any], _ plaintext: Data) throws -> [String: Any] in
-      throw ChatCryptoError.signalNotImplemented("signalEncrypt")
+      return try self.ensureSignalEngine().signalEncrypt(
+        address: address, plaintext: plaintext
+      )
     }
 
     Function("signalDecrypt") {
       (_ address: [String: Any], _ ciphertext: [String: Any]) throws -> Data in
-      throw ChatCryptoError.signalNotImplemented("signalDecrypt")
+      return try self.ensureSignalEngine().signalDecrypt(
+        address: address, ciphertext: ciphertext
+      )
     }
 
     Function("signalHasSession") { (_ address: [String: Any]) throws -> Bool in
-      throw ChatCryptoError.signalNotImplemented("signalHasSession")
+      return try self.ensureSignalEngine().signalHasSession(address: address)
     }
 
     Function("signalDeleteSession") { (_ address: [String: Any]) throws -> Void in
-      throw ChatCryptoError.signalNotImplemented("signalDeleteSession")
+      try self.ensureSignalEngine().signalDeleteSession(address: address)
     }
 
     Function("signalRemainingOneTimePreKeys") { () throws -> Int in
-      throw ChatCryptoError.signalNotImplemented("signalRemainingOneTimePreKeys")
+      return try self.ensureSignalEngine().signalRemainingOneTimePreKeys()
     }
   }
 

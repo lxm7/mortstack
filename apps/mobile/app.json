@@ -36,8 +36,7 @@
             "usesCleartextTraffic": true
           }
         }
-      ],
-      "./plugins/with-libsignal-spm"
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

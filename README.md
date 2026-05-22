@@ -513,7 +513,7 @@ Privkey ops are 100% client-side at every scale — server cost from private-key
 - Replace libsodium box with Signal's double-ratchet for 1:1 chats: forward secrecy + post-compromise security.
 - Add Sender Keys protocol for group chats so groups are E2E too.
 - X3DH-style prekey exchange via the API; prekey bundles uploaded on registration and topped up periodically.
-- Use **libsignal** (Signal Foundation's Rust core with their official Swift + Kotlin bindings) wrapped in a thin Expo Module — no custom port, no protocol re-implementation. Vendor path: `libsignal-client` Swift package on iOS, `org.signal:libsignal-android` on Android. Rolling our own X3DH / Double Ratchet on libsodium primitives = classic crypto footgun and not on the table. Reason for pinning now (not "decide after M3"): the library is the only protocol impl Signal Foundation themselves run in production, audited continuously, and stable ABI — the maintenance-uncertainty hedge that justified deferral is gone.
+- Use **libsignal** (Signal Foundation's Rust core with their official Swift + Kotlin bindings) wrapped in a thin Expo Module — no custom port, no protocol re-implementation. Vendor path: locally-built `signal_ffi.xcframework` + upstream Swift wrappers compiled into the ChatCrypto pod on iOS, `libsignal-client.aar` on Android — both produced by `packages/chat-crypto/scripts/build-libsignal.sh` from the same `LIBSIGNAL_REF`. Single bump point. SPM was the initial plan but doesn't work inside a CocoaPods pod under static linking (see chunk 1A rework notes in `packages/chat-crypto/scripts/README.md`). Rolling our own X3DH / Double Ratchet on libsodium primitives = classic crypto footgun and not on the table. Reason for pinning now (not "decide after M3"): the library is the only protocol impl Signal Foundation themselves run in production, audited continuously, and stable ABI — the maintenance-uncertainty hedge that justified deferral is gone.
 - Reuses the Ed25519 identity key generated in M3 as Signal's long-term identity key — no fresh keygen, no UX-visible migration of identity.
 - Prekey bundle storage = same Postgres-column pattern as M3's pubkey directory, extended to a `prekey_bundles` table. Bundles are self-signed → CDN/CF-KV cacheable on the same scale trigger as M3 pubkeys (≥100k DAU). No new infra needed at MVP.
 - **Group scaling ceiling + MLS Phase 3 trigger.** Sender Keys scales linearly with group size — fine up to ~256-member groups (Signal app cap is 1000, perf cliff before that; WhatsApp caps at 1024). For Sessions Phase 1-2 (artist DMs, small commission groups, close-fan circles) this is more than enough; no action needed. **Phase 3 trigger to evaluate MLS (RFC 9420 via OpenMLS):** activate if _either_ (a) DAU ≥ 100k _and_ groups are on the active product roadmap, _or_ (b) a product requirement lands for groups > 256 members (e.g. fan channels, public rooms, broadcast lists). When triggered, add **OpenMLS alongside libsignal** as a hybrid stack — libsignal stays for 1:1 (proven, cheap to keep), MLS takes groups (O(log N) key updates vs Sender Keys' O(N), production-validated by WhatsApp Communities + Discord new DMs + Google Messages migration as of 2026). The same Ed25519 identity key wraps as an MLS Credential — no fresh keygen, no UX-visible re-onboarding. Explicitly out of scope for M3.5; tracked as a Phase 3 watch-item only.
@@ -641,25 +641,29 @@ xcrun simctl terminate booted io.sessions.app
 xcrun simctl openurl booted
 sessions://chat-db-debug
 
-### Native Rust libs for native wiring and corresponding toolchains:
+### Native Rust libs for native wiring and corresponding toolchains
 
-# Rust + protoc + cbindgen
+Both iOS and Android vendor libsignal artifacts produced by
+`packages/chat-crypto/scripts/build-libsignal.sh`. Full prereq list and
+per-platform notes live in `packages/chat-crypto/scripts/README.md`.
 
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh  
- brew install protobuf  
- cargo install cbindgen --version 0.27.0
+```bash
+# Common
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+brew install protobuf
+cargo install cbindgen --version 0.27.0
 
-# iOS targets
-
+# iOS
+sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
 rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
 
-# Android targets + NDK + JDK 17
+# Android
+brew install --cask temurin@17
+rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+# NDK install via Android Studio → SDK Manager → set ANDROID_NDK_ROOT
 
-brew install --cask temurin@17  
- rustup target add aarch64-linux-android armv7-linux-androideabi  
- x86_64-linux-android
-
-# NDK install via Android Studio SDK Manager → set ANDROID_NDK_ROOT
-
-After install, dry-run the script to confirm prereqs pass before the real build:
-pnpm --filter @repo/chat-crypto exec ./scripts/build-libsignal.sh io
+# Build + vendor
+pnpm --filter @repo/chat-crypto exec ./scripts/build-libsignal.sh android
+pnpm --filter @repo/chat-crypto exec ./scripts/build-libsignal.sh ios
+pnpm rn:rebuild-ios   # from repo root — runs prebuild-clean + run:ios
+```
