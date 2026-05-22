@@ -74,24 +74,32 @@ declare class ChatCryptoModule extends NativeModule<ChatCryptoModuleEvents> {
   clearSeed(): boolean;
 
   // ── M3.5: Signal Protocol (PQXDH) ────────────────────────────────────
-  // Chunk 1B stubs — native impl lands in chunk 1C. Calling any of these
-  // before 1C throws `M3.5 <name> not yet implemented` from the native side.
+  // Wraps libsignal (PQXDH variant — Kyber post-quantum prekeys alongside
+  // X3DH). Native impl lives in SignalEngine.swift / .kt; the 5 protocol
+  // stores (Session/Identity/PreKey/SignedPreKey/KyberPreKey) persist into
+  // a libsodium-AEAD-wrapped SQLite file outside the M2 chat-db.
 
   // Random uint32 for libsignal addressing. Caller persists alongside the
   // identity seed so it survives only if the seed does (a re-install gets a
-  // new registration id, which is the desired Signal behavior).
+  // new registration id, which is the desired Signal behavior). Range is
+  // [0, 0x3FFF] — libsignal's signed registration-id field is 14 bits.
   signalGenerateRegistrationId(): number;
 
-  // Generates a fresh local bundle reusing the M3 identity seed as the
-  // long-term Ed25519 identity key (no UX migration of identity per
-  // README §M3.5 line 505). The caller publishes signed + kyber prekeys to
-  // the server bundle directory and stores each one-time prekey as its own
-  // row server-side; the server consumes them atomically on session start.
+  // One-shot setup. Derives the libsignal identity keypair from the M3 seed
+  // (BLAKE2b sub-seed under context "sessions/signal-identity/v1"), persists
+  // local address + registrationId + identity keypair in the protocol store,
+  // generates + persists the signed prekey, one-time prekeys, and kyber
+  // prekey, and returns the public-only bundle for the caller to publish to
+  // the server prekey directory.
   //
-  // Native side persists the matching private material into the 5 stores
-  // (Session/Identity/PreKey/SignedPreKey/KyberPreKey) so subsequent
-  // signalDecrypt calls can complete X3DH on incoming pre-key messages.
+  // Must be called once per install before any encrypt/decrypt call — those
+  // throw `signal engine not initialized` until this runs.
+  //
+  // localName + localDeviceId form our own ProtocolAddress, used as the
+  // sender side on every signalEncrypt / signalDecryptPreKey call.
   signalCreateBundle(
+    localName: string,
+    localDeviceId: number,
     registrationId: number,
     signedPreKeyId: number,
     oneTimePreKeyIdBase: number,
