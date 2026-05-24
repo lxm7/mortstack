@@ -9,6 +9,10 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./wire": {
+      "types": "./src/wire/index.ts",
+      "default": "./src/wire/index.ts"
     }
   },
   "scripts": {
@@ -17,6 +21,9 @@
     "lint": "echo \"rust crate + autogen bindings — skip eslint\" && exit 0",
     "check-types": "tsc --noEmit",
     "test": "echo \"smoke is the build itself — see scripts/README.md\" && exit 0"
+  },
+  "dependencies": {
+    "zod": "^3.24.1"
   },
   "devDependencies": {
     "@repo/typescript-config": "workspace:*",

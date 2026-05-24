@@ -118,6 +118,7 @@ model Account {
   profiles       ProfileMember[]
   identityChecks IdentityCheck[]
   devices        UserDevice[]
+  groupWelcomes  GroupWelcome[] // MLS Welcomes addressed to this account; consumed on poll
 
   @@index([authUserId])
   @@index([walletAddress])
@@ -137,20 +138,94 @@ model UserDevice {
   id              String   @id @default(cuid())
   accountId       String
   deviceId        String   // client-generated UUID; stable across re-installs only if seed survives
-  ed25519Pub      Bytes    // 32 bytes raw
+  ed25519Pub      Bytes    // 32 bytes raw — also serves as the MLS BasicCredential signature key per ADR-015 §5
   x25519Pub       Bytes    // 32 bytes raw
   bundleSignature Bytes    // 64-byte Ed25519 detached sig over 0x01 ‖ deviceId-utf8 ‖ ed25519Pub ‖ x25519Pub
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  // MLS (RFC 9420 via OpenMLS) directory columns land here in Chunk 4 —
-  // mlsCredentialId + KeyPackage relation. See ADR-015 for the libsignal
-  // rejection that drove the swap. No M3.5 signal columns retained.
+  // ── MLS directory ──────────────────────────────────────────────────────
+  // The MLS signer reuses ed25519Pub above (BasicCredential whose signature
+  // key == this device's Ed25519 pub). KeyPackages are short-lived,
+  // consume-on-fetch entries pointing back at this device.
+  keyPackages KeyPackage[]
 
   account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
   @@unique([accountId, deviceId])
   @@index([accountId])
+}
+
+// ── KeyPackage ────────────────────────────────────────────────────────────────
+// One row per unconsumed KeyPackage published by a UserDevice. TLS-encoded
+// public KeyPackage bytes are opaque to the server — content validated by
+// length only at the tRPC boundary. Hard-deleted on consume inside the
+// fetchKeyPackagesForAccounts transaction (no soft-delete: at 1M DAU the
+// audit value isn't worth the storage; structured logs cover any forensic
+// need).
+//
+// Server-side cap: 200 per device. Enforced in the publishKeyPackages tx
+// (SELECT COUNT FOR UPDATE → reject if existing + new > 200). Phase 1 pool
+// is 100 with top-up at 20, so the cap = 2× normal — absorbs racing top-ups
+// without permitting flood-fill abuse. See ADR-015 design point #3
+// (last-resort skipped) — cap doesn't prevent OTPK exhaustion in pathological
+// patterns; that lands later if telemetry surfaces it.
+model KeyPackage {
+  id           String     @id @default(cuid())
+  userDeviceId String
+  bytes        Bytes      // TLS-encoded public KeyPackage (opaque to server)
+  createdAt    DateTime   @default(now())
+
+  device UserDevice @relation(fields: [userDeviceId], references: [id], onDelete: Cascade)
+
+  @@index([userDeviceId, id]) // hot consume-on-fetch — DELETE … WHERE userDeviceId = ? ORDER BY id LIMIT 1 RETURNING *
+}
+
+// ── GroupCommit ───────────────────────────────────────────────────────────────
+// MLS commit log keyed by groupId. The @@unique([groupId, epoch]) is the
+// ADR-015 §6 server-side ordering gate — concurrent commits at the same
+// epoch race for the UNIQUE write; the loser gets a 23505 violation, fetches
+// pending, applies, and retries with epoch+1.
+//
+// groupId is opaque bytes (32B by convention, but server doesn't enforce
+// length — that's MLS's job). The server never inspects `bytes` content;
+// validators only check the length envelope.
+//
+// Retention: ADR-015 §4 keeps all commits per group; M8 watch-item will add
+// MLS Resync compaction at the 500-commit threshold. Phase 1 ceiling
+// ≈ 1 MB per group, trivial.
+model GroupCommit {
+  id        String   @id @default(cuid())
+  groupId   Bytes
+  epoch     Int      // 0-based; monotonic per groupId; gap-free for non-byzantine clients
+  bytes     Bytes    // TLS-encoded MlsMessageOut (Commit)
+  createdAt DateTime @default(now())
+
+  @@unique([groupId, epoch]) // ADR-015 §6 ordering gate
+  @@index([groupId, epoch])  // covers fetchPendingCommits range scan
+}
+
+// ── GroupWelcome ──────────────────────────────────────────────────────────────
+// MLS Welcome message addressed to a specific recipient account on a specific
+// group. Short-lived: deleted on consume by fetchPendingWelcomes. Each row
+// represents one Welcome blob to deliver to one Account; a multi-add by
+// alice generates one row per new joiner.
+//
+// recipientDeviceId is null when the sender doesn't know which device on the
+// account should receive it — every device under the account polls and the
+// first one to consume wins. In practice we set it from the matching
+// KeyPackage's device id so routing is deterministic.
+model GroupWelcome {
+  id                  String   @id @default(cuid())
+  recipientAccountId  String
+  recipientDeviceId   String?  // populated from the consumed KeyPackage's device when known
+  groupId             Bytes    // for client-side routing — caller's join_from_welcome figures this out anyway
+  bytes               Bytes    // TLS-encoded MlsMessageOut (Welcome)
+  createdAt           DateTime @default(now())
+
+  recipient Account @relation(fields: [recipientAccountId], references: [id], onDelete: Cascade)
+
+  @@index([recipientAccountId, id]) // consume-on-fetch
 }
 
 // ── Profile ───────────────────────────────────────────────────────────────────
