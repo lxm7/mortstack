@@ -648,9 +648,13 @@ internal object IntegrityCheckingUniffiLib {
     ): Short
     external fun uniffi_chat_mls_core_checksum_method_mlsengine_current_epoch(
     ): Short
+    external fun uniffi_chat_mls_core_checksum_method_mlsengine_dump_state(
+    ): Short
     external fun uniffi_chat_mls_core_checksum_method_mlsengine_encrypt_app(
     ): Short
     external fun uniffi_chat_mls_core_checksum_method_mlsengine_join_from_welcome(
+    ): Short
+    external fun uniffi_chat_mls_core_checksum_method_mlsengine_load_state(
     ): Short
     external fun uniffi_chat_mls_core_checksum_method_mlsengine_member_count(
     ): Short
@@ -680,7 +684,7 @@ internal object UniffiLib {
     ): Long
     external fun uniffi_chat_mls_core_fn_free_mlsengine(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
-    external fun uniffi_chat_mls_core_fn_constructor_mlsengine_new(`accountId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    external fun uniffi_chat_mls_core_fn_constructor_mlsengine_new(`accountId`: RustBuffer.ByValue,`identitySeed`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): Long
     external fun uniffi_chat_mls_core_fn_method_mlsengine_account_id(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
@@ -692,10 +696,14 @@ internal object UniffiLib {
     ): RustBuffer.ByValue
     external fun uniffi_chat_mls_core_fn_method_mlsengine_current_epoch(`ptr`: Long,`groupId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): Long
+    external fun uniffi_chat_mls_core_fn_method_mlsengine_dump_state(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
     external fun uniffi_chat_mls_core_fn_method_mlsengine_encrypt_app(`ptr`: Long,`groupId`: RustBuffer.ByValue,`plaintext`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     external fun uniffi_chat_mls_core_fn_method_mlsengine_join_from_welcome(`ptr`: Long,`welcomeBytes`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
+    external fun uniffi_chat_mls_core_fn_method_mlsengine_load_state(`ptr`: Long,`bytes`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
     external fun uniffi_chat_mls_core_fn_method_mlsengine_member_count(`ptr`: Long,`groupId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): Int
     external fun uniffi_chat_mls_core_fn_method_mlsengine_process_message(`ptr`: Long,`groupId`: RustBuffer.ByValue,`msgBytes`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -824,34 +832,40 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_chat_mls_core_checksum_func_ping() != 61247.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_chat_mls_core_checksum_method_mlsengine_account_id() != 57748.toShort()) {
+    if (lib.uniffi_chat_mls_core_checksum_method_mlsengine_account_id() != 28029.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_chat_mls_core_checksum_method_mlsengine_add_members() != 26388.toShort()) {
+    if (lib.uniffi_chat_mls_core_checksum_method_mlsengine_add_members() != 22289.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_chat_mls_core_checksum_method_mlsengine_create_group() != 23166.toShort()) {
+    if (lib.uniffi_chat_mls_core_checksum_method_mlsengine_create_group() != 26642.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_chat_mls_core_checksum_method_mlsengine_create_key_package() != 6637.toShort()) {
+    if (lib.uniffi_chat_mls_core_checksum_method_mlsengine_create_key_package() != 34547.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_chat_mls_core_checksum_method_mlsengine_current_epoch() != 60776.toShort()) {
+    if (lib.uniffi_chat_mls_core_checksum_method_mlsengine_current_epoch() != 63885.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_chat_mls_core_checksum_method_mlsengine_encrypt_app() != 51744.toShort()) {
+    if (lib.uniffi_chat_mls_core_checksum_method_mlsengine_dump_state() != 17763.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_chat_mls_core_checksum_method_mlsengine_join_from_welcome() != 27609.toShort()) {
+    if (lib.uniffi_chat_mls_core_checksum_method_mlsengine_encrypt_app() != 20051.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_chat_mls_core_checksum_method_mlsengine_member_count() != 39859.toShort()) {
+    if (lib.uniffi_chat_mls_core_checksum_method_mlsengine_join_from_welcome() != 15363.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_chat_mls_core_checksum_method_mlsengine_process_message() != 658.toShort()) {
+    if (lib.uniffi_chat_mls_core_checksum_method_mlsengine_load_state() != 8201.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_chat_mls_core_checksum_constructor_mlsengine_new() != 45725.toShort()) {
+    if (lib.uniffi_chat_mls_core_checksum_method_mlsengine_member_count() != 49882.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_chat_mls_core_checksum_method_mlsengine_process_message() != 44101.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_chat_mls_core_checksum_constructor_mlsengine_new() != 5760.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
 }
@@ -1231,73 +1245,39 @@ public object FfiConverterByteArray: FfiConverterRustBuffer<ByteArray> {
 
 public interface MlsEngineInterface {
     
-    /**
-     * Returns the account_id this engine was constructed for. Useful for
-     * the host code's "is the engine bound to the right account?" check.
-     */
     fun `accountId`(): kotlin.String
     
-    /**
-     * Add one or more members to an existing group. Returns the Commit (to
-     * fan out to all *current* members via the DS) and the Welcome (to send
-     * to the new joiners). The pending commit is merged into local state
-     * before returning — caller doesn't need a second call.
-     */
     fun `addMembers`(`groupId`: kotlin.ByteArray, `keyPackages`: List<kotlin.ByteArray>): AddMembersResult
     
-    /**
-     * Create a brand-new group with this engine as the sole founder member.
-     * `group_id` is opaque to MLS — caller chooses any 32-byte identifier;
-     * we recommend `sha256(chatId)` or a random 32B (see ADR-015 §7 design
-     * note on Chat.mlsGroupId).
-     */
     fun `createGroup`(`groupId`: kotlin.ByteArray)
     
-    /**
-     * Generate one fresh KeyPackage. Caller is responsible for shipping the
-     * returned bytes to the server prekey directory (Chunk 4 — mls-keys
-     * publishKeyPackages route). The matching private material is stored in
-     * `provider.storage()` and consumed when this device joins a group via
-     * `join_from_welcome`.
-     */
     fun `createKeyPackage`(): kotlin.ByteArray
     
-    /**
-     * Current epoch counter for the named group — increments by one each
-     * time a Commit is merged. Useful for the Chunk 4 server-side ordering
-     * gate (server refuses to accept a commit at epoch N+2 if it hasn't
-     * seen N+1 yet) and for the Chunk 7 acceptance harness.
-     */
     fun `currentEpoch`(`groupId`: kotlin.ByteArray): kotlin.ULong
     
     /**
-     * Encrypt application plaintext for the named group. The returned bytes
-     * are an MlsMessageOut — server stores ONE blob and fans to all members
-     * (the v=2 wire frame from §M3.5). Forward secrecy: the key material is
-     * discarded immediately; sender cannot decrypt own message.
+     * Serialise the entire MemoryStorage to opaque bytes. JS layer persists
+     * to chat-db (already SQLCipher-encrypted) after every mutating call.
+     * Format is a simple length-prefix encoding of (key, value) entries —
+     * internal to chat-mls-core, NOT a wire-protocol; format may change.
      */
+    fun `dumpState`(): kotlin.ByteArray
+    
     fun `encryptApp`(`groupId`: kotlin.ByteArray, `plaintext`: kotlin.ByteArray): kotlin.ByteArray
     
-    /**
-     * Process a Welcome received from another member. Returns the group_id
-     * of the newly-joined group so the caller can route subsequent messages
-     * to the right local state. Welcome already encodes the ratchet tree
-     * (use_ratchet_tree_extension=true in create_group), so no separate
-     * tree fetch is needed.
-     */
     fun `joinFromWelcome`(`welcomeBytes`: kotlin.ByteArray): kotlin.ByteArray
     
     /**
-     * Member count for the named group, including self. 0 = group not loaded.
+     * Restore engine state from a prior dump_state output. Replaces the
+     * MemoryStorage contents in-place and clears the in-memory group cache
+     * (next group op re-loads from the restored storage). Validates the
+     * magic header before touching state — a corrupt or wrong-version blob
+     * is rejected without mutating the engine.
      */
+    fun `loadState`(`bytes`: kotlin.ByteArray)
+    
     fun `memberCount`(`groupId`: kotlin.ByteArray): kotlin.UInt
     
-    /**
-     * Process any incoming MLS message for a group — Application, Commit, or
-     * Proposal. Dispatcher returns a typed result so the caller knows which
-     * shape it got. Commits are auto-merged; proposals are stored as
-     * pending (caller has no current API to commit them — Phase 2 work).
-     */
     fun `processMessage`(`groupId`: kotlin.ByteArray, `msgBytes`: kotlin.ByteArray): ProcessedKind
     
     companion object
@@ -1328,16 +1308,24 @@ open class MlsEngine: Disposable, AutoCloseable, MlsEngineInterface
         this.cleanable = null
     }
     /**
-     * One Engine per account on this install. Subsequent constructors with a
-     * different account_id are an error (caller must drop the old Engine
-     * first) — that prevents accidental mixing of multi-account state.
+     * One Engine per account on this install. `identity_seed` is the 32-byte
+     * master seed already persisted in the secure keychain group by M3
+     * (chat-crypto's `loadSeed()`). The MLS signer is derived from this via
+     * BLAKE2b sub-seed under `MLS_SIGNER_DERIVE_CONTEXT` — deterministic, so
+     * across launches the signer's public key is stable.
+     *
+     * The constructor does NOT load any prior snapshot. After construction,
+     * caller invokes `load_state(bytes)` if a snapshot exists in chat-db
+     * for this account; otherwise the engine starts from a fresh
+     * MemoryStorage. Either way, the signer is re-stored into the active
+     * MemoryStorage so OpenMLS internals can look it up.
      */
-    constructor(`accountId`: kotlin.String) :
+    constructor(`accountId`: kotlin.String, `identitySeed`: kotlin.ByteArray) :
         this(UniffiWithHandle, 
     uniffiRustCallWithError(ChatMlsException) { _status ->
     UniffiLib.uniffi_chat_mls_core_fn_constructor_mlsengine_new(
     
-        FfiConverterString.lower(`accountId`),_status)
+        FfiConverterString.lower(`accountId`),FfiConverterByteArray.lower(`identitySeed`),_status)
 }
     )
 
@@ -1412,11 +1400,7 @@ open class MlsEngine: Disposable, AutoCloseable, MlsEngineInterface
         }
     }
 
-    
-    /**
-     * Returns the account_id this engine was constructed for. Useful for
-     * the host code's "is the engine bound to the right account?" check.
-     */override fun `accountId`(): kotlin.String {
+    override fun `accountId`(): kotlin.String {
             return FfiConverterString.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
@@ -1430,12 +1414,6 @@ open class MlsEngine: Disposable, AutoCloseable, MlsEngineInterface
     
 
     
-    /**
-     * Add one or more members to an existing group. Returns the Commit (to
-     * fan out to all *current* members via the DS) and the Welcome (to send
-     * to the new joiners). The pending commit is merged into local state
-     * before returning — caller doesn't need a second call.
-     */
     @Throws(ChatMlsException::class)override fun `addMembers`(`groupId`: kotlin.ByteArray, `keyPackages`: List<kotlin.ByteArray>): AddMembersResult {
             return FfiConverterTypeAddMembersResult.lift(
     callWithHandle {
@@ -1450,12 +1428,6 @@ open class MlsEngine: Disposable, AutoCloseable, MlsEngineInterface
     
 
     
-    /**
-     * Create a brand-new group with this engine as the sole founder member.
-     * `group_id` is opaque to MLS — caller chooses any 32-byte identifier;
-     * we recommend `sha256(chatId)` or a random 32B (see ADR-015 §7 design
-     * note on Chat.mlsGroupId).
-     */
     @Throws(ChatMlsException::class)override fun `createGroup`(`groupId`: kotlin.ByteArray)
         = 
     callWithHandle {
@@ -1469,13 +1441,6 @@ open class MlsEngine: Disposable, AutoCloseable, MlsEngineInterface
     
 
     
-    /**
-     * Generate one fresh KeyPackage. Caller is responsible for shipping the
-     * returned bytes to the server prekey directory (Chunk 4 — mls-keys
-     * publishKeyPackages route). The matching private material is stored in
-     * `provider.storage()` and consumed when this device joins a group via
-     * `join_from_welcome`.
-     */
     @Throws(ChatMlsException::class)override fun `createKeyPackage`(): kotlin.ByteArray {
             return FfiConverterByteArray.lift(
     callWithHandle {
@@ -1490,12 +1455,6 @@ open class MlsEngine: Disposable, AutoCloseable, MlsEngineInterface
     
 
     
-    /**
-     * Current epoch counter for the named group — increments by one each
-     * time a Commit is merged. Useful for the Chunk 4 server-side ordering
-     * gate (server refuses to accept a commit at epoch N+2 if it hasn't
-     * seen N+1 yet) and for the Chunk 7 acceptance harness.
-     */
     @Throws(ChatMlsException::class)override fun `currentEpoch`(`groupId`: kotlin.ByteArray): kotlin.ULong {
             return FfiConverterULong.lift(
     callWithHandle {
@@ -1511,11 +1470,25 @@ open class MlsEngine: Disposable, AutoCloseable, MlsEngineInterface
 
     
     /**
-     * Encrypt application plaintext for the named group. The returned bytes
-     * are an MlsMessageOut — server stores ONE blob and fans to all members
-     * (the v=2 wire frame from §M3.5). Forward secrecy: the key material is
-     * discarded immediately; sender cannot decrypt own message.
+     * Serialise the entire MemoryStorage to opaque bytes. JS layer persists
+     * to chat-db (already SQLCipher-encrypted) after every mutating call.
+     * Format is a simple length-prefix encoding of (key, value) entries —
+     * internal to chat-mls-core, NOT a wire-protocol; format may change.
      */
+    @Throws(ChatMlsException::class)override fun `dumpState`(): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    callWithHandle {
+    uniffiRustCallWithError(ChatMlsException) { _status ->
+    UniffiLib.uniffi_chat_mls_core_fn_method_mlsengine_dump_state(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    
     @Throws(ChatMlsException::class)override fun `encryptApp`(`groupId`: kotlin.ByteArray, `plaintext`: kotlin.ByteArray): kotlin.ByteArray {
             return FfiConverterByteArray.lift(
     callWithHandle {
@@ -1530,13 +1503,6 @@ open class MlsEngine: Disposable, AutoCloseable, MlsEngineInterface
     
 
     
-    /**
-     * Process a Welcome received from another member. Returns the group_id
-     * of the newly-joined group so the caller can route subsequent messages
-     * to the right local state. Welcome already encodes the ratchet tree
-     * (use_ratchet_tree_extension=true in create_group), so no separate
-     * tree fetch is needed.
-     */
     @Throws(ChatMlsException::class)override fun `joinFromWelcome`(`welcomeBytes`: kotlin.ByteArray): kotlin.ByteArray {
             return FfiConverterByteArray.lift(
     callWithHandle {
@@ -1552,8 +1518,25 @@ open class MlsEngine: Disposable, AutoCloseable, MlsEngineInterface
 
     
     /**
-     * Member count for the named group, including self. 0 = group not loaded.
+     * Restore engine state from a prior dump_state output. Replaces the
+     * MemoryStorage contents in-place and clears the in-memory group cache
+     * (next group op re-loads from the restored storage). Validates the
+     * magic header before touching state — a corrupt or wrong-version blob
+     * is rejected without mutating the engine.
      */
+    @Throws(ChatMlsException::class)override fun `loadState`(`bytes`: kotlin.ByteArray)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(ChatMlsException) { _status ->
+    UniffiLib.uniffi_chat_mls_core_fn_method_mlsengine_load_state(
+        it,
+        FfiConverterByteArray.lower(`bytes`),_status)
+}
+    }
+    
+    
+
+    
     @Throws(ChatMlsException::class)override fun `memberCount`(`groupId`: kotlin.ByteArray): kotlin.UInt {
             return FfiConverterUInt.lift(
     callWithHandle {
@@ -1568,12 +1551,6 @@ open class MlsEngine: Disposable, AutoCloseable, MlsEngineInterface
     
 
     
-    /**
-     * Process any incoming MLS message for a group — Application, Commit, or
-     * Proposal. Dispatcher returns a typed result so the caller knows which
-     * shape it got. Commits are auto-merged; proposals are stored as
-     * pending (caller has no current API to commit them — Phase 2 work).
-     */
     @Throws(ChatMlsException::class)override fun `processMessage`(`groupId`: kotlin.ByteArray, `msgBytes`: kotlin.ByteArray): ProcessedKind {
             return FfiConverterTypeProcessedKind.lift(
     callWithHandle {
@@ -1629,8 +1606,7 @@ public object FfiConverterTypeMlsEngine: FfiConverter<MlsEngine, Long> {
 
 /**
  * Outcome of `MlsEngine::add_members` — a Commit to fan out to existing
- * members + a Welcome to send to each new joiner. `group_info` is None when
- * the ratchet-tree extension is in use (the tree travels inside Welcome).
+ * members + a Welcome to send to each new joiner.
  */
 data class AddMembersResult (
     var `commit`: kotlin.ByteArray
@@ -1733,10 +1709,7 @@ public object FfiConverterTypeChatMlsError : FfiConverterRustBuffer<ChatMlsExcep
 
 
 /**
- * Discriminated result of `MlsEngine::process_message`. Application = a
- * decrypted plaintext for the caller to deliver to the chat UI. CommitApplied
- * = group state advanced (one epoch) — no payload. ProposalQueued = a
- * proposal was stored as pending; caller can choose to commit later.
+ * Discriminated result of `MlsEngine::process_message`.
  */
 sealed class ProcessedKind {
     

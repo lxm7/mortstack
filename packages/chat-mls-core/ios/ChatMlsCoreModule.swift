@@ -44,13 +44,14 @@ public class ChatMlsCoreModule: Module {
 
     // ── Engine lifecycle ──────────────────────────────────────────────────
 
-    Function("initEngine") { (accountId: String) throws -> Void in
+    Function("initEngine") {
+      (accountId: String, identitySeed: Data) throws -> Void in
       if let existing = self.engine {
         let bound = existing.accountId()
         if bound == accountId { return }  // idempotent
         throw BridgeError.engineAccountMismatch(want: accountId, got: bound)
       }
-      self.engine = try MlsEngine(accountId: accountId)
+      self.engine = try MlsEngine(accountId: accountId, identitySeed: identitySeed)
     }
 
     Function("engineAccountId") { () throws -> String in
@@ -127,6 +128,18 @@ public class ChatMlsCoreModule: Module {
       guard let e = self.engine else { throw BridgeError.engineNotInitialized }
       let n = try e.memberCount(groupId: groupId)
       return Int(n)
+    }
+
+    // ── State persistence (Chunk 2.5) ──────────────────────────────────────
+
+    Function("dumpState") { () throws -> Data in
+      guard let e = self.engine else { throw BridgeError.engineNotInitialized }
+      return try e.dumpState()
+    }
+
+    Function("loadState") { (snapshot: Data) throws -> Void in
+      guard let e = self.engine else { throw BridgeError.engineNotInitialized }
+      try e.loadState(bytes: snapshot)
     }
   }
 }

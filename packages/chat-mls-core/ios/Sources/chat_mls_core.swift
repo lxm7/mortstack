@@ -512,73 +512,39 @@ fileprivate struct FfiConverterData: FfiConverterRustBuffer {
 
 public protocol MlsEngineProtocol: AnyObject, Sendable {
     
-    /**
-     * Returns the account_id this engine was constructed for. Useful for
-     * the host code's "is the engine bound to the right account?" check.
-     */
     func accountId()  -> String
     
-    /**
-     * Add one or more members to an existing group. Returns the Commit (to
-     * fan out to all *current* members via the DS) and the Welcome (to send
-     * to the new joiners). The pending commit is merged into local state
-     * before returning — caller doesn't need a second call.
-     */
     func addMembers(groupId: Data, keyPackages: [Data]) throws  -> AddMembersResult
     
-    /**
-     * Create a brand-new group with this engine as the sole founder member.
-     * `group_id` is opaque to MLS — caller chooses any 32-byte identifier;
-     * we recommend `sha256(chatId)` or a random 32B (see ADR-015 §7 design
-     * note on Chat.mlsGroupId).
-     */
     func createGroup(groupId: Data) throws 
     
-    /**
-     * Generate one fresh KeyPackage. Caller is responsible for shipping the
-     * returned bytes to the server prekey directory (Chunk 4 — mls-keys
-     * publishKeyPackages route). The matching private material is stored in
-     * `provider.storage()` and consumed when this device joins a group via
-     * `join_from_welcome`.
-     */
     func createKeyPackage() throws  -> Data
     
-    /**
-     * Current epoch counter for the named group — increments by one each
-     * time a Commit is merged. Useful for the Chunk 4 server-side ordering
-     * gate (server refuses to accept a commit at epoch N+2 if it hasn't
-     * seen N+1 yet) and for the Chunk 7 acceptance harness.
-     */
     func currentEpoch(groupId: Data) throws  -> UInt64
     
     /**
-     * Encrypt application plaintext for the named group. The returned bytes
-     * are an MlsMessageOut — server stores ONE blob and fans to all members
-     * (the v=2 wire frame from §M3.5). Forward secrecy: the key material is
-     * discarded immediately; sender cannot decrypt own message.
+     * Serialise the entire MemoryStorage to opaque bytes. JS layer persists
+     * to chat-db (already SQLCipher-encrypted) after every mutating call.
+     * Format is a simple length-prefix encoding of (key, value) entries —
+     * internal to chat-mls-core, NOT a wire-protocol; format may change.
      */
+    func dumpState() throws  -> Data
+    
     func encryptApp(groupId: Data, plaintext: Data) throws  -> Data
     
-    /**
-     * Process a Welcome received from another member. Returns the group_id
-     * of the newly-joined group so the caller can route subsequent messages
-     * to the right local state. Welcome already encodes the ratchet tree
-     * (use_ratchet_tree_extension=true in create_group), so no separate
-     * tree fetch is needed.
-     */
     func joinFromWelcome(welcomeBytes: Data) throws  -> Data
     
     /**
-     * Member count for the named group, including self. 0 = group not loaded.
+     * Restore engine state from a prior dump_state output. Replaces the
+     * MemoryStorage contents in-place and clears the in-memory group cache
+     * (next group op re-loads from the restored storage). Validates the
+     * magic header before touching state — a corrupt or wrong-version blob
+     * is rejected without mutating the engine.
      */
+    func loadState(bytes: Data) throws 
+    
     func memberCount(groupId: Data) throws  -> UInt32
     
-    /**
-     * Process any incoming MLS message for a group — Application, Commit, or
-     * Proposal. Dispatcher returns a typed result so the caller knows which
-     * shape it got. Commits are auto-merged; proposals are stored as
-     * pending (caller has no current API to commit them — Phase 2 work).
-     */
     func processMessage(groupId: Data, msgBytes: Data) throws  -> ProcessedKind
     
 }
@@ -622,15 +588,24 @@ open class MlsEngine: MlsEngineProtocol, @unchecked Sendable {
         return try! rustCall { uniffi_chat_mls_core_fn_clone_mlsengine(self.handle, $0) }
     }
     /**
-     * One Engine per account on this install. Subsequent constructors with a
-     * different account_id are an error (caller must drop the old Engine
-     * first) — that prevents accidental mixing of multi-account state.
+     * One Engine per account on this install. `identity_seed` is the 32-byte
+     * master seed already persisted in the secure keychain group by M3
+     * (chat-crypto's `loadSeed()`). The MLS signer is derived from this via
+     * BLAKE2b sub-seed under `MLS_SIGNER_DERIVE_CONTEXT` — deterministic, so
+     * across launches the signer's public key is stable.
+     *
+     * The constructor does NOT load any prior snapshot. After construction,
+     * caller invokes `load_state(bytes)` if a snapshot exists in chat-db
+     * for this account; otherwise the engine starts from a fresh
+     * MemoryStorage. Either way, the signer is re-stored into the active
+     * MemoryStorage so OpenMLS internals can look it up.
      */
-public convenience init(accountId: String)throws  {
+public convenience init(accountId: String, identitySeed: Data)throws  {
     let handle =
         try rustCallWithError(FfiConverterTypeChatMlsError_lift) {
     uniffi_chat_mls_core_fn_constructor_mlsengine_new(
-        FfiConverterString.lower(accountId),$0
+        FfiConverterString.lower(accountId),
+        FfiConverterData.lower(identitySeed),$0
     )
 }
     self.init(unsafeFromHandle: handle)
@@ -648,10 +623,6 @@ public convenience init(accountId: String)throws  {
     
 
     
-    /**
-     * Returns the account_id this engine was constructed for. Useful for
-     * the host code's "is the engine bound to the right account?" check.
-     */
 open func accountId() -> String  {
     return try!  FfiConverterString.lift(try! rustCall() {
     uniffi_chat_mls_core_fn_method_mlsengine_account_id(
@@ -660,12 +631,6 @@ open func accountId() -> String  {
 })
 }
     
-    /**
-     * Add one or more members to an existing group. Returns the Commit (to
-     * fan out to all *current* members via the DS) and the Welcome (to send
-     * to the new joiners). The pending commit is merged into local state
-     * before returning — caller doesn't need a second call.
-     */
 open func addMembers(groupId: Data, keyPackages: [Data])throws  -> AddMembersResult  {
     return try  FfiConverterTypeAddMembersResult_lift(try rustCallWithError(FfiConverterTypeChatMlsError_lift) {
     uniffi_chat_mls_core_fn_method_mlsengine_add_members(
@@ -676,12 +641,6 @@ open func addMembers(groupId: Data, keyPackages: [Data])throws  -> AddMembersRes
 })
 }
     
-    /**
-     * Create a brand-new group with this engine as the sole founder member.
-     * `group_id` is opaque to MLS — caller chooses any 32-byte identifier;
-     * we recommend `sha256(chatId)` or a random 32B (see ADR-015 §7 design
-     * note on Chat.mlsGroupId).
-     */
 open func createGroup(groupId: Data)throws   {try rustCallWithError(FfiConverterTypeChatMlsError_lift) {
     uniffi_chat_mls_core_fn_method_mlsengine_create_group(
             self.uniffiCloneHandle(),
@@ -690,13 +649,6 @@ open func createGroup(groupId: Data)throws   {try rustCallWithError(FfiConverter
 }
 }
     
-    /**
-     * Generate one fresh KeyPackage. Caller is responsible for shipping the
-     * returned bytes to the server prekey directory (Chunk 4 — mls-keys
-     * publishKeyPackages route). The matching private material is stored in
-     * `provider.storage()` and consumed when this device joins a group via
-     * `join_from_welcome`.
-     */
 open func createKeyPackage()throws  -> Data  {
     return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeChatMlsError_lift) {
     uniffi_chat_mls_core_fn_method_mlsengine_create_key_package(
@@ -705,12 +657,6 @@ open func createKeyPackage()throws  -> Data  {
 })
 }
     
-    /**
-     * Current epoch counter for the named group — increments by one each
-     * time a Commit is merged. Useful for the Chunk 4 server-side ordering
-     * gate (server refuses to accept a commit at epoch N+2 if it hasn't
-     * seen N+1 yet) and for the Chunk 7 acceptance harness.
-     */
 open func currentEpoch(groupId: Data)throws  -> UInt64  {
     return try  FfiConverterUInt64.lift(try rustCallWithError(FfiConverterTypeChatMlsError_lift) {
     uniffi_chat_mls_core_fn_method_mlsengine_current_epoch(
@@ -721,11 +667,19 @@ open func currentEpoch(groupId: Data)throws  -> UInt64  {
 }
     
     /**
-     * Encrypt application plaintext for the named group. The returned bytes
-     * are an MlsMessageOut — server stores ONE blob and fans to all members
-     * (the v=2 wire frame from §M3.5). Forward secrecy: the key material is
-     * discarded immediately; sender cannot decrypt own message.
+     * Serialise the entire MemoryStorage to opaque bytes. JS layer persists
+     * to chat-db (already SQLCipher-encrypted) after every mutating call.
+     * Format is a simple length-prefix encoding of (key, value) entries —
+     * internal to chat-mls-core, NOT a wire-protocol; format may change.
      */
+open func dumpState()throws  -> Data  {
+    return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeChatMlsError_lift) {
+    uniffi_chat_mls_core_fn_method_mlsengine_dump_state(
+            self.uniffiCloneHandle(),$0
+    )
+})
+}
+    
 open func encryptApp(groupId: Data, plaintext: Data)throws  -> Data  {
     return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeChatMlsError_lift) {
     uniffi_chat_mls_core_fn_method_mlsengine_encrypt_app(
@@ -736,13 +690,6 @@ open func encryptApp(groupId: Data, plaintext: Data)throws  -> Data  {
 })
 }
     
-    /**
-     * Process a Welcome received from another member. Returns the group_id
-     * of the newly-joined group so the caller can route subsequent messages
-     * to the right local state. Welcome already encodes the ratchet tree
-     * (use_ratchet_tree_extension=true in create_group), so no separate
-     * tree fetch is needed.
-     */
 open func joinFromWelcome(welcomeBytes: Data)throws  -> Data  {
     return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeChatMlsError_lift) {
     uniffi_chat_mls_core_fn_method_mlsengine_join_from_welcome(
@@ -753,8 +700,20 @@ open func joinFromWelcome(welcomeBytes: Data)throws  -> Data  {
 }
     
     /**
-     * Member count for the named group, including self. 0 = group not loaded.
+     * Restore engine state from a prior dump_state output. Replaces the
+     * MemoryStorage contents in-place and clears the in-memory group cache
+     * (next group op re-loads from the restored storage). Validates the
+     * magic header before touching state — a corrupt or wrong-version blob
+     * is rejected without mutating the engine.
      */
+open func loadState(bytes: Data)throws   {try rustCallWithError(FfiConverterTypeChatMlsError_lift) {
+    uniffi_chat_mls_core_fn_method_mlsengine_load_state(
+            self.uniffiCloneHandle(),
+        FfiConverterData.lower(bytes),$0
+    )
+}
+}
+    
 open func memberCount(groupId: Data)throws  -> UInt32  {
     return try  FfiConverterUInt32.lift(try rustCallWithError(FfiConverterTypeChatMlsError_lift) {
     uniffi_chat_mls_core_fn_method_mlsengine_member_count(
@@ -764,12 +723,6 @@ open func memberCount(groupId: Data)throws  -> UInt32  {
 })
 }
     
-    /**
-     * Process any incoming MLS message for a group — Application, Commit, or
-     * Proposal. Dispatcher returns a typed result so the caller knows which
-     * shape it got. Commits are auto-merged; proposals are stored as
-     * pending (caller has no current API to commit them — Phase 2 work).
-     */
 open func processMessage(groupId: Data, msgBytes: Data)throws  -> ProcessedKind  {
     return try  FfiConverterTypeProcessedKind_lift(try rustCallWithError(FfiConverterTypeChatMlsError_lift) {
     uniffi_chat_mls_core_fn_method_mlsengine_process_message(
@@ -830,8 +783,7 @@ public func FfiConverterTypeMlsEngine_lower(_ value: MlsEngine) -> UInt64 {
 
 /**
  * Outcome of `MlsEngine::add_members` — a Commit to fan out to existing
- * members + a Welcome to send to each new joiner. `group_info` is None when
- * the ratchet-tree extension is in use (the tree travels inside Welcome).
+ * members + a Welcome to send to each new joiner.
  */
 public struct AddMembersResult: Equatable, Hashable {
     public var commit: Data
@@ -963,10 +915,7 @@ public func FfiConverterTypeChatMlsError_lower(_ value: ChatMlsError) -> RustBuf
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 /**
- * Discriminated result of `MlsEngine::process_message`. Application = a
- * decrypted plaintext for the caller to deliver to the chat UI. CommitApplied
- * = group state advanced (one epoch) — no payload. ProposalQueued = a
- * proposal was stored as pending; caller can choose to commit later.
+ * Discriminated result of `MlsEngine::process_message`.
  */
 
 public enum ProcessedKind: Equatable, Hashable {
@@ -1092,34 +1041,40 @@ private let initializationResult: InitializationResult = {
     if (uniffi_chat_mls_core_checksum_func_ping() != 61247) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_chat_mls_core_checksum_method_mlsengine_account_id() != 57748) {
+    if (uniffi_chat_mls_core_checksum_method_mlsengine_account_id() != 28029) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_chat_mls_core_checksum_method_mlsengine_add_members() != 26388) {
+    if (uniffi_chat_mls_core_checksum_method_mlsengine_add_members() != 22289) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_chat_mls_core_checksum_method_mlsengine_create_group() != 23166) {
+    if (uniffi_chat_mls_core_checksum_method_mlsengine_create_group() != 26642) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_chat_mls_core_checksum_method_mlsengine_create_key_package() != 6637) {
+    if (uniffi_chat_mls_core_checksum_method_mlsengine_create_key_package() != 34547) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_chat_mls_core_checksum_method_mlsengine_current_epoch() != 60776) {
+    if (uniffi_chat_mls_core_checksum_method_mlsengine_current_epoch() != 63885) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_chat_mls_core_checksum_method_mlsengine_encrypt_app() != 51744) {
+    if (uniffi_chat_mls_core_checksum_method_mlsengine_dump_state() != 17763) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_chat_mls_core_checksum_method_mlsengine_join_from_welcome() != 27609) {
+    if (uniffi_chat_mls_core_checksum_method_mlsengine_encrypt_app() != 20051) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_chat_mls_core_checksum_method_mlsengine_member_count() != 39859) {
+    if (uniffi_chat_mls_core_checksum_method_mlsengine_join_from_welcome() != 15363) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_chat_mls_core_checksum_method_mlsengine_process_message() != 658) {
+    if (uniffi_chat_mls_core_checksum_method_mlsengine_load_state() != 8201) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_chat_mls_core_checksum_constructor_mlsengine_new() != 45725) {
+    if (uniffi_chat_mls_core_checksum_method_mlsengine_member_count() != 49882) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_chat_mls_core_checksum_method_mlsengine_process_message() != 44101) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_chat_mls_core_checksum_constructor_mlsengine_new() != 5760) {
         return InitializationResult.apiChecksumMismatch
     }
 

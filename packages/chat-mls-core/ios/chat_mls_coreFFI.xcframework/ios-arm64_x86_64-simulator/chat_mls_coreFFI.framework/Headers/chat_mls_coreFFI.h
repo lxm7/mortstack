@@ -255,7 +255,7 @@ void uniffi_chat_mls_core_fn_free_mlsengine(uint64_t handle, RustCallStatus *_No
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_MLS_CORE_FN_CONSTRUCTOR_MLSENGINE_NEW
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_MLS_CORE_FN_CONSTRUCTOR_MLSENGINE_NEW
-uint64_t uniffi_chat_mls_core_fn_constructor_mlsengine_new(RustBuffer account_id, RustCallStatus *_Nonnull out_status
+uint64_t uniffi_chat_mls_core_fn_constructor_mlsengine_new(RustBuffer account_id, RustBuffer identity_seed, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_MLS_CORE_FN_METHOD_MLSENGINE_ACCOUNT_ID
@@ -283,6 +283,11 @@ RustBuffer uniffi_chat_mls_core_fn_method_mlsengine_create_key_package(uint64_t 
 uint64_t uniffi_chat_mls_core_fn_method_mlsengine_current_epoch(uint64_t ptr, RustBuffer group_id, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_MLS_CORE_FN_METHOD_MLSENGINE_DUMP_STATE
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_MLS_CORE_FN_METHOD_MLSENGINE_DUMP_STATE
+RustBuffer uniffi_chat_mls_core_fn_method_mlsengine_dump_state(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_MLS_CORE_FN_METHOD_MLSENGINE_ENCRYPT_APP
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_MLS_CORE_FN_METHOD_MLSENGINE_ENCRYPT_APP
 RustBuffer uniffi_chat_mls_core_fn_method_mlsengine_encrypt_app(uint64_t ptr, RustBuffer group_id, RustBuffer plaintext, RustCallStatus *_Nonnull out_status
@@ -291,6 +296,11 @@ RustBuffer uniffi_chat_mls_core_fn_method_mlsengine_encrypt_app(uint64_t ptr, Ru
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_MLS_CORE_FN_METHOD_MLSENGINE_JOIN_FROM_WELCOME
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_MLS_CORE_FN_METHOD_MLSENGINE_JOIN_FROM_WELCOME
 RustBuffer uniffi_chat_mls_core_fn_method_mlsengine_join_from_welcome(uint64_t ptr, RustBuffer welcome_bytes, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_MLS_CORE_FN_METHOD_MLSENGINE_LOAD_STATE
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_MLS_CORE_FN_METHOD_MLSENGINE_LOAD_STATE
+void uniffi_chat_mls_core_fn_method_mlsengine_load_state(uint64_t ptr, RustBuffer bytes, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_MLS_CORE_FN_METHOD_MLSENGINE_MEMBER_COUNT
@@ -605,6 +615,12 @@ uint16_t uniffi_chat_mls_core_checksum_method_mlsengine_current_epoch(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_MLS_CORE_CHECKSUM_METHOD_MLSENGINE_DUMP_STATE
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_MLS_CORE_CHECKSUM_METHOD_MLSENGINE_DUMP_STATE
+uint16_t uniffi_chat_mls_core_checksum_method_mlsengine_dump_state(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_MLS_CORE_CHECKSUM_METHOD_MLSENGINE_ENCRYPT_APP
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_MLS_CORE_CHECKSUM_METHOD_MLSENGINE_ENCRYPT_APP
 uint16_t uniffi_chat_mls_core_checksum_method_mlsengine_encrypt_app(void
@@ -614,6 +630,12 @@ uint16_t uniffi_chat_mls_core_checksum_method_mlsengine_encrypt_app(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_MLS_CORE_CHECKSUM_METHOD_MLSENGINE_JOIN_FROM_WELCOME
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_MLS_CORE_CHECKSUM_METHOD_MLSENGINE_JOIN_FROM_WELCOME
 uint16_t uniffi_chat_mls_core_checksum_method_mlsengine_join_from_welcome(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_MLS_CORE_CHECKSUM_METHOD_MLSENGINE_LOAD_STATE
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_MLS_CORE_CHECKSUM_METHOD_MLSENGINE_LOAD_STATE
+uint16_t uniffi_chat_mls_core_checksum_method_mlsengine_load_state(void
     
 );
 #endif

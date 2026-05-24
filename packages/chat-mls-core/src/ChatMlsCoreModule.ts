@@ -14,12 +14,17 @@ declare class ChatMlsCoreModule extends NativeModule<ChatMlsCoreModuleEvents> {
   ping(): string;
 
   // ── Engine lifecycle ──────────────────────────────────────────────────────
-  // Construct the singleton MlsEngine for the active account. Idempotent
-  // when called with the SAME accountId — re-construction with a DIFFERENT
-  // accountId throws (caller must resetEngine() first to wipe the prior
-  // engine's in-memory state). Engine state currently lives in MemoryStorage;
-  // SQLCipher-backed persistence lands in Chunk 2.5.
-  initEngine(accountId: string): void;
+  // Construct the singleton MlsEngine for the active account. `identitySeed`
+  // is the 32-byte M3 master seed (read from the secure keychain group via
+  // ChatCrypto.loadSeed()). The MLS signer is derived deterministically from
+  // it; across launches the same seed → same signer → group state survives.
+  //
+  // Idempotent when called with the SAME accountId; re-construction with a
+  // DIFFERENT accountId throws (caller must resetEngine() first to wipe the
+  // prior engine's in-memory state). The constructor does NOT load any
+  // snapshot — caller follows up with loadState(bytes) if a prior snapshot
+  // exists for this account in chat-db.
+  initEngine(accountId: string, identitySeed: Uint8Array): void;
 
   // Returns the accountId the engine was constructed for, or throws if no
   // engine is initialised. Useful for the auth-change hook to confirm the
@@ -30,6 +35,20 @@ declare class ChatMlsCoreModule extends NativeModule<ChatMlsCoreModuleEvents> {
   // accounts on the same install, or as a debug reset. Idempotent (no-op
   // when no engine exists).
   resetEngine(): void;
+
+  // ── State persistence (Chunk 2.5) ─────────────────────────────────────────
+  // Serialize the entire engine state — groups, key packages, signature
+  // keys, all OpenMLS-managed key material — into opaque bytes. Caller
+  // persists to chat-db (already SQLCipher-encrypted via op-sqlite from M2)
+  // after every mutating engine method. Format is internal to chat-mls-core;
+  // bytes from one OpenMLS version are NOT guaranteed to load on another.
+  dumpState(): Uint8Array;
+
+  // Restore engine state from a prior dumpState() output. Replaces the
+  // in-memory storage in-place and clears the group handle cache (next
+  // group op re-loads from the restored storage). Validates a magic header
+  // before mutating state — corrupt/wrong-version blobs are rejected.
+  loadState(snapshot: Uint8Array): void;
 
   // ── KeyPackage publish ────────────────────────────────────────────────────
   // Generate one fresh KeyPackage for this device. The returned bytes are
