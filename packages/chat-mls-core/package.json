@@ -13,6 +13,10 @@
     "./wire": {
       "types": "./src/wire/index.ts",
       "default": "./src/wire/index.ts"
+    },
+    "./client": {
+      "types": "./src/client/index.ts",
+      "default": "./src/client/index.ts"
     }
   },
   "scripts": {
@@ -23,6 +27,9 @@
     "test": "echo \"smoke is the build itself — see scripts/README.md\" && exit 0"
   },
   "dependencies": {
+    "@repo/chat-crypto": "workspace:*",
+    "@repo/chat-db": "workspace:*",
+    "expo-crypto": "~15.0.0",
     "zod": "^3.24.1"
   },
   "devDependencies": {

@@ -16,13 +16,16 @@ import {
 import {
   createEncryptedTransport,
   type EncryptedChatTransport,
+  type MlsApi,
 } from "@repo/chat";
+import { ChatMlsCore } from "@repo/chat-mls-core";
 
 import { loadSessionToken } from "@/lib/auth/session";
 import { useAuthStore } from "@/store/auth";
 import { getMyAccount } from "@/lib/account/me";
 import { getOrCreateChatIdentity } from "@/lib/chat/identity";
 import { getPeerDevices } from "@/lib/chat/peer-keys";
+import { resolveChatGroupId } from "@/lib/chat/group-resolver";
 
 const ChatTransportContext = createContext<EncryptedChatTransport | null>(null);
 const ChatStateContext = createContext<ConnectionState>("idle");
@@ -61,8 +64,14 @@ export function ChatTransportProvider({ children }: { children: ReactNode }) {
         const map = await getPeerDevices([senderId]);
         return (map.get(senderId) ?? []).map((d) => d.x25519Pub);
       },
-      // MLS group-state-aware decrypt lookup will be wired here in Chunk 5
-      // once @repo/chat exposes resolveSenderMlsCredentials.
+      // v=2 (Chunk 6): when a chat has a registered mls_group_id, send +
+      // decrypt go through the native engine. Falls back to v=1 for chats
+      // without a groupId (legacy 1:1 chats predating M3.5).
+      resolveChatGroupId,
+      mls: {
+        encryptApp: (gid, pt) => ChatMlsCore.encryptApp(gid, pt),
+        processMessage: (gid, bytes) => ChatMlsCore.processMessage(gid, bytes),
+      } satisfies MlsApi,
       onDecryptFailure: (msg, reason) => {
         console.warn(
           "[chat/transport] decrypt failed",

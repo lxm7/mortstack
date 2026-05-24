@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as Crypto from "expo-crypto";
 import { Button, Input, ScrollView, Text, XStack, YStack } from "tamagui";
-import { getChatDb, outbox, type PendingOutboxRow } from "@repo/chat-db";
+import {
+  getChatDb,
+  mls as mlsStore,
+  outbox,
+  type MlsGroupListItem,
+  type PendingOutboxRow,
+} from "@repo/chat-db";
 import {
   ChatCrypto,
   ED25519_PUBLIC_KEY_BYTES,
@@ -9,6 +15,8 @@ import {
   X25519_PUBLIC_KEY_BYTES,
 } from "@repo/chat-crypto";
 import { ChatMlsCore } from "@repo/chat-mls-core";
+import { getMlsClient } from "@/lib/chat/mls-auto-publish";
+import { clearChatGroupCache } from "@/lib/chat/group-resolver";
 import {
   decryptInbound,
   encryptOutbound,
@@ -64,6 +72,294 @@ interface WrongKeyOutcome {
 
 interface InboxEntry extends EncryptedIncomingMessage {
   receivedAt: number;
+}
+
+// Chunk 5 acceptance panel — surfaces live engine + directory state so the
+// 2-device acceptance harness from README §M3.5 can be eyeballed:
+// "current KeyPackage count, group epoch, ratchet tree hash". The KP pool
+// number comes from the auto-publish loop's last server-reported total; the
+// group list comes from chat-db; the snapshot timestamp from the same store.
+interface MlsAcceptanceSnapshot {
+  engineAccountId: string | null;
+  kpPoolSize: number | null;
+  snapshotUpdatedAt: number | null;
+  groups: Array<
+    MlsGroupListItem & { currentEpoch: number; memberCount: number }
+  >;
+}
+
+function MlsAcceptancePanel() {
+  const [snap, setSnap] = useState<MlsAcceptanceSnapshot | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    setErr(null);
+    try {
+      let engineAccountId: string | null = null;
+      try {
+        engineAccountId = ChatMlsCore.engineAccountId();
+      } catch {
+        // engine not initialised yet — leave null
+      }
+
+      const client = getMlsClient();
+      const kpPoolSize = client ? client.knownPoolSize : null;
+
+      const dbHandle = await getChatDb();
+      const groupRows = await mlsStore.listGroups(dbHandle.db);
+      const groups = groupRows.map((g) => {
+        // currentEpoch + memberCount come from the native engine — wrap in
+        // try/catch in case the snapshot lags the listGroups row write.
+        let currentEpoch = -1;
+        let memberCount = -1;
+        try {
+          currentEpoch = ChatMlsCore.currentEpoch(g.groupId);
+          memberCount = ChatMlsCore.memberCount(g.groupId);
+        } catch {
+          // skip — render -1 sentinels
+        }
+        return { ...g, currentEpoch, memberCount };
+      });
+
+      let snapshotUpdatedAt: number | null = null;
+      if (engineAccountId) {
+        const row = await mlsStore.loadEngineSnapshot(
+          dbHandle.db,
+          engineAccountId,
+        );
+        snapshotUpdatedAt = row?.updated_at ?? null;
+      }
+
+      setSnap({
+        engineAccountId,
+        kpPoolSize,
+        snapshotUpdatedAt,
+        groups,
+      });
+    } catch (e) {
+      setErr(String(e));
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  return (
+    <YStack bg="$backgroundHover" p="$3" borderRadius="$3" gap="$1">
+      <Text color="$color" fontSize="$4" fontWeight="600">
+        mls acceptance (Chunk 5)
+      </Text>
+      <Text color="$color" fontSize="$2" selectable>
+        engine account: {snap?.engineAccountId ?? "(not initialised)"}
+      </Text>
+      <Text color="$color" fontSize="$2">
+        kp pool (server-reported):{" "}
+        {snap?.kpPoolSize == null ? "?" : snap.kpPoolSize}
+      </Text>
+      <Text color="$color" fontSize="$2">
+        snapshot updatedAt:{" "}
+        {snap?.snapshotUpdatedAt == null
+          ? "—"
+          : new Date(snap.snapshotUpdatedAt).toLocaleTimeString()}
+      </Text>
+      <Text color="$color" fontSize="$2">
+        joined groups: {snap?.groups.length ?? 0}
+      </Text>
+      {snap?.groups.map((g) => (
+        <Text key={hex(g.groupId, 8)} color="$color" fontSize="$1" selectable>
+          gid {hex(g.groupId, 6)} · epoch {g.currentEpoch} (cursor{" "}
+          {g.lastAppliedEpoch}) · members {g.memberCount}
+          {g.chatId ? ` · chat ${g.chatId.slice(0, 8)}` : ""}
+        </Text>
+      ))}
+      {err && (
+        <Text color="red" fontSize="$2" selectable>
+          {err}
+        </Text>
+      )}
+      <XStack>
+        <Button size="$2" onPress={() => void refresh()}>
+          Refresh MLS state
+        </Button>
+      </XStack>
+    </YStack>
+  );
+}
+
+// Chunk 7 acceptance harness — interactive buttons covering the README §M3.5
+// acceptance scenarios. Each handler captures its result inline so the
+// 2-device tester can read state changes back without leaving the screen.
+//
+// Scenarios covered here (per README §M3.5 Acceptance):
+//   - 2-device DM via MLS group         → Create v=2 group + Add peer
+//   - 5-device group, 1 cipher to all   → Add peer (×N) + send via transport
+//   - member add / remove mid-conv      → Add peer mid-conversation
+//   - KeyPackage exhaustion             → server-side cap surfaces TRPC error
+//   - multi-account swap on same install → Reset engine + log back in
+//   - offline catch-up                  → background app + 30s timer + relaunch
+//
+// Buttons here drive MlsClient lifecycle helpers; the "send" path is the
+// normal encrypted transport (v=2 routes once the chat has an mls_group_id).
+function MlsLifecyclePanel({ chatId }: { chatId: string }) {
+  const [peerInput, setPeerInput] = useState("");
+  const [log, setLog] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+
+  const append = useCallback((line: string) => {
+    setLog((prev) =>
+      [`${new Date().toLocaleTimeString()} · ${line}`, ...prev].slice(0, 30),
+    );
+  }, []);
+
+  const run = useCallback(
+    async (label: string, fn: () => Promise<string>) => {
+      const client = getMlsClient();
+      if (!client) {
+        append(`${label}: no engine yet — wait for auto-bootstrap`);
+        return;
+      }
+      setBusy(true);
+      try {
+        const out = await fn();
+        append(`${label} · ${out}`);
+      } catch (err) {
+        append(`${label} FAIL · ${String(err).slice(0, 140)}`);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [append],
+  );
+
+  const onCreateGroup = useCallback(
+    () =>
+      run("createGroup", async () => {
+        const client = getMlsClient()!;
+        const dbHandle = await getChatDb();
+        // Ensure the chat row exists so setChatMlsGroupId has something to
+        // update — production callers come in via the M4 chat-list create
+        // flow which seeds this row.
+        await mlsStore.ensureChatForDebug(dbHandle.db, chatId, "group");
+        const { groupId } = await client.createGroup({ chatId });
+        clearChatGroupCache(chatId);
+        return `gid ${hex(groupId, 6)} · chat ${chatId} linked`;
+      }),
+    [chatId, run],
+  );
+
+  const onAddPeer = useCallback(
+    () =>
+      run("addMembers", async () => {
+        const client = getMlsClient()!;
+        const dbHandle = await getChatDb();
+        const peer = peerInput.trim();
+        if (!peer) throw new Error("peer accountId empty");
+        // Resolve which MLS group is linked to this chat — we use chats.mls_group_id
+        // rather than asking the user to paste the GroupId.
+        const result = await dbHandle.db.execute(
+          "SELECT mls_group_id FROM chats WHERE id = ?",
+          [chatId],
+        );
+        const row = (result.rows?.[0] ?? null) as {
+          mls_group_id: unknown;
+        } | null;
+        if (!row?.mls_group_id) {
+          throw new Error("chat has no mls_group_id — run Create group first");
+        }
+        const groupId =
+          row.mls_group_id instanceof Uint8Array
+            ? row.mls_group_id
+            : new Uint8Array(row.mls_group_id as ArrayBuffer);
+        const out = await client.addMembersByAccounts({
+          groupId,
+          accountIds: [peer],
+        });
+        return `epoch=${out.epoch} devices=${out.devicesAdded.length}`;
+      }),
+    [chatId, peerInput, run],
+  );
+
+  const onForceWelcomes = useCallback(
+    () =>
+      run("pollWelcomes", async () => {
+        const out = await getMlsClient()!.pollPendingWelcomes();
+        return `joined=${out.joinedGroupIds.length}`;
+      }),
+    [run],
+  );
+
+  const onForceCommits = useCallback(
+    () =>
+      run("pollCommits", async () => {
+        const client = getMlsClient()!;
+        const dbHandle = await getChatDb();
+        const groups = await mlsStore.listGroups(dbHandle.db);
+        let totalApplied = 0;
+        for (const g of groups) {
+          const o = await client.pollPendingCommits(g.groupId);
+          totalApplied += o.applied;
+        }
+        return `groups=${groups.length} applied=${totalApplied}`;
+      }),
+    [run],
+  );
+
+  const onReset = useCallback(
+    () =>
+      run("reset", async () => {
+        await getMlsClient()!.reset();
+        clearChatGroupCache();
+        return "engine wiped, snapshot cleared";
+      }),
+    [run],
+  );
+
+  return (
+    <YStack bg="$backgroundHover" p="$3" borderRadius="$3" gap="$2">
+      <Text color="$color" fontSize="$4" fontWeight="600">
+        mls lifecycle (Chunk 7)
+      </Text>
+      <Text color="$color" fontSize="$2">
+        target chat: {chatId}
+      </Text>
+      <Input
+        value={peerInput}
+        onChangeText={setPeerInput}
+        placeholder="peer accountId for Add (cuid)"
+        autoCapitalize="none"
+        autoCorrect={false}
+      />
+      <XStack gap="$2" flexWrap="wrap">
+        <Button size="$2" onPress={() => void onCreateGroup()} disabled={busy}>
+          Create v=2 group
+        </Button>
+        <Button size="$2" onPress={() => void onAddPeer()} disabled={busy}>
+          Add peer
+        </Button>
+        <Button
+          size="$2"
+          onPress={() => void onForceWelcomes()}
+          disabled={busy}
+        >
+          Force welcomes
+        </Button>
+        <Button size="$2" onPress={() => void onForceCommits()} disabled={busy}>
+          Force commits
+        </Button>
+        <Button size="$2" onPress={() => void onReset()} disabled={busy}>
+          Reset engine
+        </Button>
+      </XStack>
+      <YStack gap="$1">
+        {log.map((line, i) => (
+          <Text key={i} color="$color" fontSize="$1" selectable>
+            {line}
+          </Text>
+        ))}
+      </YStack>
+    </YStack>
+  );
 }
 
 // Chunk 0/1 smoke harness — calls ChatMlsCore.ping() and renders the result.
@@ -316,9 +612,10 @@ export default function ChatDbDebug() {
       setSendResults((prev) =>
         [
           `ok ${results.length} cipher(s):`,
-          ...results.map(
-            (r) =>
-              `  → device ${r.recipientDeviceId.slice(0, 8)} · srv ${r.serverMsgId} · ${new Date(r.ts).toLocaleTimeString()}`,
+          ...results.map((r) =>
+            r.frameVersion === 2
+              ? `  → v=2 group · srv ${r.serverMsgId} · ${new Date(r.ts).toLocaleTimeString()}`
+              : `  → device ${r.recipientDeviceId.slice(0, 8)} · srv ${r.serverMsgId} · ${new Date(r.ts).toLocaleTimeString()}`,
           ),
           ...prev,
         ].slice(0, 20),
@@ -355,6 +652,12 @@ export default function ChatDbDebug() {
 
         {/* ── Chunk 0/1: chat-mls-core native bridge smoke ───────────── */}
         <MlsPingPanel />
+
+        {/* ── Chunk 5: MLS acceptance state ──────────────────────────── */}
+        <MlsAcceptancePanel />
+
+        {/* ── Chunk 7: MLS lifecycle harness ─────────────────────────── */}
+        <MlsLifecyclePanel chatId={chatId} />
 
         {/* ── M3: My identity ─────────────────────────────────────────── */}
         <YStack bg="$backgroundHover" p="$3" borderRadius="$3" gap="$1">
@@ -534,8 +837,8 @@ export default function ChatDbDebug() {
                     {m.frame.text}
                   </Text>
                   <Text color="$color" fontSize="$1">
-                    from {m.senderId.slice(0, 8)} · chat {m.chatId.slice(0, 8)}{" "}
-                    · srv {m.serverMsgId} ·{" "}
+                    v={m.frameVersion} · from {m.senderId.slice(0, 8)} · chat{" "}
+                    {m.chatId.slice(0, 8)} · srv {m.serverMsgId} ·{" "}
                     {new Date(m.ts).toLocaleTimeString()}
                   </Text>
                 </YStack>
