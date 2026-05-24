@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["ChatMlsCoreModule"]
+  },
+  "android": {
+    "modules": ["io.sessions.chatmlscore.ChatMlsCoreModule"]
+  }
+}

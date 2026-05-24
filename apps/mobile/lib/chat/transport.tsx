@@ -20,6 +20,7 @@ import {
 
 import { loadSessionToken } from "@/lib/auth/session";
 import { useAuthStore } from "@/store/auth";
+import { getMyAccount } from "@/lib/account/me";
 import { getOrCreateChatIdentity } from "@/lib/chat/identity";
 import { getPeerDevices } from "@/lib/chat/peer-keys";
 
@@ -55,10 +56,13 @@ export function ChatTransportProvider({ children }: { children: ReactNode }) {
     return createEncryptedTransport({
       underlying,
       getMySeed: async () => (await getOrCreateChatIdentity()).seed,
+      getMyAccountId: async () => (await getMyAccount()).accountId,
       resolveSenderX25519Pubs: async (senderId) => {
         const map = await getPeerDevices([senderId]);
         return (map.get(senderId) ?? []).map((d) => d.x25519Pub);
       },
+      // MLS group-state-aware decrypt lookup will be wired here in Chunk 5
+      // once @repo/chat exposes resolveSenderMlsCredentials.
       onDecryptFailure: (msg, reason) => {
         console.warn(
           "[chat/transport] decrypt failed",

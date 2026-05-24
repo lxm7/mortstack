@@ -143,6 +143,10 @@ model UserDevice {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
+  // MLS (RFC 9420 via OpenMLS) directory columns land here in Chunk 4 —
+  // mlsCredentialId + KeyPackage relation. See ADR-015 for the libsignal
+  // rejection that drove the swap. No M3.5 signal columns retained.
+
   account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
   @@unique([accountId, deviceId])

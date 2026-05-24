@@ -87,8 +87,8 @@ export async function getPeerDevices(
 }
 
 // Explicit invalidation — useful when a sender is told their message couldn't
-// be decrypted by a peer (M3.5 negotiation) or when the user manually triggers
-// a directory refresh. Passing no arg wipes everything.
+// be decrypted by a peer or when the user manually triggers a directory
+// refresh. Passing no arg wipes everything.
 export async function invalidatePeerDevices(
   accountIds?: string[],
 ): Promise<void> {

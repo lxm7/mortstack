@@ -28,6 +28,7 @@
     "@repo/chat-calls": "workspace:*",
     "@repo/chat-crypto": "workspace:*",
     "@repo/chat-db": "workspace:*",
+    "@repo/chat-mls-core": "workspace:*",
     "@repo/chat-transport": "workspace:*",
     "@repo/schemas": "workspace:*",
     "@tamagui/animations-react-native": "^2.0.0-rc.41",

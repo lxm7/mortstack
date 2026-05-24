@@ -2,6 +2,8 @@ export const CHAT_PACKAGE_VERSION = "0.0.0";
 
 export {
   FRAME_VERSION,
+  FRAME_VERSION_V1,
+  FRAME_VERSION_V2,
   encryptOutbound,
   decryptInbound,
   DecryptError,
@@ -10,6 +12,9 @@ export {
   type FanoutTarget,
   type OutboundEnvelope,
   type RecipientDevice,
+  type EncryptOutboundOpts,
+  type DecryptInboundOpts,
+  type DecryptInboundResult,
 } from "./crypto-pipe";
 
 export {

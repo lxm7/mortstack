@@ -128,6 +128,8 @@ const keysRouter = router({
           ed25519Pub: true,
           x25519Pub: true,
           updatedAt: true,
+          // MLS columns (mlsCredentialId etc.) land here in Chunk 4 once
+          // KeyPackage publish + fetch routers ship.
         },
       });
 

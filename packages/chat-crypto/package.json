@@ -2,9 +2,15 @@
   "name": "@repo/chat-crypto",
   "version": "0.0.0",
   "private": true,
-  "description": "E2E crypto primitives for Sessions chat (libsodium MVP, Signal Protocol in M3.5)",
+  "description": "E2E crypto primitives for Sessions chat — libsodium box, sign, seed mgmt (MLS lives in @repo/chat-mls-core)",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
   "scripts": {
     "lint": "eslint .",
     "check-types": "tsc --noEmit",

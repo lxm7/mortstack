@@ -8,6 +8,7 @@ import {
   SEED_BYTES,
   X25519_PUBLIC_KEY_BYTES,
 } from "@repo/chat-crypto";
+import { ChatMlsCore } from "@repo/chat-mls-core";
 import {
   decryptInbound,
   encryptOutbound,
@@ -63,6 +64,53 @@ interface WrongKeyOutcome {
 
 interface InboxEntry extends EncryptedIncomingMessage {
   receivedAt: number;
+}
+
+// Chunk 0/1 smoke harness — calls ChatMlsCore.ping() and renders the result.
+// "ok" = the UniFFI XCFramework (iOS) / jniLibs (Android) loaded and the
+// Swift/Kotlin → Rust FFI hop works end-to-end. Anything else = native module
+// loaded but bridge fault; an exception = native module didn't load at all.
+function MlsPingPanel() {
+  const [result, setResult] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  return (
+    <YStack bg="$backgroundHover" p="$3" borderRadius="$3" gap="$1">
+      <Text color="$color" fontSize="$4" fontWeight="600">
+        chat-mls-core ping
+      </Text>
+      {result != null ? (
+        <Text color="$color" fontSize="$2" selectable>
+          ping() → {JSON.stringify(result)}{" "}
+          {result === "ok" ? "✓" : "(unexpected payload)"}
+        </Text>
+      ) : (
+        <Text color="$color" fontSize="$2">
+          (tap to call)
+        </Text>
+      )}
+      {err && (
+        <Text color="red" fontSize="$2" selectable>
+          {err}
+        </Text>
+      )}
+      <XStack>
+        <Button
+          size="$2"
+          onPress={() => {
+            try {
+              setErr(null);
+              setResult(ChatMlsCore.ping());
+            } catch (e) {
+              setResult(null);
+              setErr(String(e));
+            }
+          }}
+        >
+          Call ChatMlsCore.ping()
+        </Button>
+      </XStack>
+    </YStack>
+  );
 }
 
 export default function ChatDbDebug() {
@@ -233,6 +281,7 @@ export default function ChatDbDebug() {
       decryptInbound({
         ciphertext: lastCipher.envelope.ciphertext,
         nonce: lastCipher.envelope.nonce,
+        senderAccountId: me?.accountId ?? "",
         seed: wrongSeed,
         candidateSenderX25519Pubs: identity ? [identity.x25519Pub] : [],
       });
@@ -249,7 +298,7 @@ export default function ChatDbDebug() {
         message: `OK — threw as expected: ${String(err).slice(0, 100)}`,
       });
     }
-  }, [identity, lastCipher]);
+  }, [identity, lastCipher, me?.accountId]);
 
   const onSend = useCallback(async () => {
     if (peerTargets.length === 0 || peerTargets[0]?.devices.length === 0) {
@@ -303,6 +352,9 @@ export default function ChatDbDebug() {
         <Text color="$color" fontSize="$2">
           ws state: {connState}
         </Text>
+
+        {/* ── Chunk 0/1: chat-mls-core native bridge smoke ───────────── */}
+        <MlsPingPanel />
 
         {/* ── M3: My identity ─────────────────────────────────────────── */}
         <YStack bg="$backgroundHover" p="$3" borderRadius="$3" gap="$1">
@@ -491,6 +543,11 @@ export default function ChatDbDebug() {
             </YStack>
           )}
         </YStack>
+
+        {/* M3.5 panels (signal prekey directory smoke + chat-version
+            sticky + v=2 send harness) removed per ADR-015. MLS-equivalent
+            panels (KeyPackage pool, current group epoch, ratchet tree hash)
+            land in Chunk 6 with the mobile MLS orchestrator. */}
 
         {/* ── M2: Outbox (existing) ───────────────────────────────────── */}
         <YStack bg="$backgroundHover" p="$3" borderRadius="$3" gap="$2">
