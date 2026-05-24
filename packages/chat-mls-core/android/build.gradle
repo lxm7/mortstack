@@ -1,0 +1,43 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+  id 'org.jetbrains.kotlin.android'
+}
+
+group = 'io.sessions.chatmlscore'
+version = '0.0.1'
+
+android {
+  namespace "io.sessions.chatmlscore"
+  defaultConfig {
+    versionCode 1
+    versionName "0.0.1"
+  }
+  lintOptions {
+    abortOnError false
+  }
+
+  // UniFFI-generated Kotlin lives at src/main/java/uniffi/chat_mls_core/.
+  // jniLibs/ holds the per-ABI .so files (libchat_mls_core.so) emitted by
+  // scripts/build-mls.sh. Both registered through the default Android
+  // sourceSet conventions — explicit here for clarity in case AGP changes
+  // the default.
+  sourceSets {
+    main {
+      java.srcDirs += ['src/main/java']
+      jniLibs.srcDirs += ['src/main/jniLibs']
+    }
+  }
+}
+
+repositories {
+  mavenCentral()
+}
+
+dependencies {
+  // JNA is required at runtime by UniFFI-generated Kotlin (direct mapping via
+  // JNA's "Direct Mapping" mode — same artifact already used by lazysodium in
+  // packages/chat-crypto, but kept here as a direct dep so this module is
+  // independently consumable). Version must be JNA 5.13+ for Android.
+  implementation "net.java.dev.jna:jna:5.17.0@aar"
+}

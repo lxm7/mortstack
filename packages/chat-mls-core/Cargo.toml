@@ -1,0 +1,42 @@
+[package]
+name = "chat_mls_core"
+version = "0.0.1"
+edition = "2021"
+publish = false
+license = "MIT"
+description = "OpenMLS engine for Sessions chat (Rust core, UniFFI bindings)"
+
+# cdylib → required by UniFFI bindgen at dev time (dlopen the lib for symbol scan)
+# staticlib → linked into iOS XCFramework and Android jniLibs
+[lib]
+name = "chat_mls_core"
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+# Pinned per ADR-015. Bump policy: bump openmls + traits + rust_crypto together
+# (they're released as a triple) and rerun the full smoke harness on both
+# platforms before committing the new vendored artifacts.
+uniffi = { version = "0.31.1", features = ["cli"] }
+
+# Chunk 2 will add — kept commented here so the dep policy is visible without
+# bloating Chunk 0's build surface.
+# openmls = "0.8.1"
+# openmls_traits = "0.5.0"
+# openmls_rust_crypto = "0.5.1"
+# rusqlite = { version = "0.36", features = ["bundled"] }
+
+[build-dependencies]
+uniffi = { version = "0.31.1", features = ["build"] }
+
+# UniFFI bindgen runs as a separate cargo binary so the same crate produces
+# both the cdylib (consumed at runtime) and a bindgen CLI (used at build time
+# by scripts/build-mls.sh to emit Swift + Kotlin).
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = "symbols"

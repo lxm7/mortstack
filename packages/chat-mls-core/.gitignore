@@ -1,0 +1,6 @@
+target/
+*.dylib
+*.so
+*.a
+.framework-build/
+generated/

@@ -82,6 +82,13 @@ const MIGRATIONS: Migration[] = [
       `CREATE INDEX idx_peer_keys_refreshed ON peer_keys (refreshed_at)`,
     ],
   },
+  // NB: pre-launch M3.5 added a signal_device_id column on peer_keys and a
+  // chat_versions table (migrations 3 + 4). Both removed per ADR-015 — the
+  // libsignal stack was replaced by OpenMLS before any user ran it. If your
+  // local chat.db has user_version >= 3, delete it before launching this
+  // branch; the runner is forward-only and will not roll back. Future MLS
+  // schema additions (mls_group_id on chats, MLS epoch state) will land as
+  // migration 3+ in a later chunk.
 ];
 
 const LAST = MIGRATIONS[MIGRATIONS.length - 1];

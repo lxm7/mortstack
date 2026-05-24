@@ -343,16 +343,16 @@ End-to-end encrypted, multi-device chat as the first major feature module. Teleg
 
 ### Confirmed architectural decisions
 
-| Decision                             | Choice                                                                                                                                        | Rationale                                                                                                                                                                          |
-| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Native module location               | `packages/chat-*` (workspace) for reusable native code; `apps/mobile/modules/` for app-only glue (NSE, CallKit)                               | Matches existing `@repo/*` namespace; reusable bits are isolated, app-coupled bits stay in the app shell                                                                           |
-| WebSocket transport                  | Cloudflare Durable Objects (one DO per chat)                                                                                                  | Hibernation API → idle WS connections cost $0; edge latency 30-50ms; no VPC needed; linear cost scaling; complements R2 (already CF)                                               |
-| MVP crypto                           | libsodium box (1:1 only); group chat = server-trust until M3.5                                                                                | Ship working chat fast; upgrade to Signal Protocol before public-launch privacy claims                                                                                             |
-| Production crypto (M3.5, pre-launch) | **libsignal** (Signal Foundation Rust core + official Swift / Kotlin bindings) — Double Ratchet for 1:1, Sender Keys for groups ≤ 256 members | Forward secrecy + post-compromise security; battle-tested by WhatsApp / Signal / Google Messages at billions of users. MLS evaluated at Phase 3 trigger for big groups (see M3.5). |
-| Push notifications                   | FCM (Android) + APNs (iOS) direct, no Expo Push relay                                                                                         | E2E requires that the relay never sees plaintext; Expo Push relay would break that property                                                                                        |
-| Local database                       | `op-sqlite` with SQLCipher; key in `expo-secure-store`                                                                                        | SQLCipher is the established encrypted-SQLite path; op-sqlite gives best RN perf and JSI bindings                                                                                  |
-| Native modules approach              | Expo Modules API; scaffold via `pnpm create expo-module packages/<name> --no-example`                                                         | Autolinking + monorepo dedup works out of the box on SDK 54+                                                                                                                       |
-| Server-side persistence              | Existing AWS Lambda (tRPC) writes to Neon; DO is transport + transient state only                                                             | Source of truth stays in Postgres; if DO restarts, history is intact                                                                                                               |
+| Decision                             | Choice                                                                                                             | Rationale                                                                                                                                                                                                                                         |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Native module location               | `packages/chat-*` (workspace) for reusable native code; `apps/mobile/modules/` for app-only glue (NSE, CallKit)    | Matches existing `@repo/*` namespace; reusable bits are isolated, app-coupled bits stay in the app shell                                                                                                                                          |
+| WebSocket transport                  | Cloudflare Durable Objects (one DO per chat)                                                                       | Hibernation API → idle WS connections cost $0; edge latency 30-50ms; no VPC needed; linear cost scaling; complements R2 (already CF)                                                                                                              |
+| MVP crypto                           | libsodium box (1:1 only); group chat = server-trust until M3.5                                                     | Ship working chat fast; upgrade to MLS (RFC 9420) before public-launch privacy claims                                                                                                                                                             |
+| Production crypto (M3.5, pre-launch) | **OpenMLS 0.8.1** (Rust, MIT) via **UniFFI** Swift + Kotlin bindings — RFC 9420 group-native E2EE for 1:1 + groups | Zero licence cost forever (MIT, no AGPL exposure); group-native = O(1) ciphertext per send + O(log N) re-key; production-validated by Discord DAVE (200M+ users) and Mozilla Firefox UniFFI. See ADR-015 for licence audit + libsignal rejection. |
+| Push notifications                   | FCM (Android) + APNs (iOS) direct, no Expo Push relay                                                              | E2E requires that the relay never sees plaintext; Expo Push relay would break that property                                                                                                                                                       |
+| Local database                       | `op-sqlite` with SQLCipher; key in `expo-secure-store`                                                             | SQLCipher is the established encrypted-SQLite path; op-sqlite gives best RN perf and JSI bindings                                                                                                                                                 |
+| Native modules approach              | Expo Modules API; scaffold via `pnpm create expo-module packages/<name> --no-example`                              | Autolinking + monorepo dedup works out of the box on SDK 54+                                                                                                                                                                                      |
+| Server-side persistence              | Existing AWS Lambda (tRPC) writes to Neon; DO is transport + transient state only                                  | Source of truth stays in Postgres; if DO restarts, history is intact                                                                                                                                                                              |
 
 ### Crypto invariants (apply to every milestone M3 → M8)
 
@@ -362,8 +362,6 @@ End-to-end encrypted, multi-device chat as the first major feature module. Teleg
 4. **Zero new infra services for crypto.** All crypto state (pubkey directory, prekey bundles in M3.5) reuses Postgres + existing tRPC Lambda. CDN/CF KV mirrors are added only on scale triggers (≥100k DAU), not for correctness.
 5. **Forward-compat with the next milestone.** Every crypto frame carries a `v` version byte so M3 → M3.5 upgrade can negotiate per-chat without breaking history.
 
-"Signal" in this document = the Signal Foundation messenger and its open-source [Signal Protocol](https://signal.org/docs/) (X3DH + Double Ratchet + Sender Keys). Not network signalling, not WebRTC SDP signalling.
-
 ### Package layout
 
 ```
@@ -371,7 +369,8 @@ packages/
   chat/                  TS only — UI components, hooks, screens, store
   chat-transport/        TS only — WebSocket client, msgpack codec, reconnect
   chat-db/               native — op-sqlite + SQLCipher wrapper
-  chat-crypto/           native — libsodium (MVP) → Signal Protocol (M3.5)
+  chat-crypto/           native — libsodium primitives + OpenMLS engine (M3.5+)
+  chat-mls-core/         native (Rust) — OpenMLS + UniFFI; produces XCFramework + AAR
   chat-calls/            native — react-native-webrtc wrapper (M7)
 
 apps/mobile/modules/
@@ -427,7 +426,7 @@ Integration:
 
 - `@repo/chat-crypto` native module wrapping libsodium via **Swift-Sodium (iOS)** + **lazysodium-android (Android)**.
 - Surface: `generateIdentity()`, `box(plain, theirPub, mySecret)`, `boxOpen(...)`, `randomNonce()`, `signKeyBundle(...)`. All sync, `Uint8Array` in/out.
-- Single 32-byte seed per device → derive Ed25519 (identity/sign) + X25519 (encrypt). Forward-compat with M3.5 Signal X3DH (same Ed25519 key is reused).
+- Single 32-byte seed per device → derive Ed25519 (identity/sign) + X25519 (encrypt). Forward-compat with M3.5 MLS BasicCredential (same Ed25519 key signs the credential).
 - Seed persisted in shared Keychain group `io.sessions.chat` set up in M2 (alias `chat-identity-seed-v1`, `AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY`).
 - **Multi-device per user**: Postgres table `UserDevice(userId, deviceId, ed25519Pub, x25519Pub, addedAt)`. Outbound send = fanout-encrypt to every device of every recipient. Cheap at our scale (Postgres column read), Signal-shaped.
 - Pubkey directory = tRPC routes `user.keys.publish` / `user.keys.byUserIds(batch)`. Better Auth bearer–authed. Client caches peer pubkeys in `chat-db.peer_keys` table (TTL 24h).
@@ -508,48 +507,46 @@ Est: 0.5 day
 
 Privkey ops are 100% client-side at every scale — server cost from private-key handling = $0 forever.
 
-#### M3.5 — Signal Protocol upgrade (3-4 weeks, before public launch)
+#### M3.5 — MLS (RFC 9420) upgrade via OpenMLS (3 weeks, before public launch)
 
-- Replace libsodium box with Signal's double-ratchet for 1:1 chats: forward secrecy + post-compromise security.
-- Add Sender Keys protocol for group chats so groups are E2E too.
-- X3DH-style prekey exchange via the API; prekey bundles uploaded on registration and topped up periodically.
-- Use **libsignal** (Signal Foundation's Rust core with their official Swift + Kotlin bindings) wrapped in a thin Expo Module — no custom port, no protocol re-implementation. Vendor path: locally-built `signal_ffi.xcframework` + upstream Swift wrappers compiled into the ChatCrypto pod on iOS, `libsignal-client.aar` on Android — both produced by `packages/chat-crypto/scripts/build-libsignal.sh` from the same `LIBSIGNAL_REF`. Single bump point. SPM was the initial plan but doesn't work inside a CocoaPods pod under static linking (see chunk 1A rework notes in `packages/chat-crypto/scripts/README.md`). Rolling our own X3DH / Double Ratchet on libsodium primitives = classic crypto footgun and not on the table. Reason for pinning now (not "decide after M3"): the library is the only protocol impl Signal Foundation themselves run in production, audited continuously, and stable ABI — the maintenance-uncertainty hedge that justified deferral is gone.
-- Reuses the Ed25519 identity key generated in M3 as Signal's long-term identity key — no fresh keygen, no UX-visible migration of identity.
-- Prekey bundle storage = same Postgres-column pattern as M3's pubkey directory, extended to a `prekey_bundles` table. Bundles are self-signed → CDN/CF-KV cacheable on the same scale trigger as M3 pubkeys (≥100k DAU). No new infra needed at MVP.
-- **Group scaling ceiling + MLS Phase 3 trigger.** Sender Keys scales linearly with group size — fine up to ~256-member groups (Signal app cap is 1000, perf cliff before that; WhatsApp caps at 1024). For Sessions Phase 1-2 (artist DMs, small commission groups, close-fan circles) this is more than enough; no action needed. **Phase 3 trigger to evaluate MLS (RFC 9420 via OpenMLS):** activate if _either_ (a) DAU ≥ 100k _and_ groups are on the active product roadmap, _or_ (b) a product requirement lands for groups > 256 members (e.g. fan channels, public rooms, broadcast lists). When triggered, add **OpenMLS alongside libsignal** as a hybrid stack — libsignal stays for 1:1 (proven, cheap to keep), MLS takes groups (O(log N) key updates vs Sender Keys' O(N), production-validated by WhatsApp Communities + Discord new DMs + Google Messages migration as of 2026). The same Ed25519 identity key wraps as an MLS Credential — no fresh keygen, no UX-visible re-onboarding. Explicitly out of scope for M3.5; tracked as a Phase 3 watch-item only.
-- Q7 — Native ABI shape
-  Picked: sync Expo Function(...) returning  
-  Uint8Array.
-  Alt: AsyncFunction (Promise)  
-  Cost / Risk: Bridge overhead per call. Sodium ops
-  sub-ms — async hides nothing.  
-  ────────────────────────────────────────  
-  Alt: Raw JSI host objects (quick-crypto style)  
-  Cost / Risk: Fastest, zero-copy. Bypasses Expo  
-   autolinking, more native code to own. Overkill at
-  MVP msg rate.  
-  ────────────────────────────────────────
-  Alt: NitroModules (JSI generator)  
-  Cost / Risk: Newer Expo-friendly JSI route. Young,
-  adds dep. Re-evaluate at M3.5 only if profiler  
-   flags.
+Group-native end-to-end encryption replacing the M3 libsodium box. See ADR-015 for the licence audit that drove the libsignal → OpenMLS swap. Zero AGPL exposure; MIT dependency chain.
 
-- `v` version byte introduced in M3's plaintext frame is used here to negotiate per-chat upgrade without breaking already-sent history.
-- Migration path for accounts already on libsodium: re-key on next login, archive old ciphertext as not-recoverable, surface a UI explanation.
-- Acceptance: Signal-protocol-compliant message exchange verified against a known-good test vector; old keys revoked end-to-end; recovery flow documented.
-- ❌ Not spec'd anywhere: PIN-based recovery (Signal SVR),  
-  biometric gate, key escrow. Threat model accepts: lose  
-  phone/uninstall = lose identity. M3 doesn't solve this — likely
-  M3.5 or later.
-- ❌ Not spec'd: JS-string seed memory not zeroable. Acceptable
-  per Signal RN precedent. Could revisit in M3.5 with a  
-  seed-handle-based ChatCrypto API (pass keychain alias instead of
-  bytes), but spec passes Uint8Array.
+**Stack**
 
-  Recommendation update: stay hex in SecureStore for M2 parity
-  (one-engineer codebase, consistency > 20 bytes saved). Plan  
-  base64 for wire format in chunks 3-4 to match SUI and save  
-  bandwidth at 1M scale.
+- `openmls` 0.8.1 + `openmls_rust_crypto` 0.5.1 + `openmls_traits` 0.5.0 — all MIT.
+- `uniffi` 0.31.1 (MPL-2.0, file-scoped) generates Swift + Kotlin from one Rust source.
+- New package `packages/chat-mls-core` (Rust) — produces `chat_mls.xcframework` (iOS) + `chat-mls.aar` (Android) via `packages/chat-mls-core/scripts/build-mls.sh`. Single bump point. Same toolchain prerequisites as the M3 sodium build (rustup + protobuf + per-platform targets) — `uniffi-bindgen` replaces `cbindgen`.
+- Ciphersuite: `MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519` (RFC 9420 mandatory). PQ ciphersuite added via MLS extension when IETF stabilises — Phase 1 ships classical-only.
+
+**Architecture**
+
+- Group-native: one ciphertext per send regardless of group size; server fans server-side via the existing SNS+SQS path. O(1) bandwidth per send vs M3's O(N) per-device fanout.
+- Authentication Service = Better Auth + `UserDevice` table. `BasicCredential` carries `accountId` bytes signed by the M3 Ed25519 key already in `user.keys`. Server validates signature key match at `publishKeyPackages`. No new PKI infra.
+- Delivery Service = existing Lambda + Neon. `GroupCommit @@unique([groupId, epoch])` enforces causal ordering; concurrent commit racers retry with `epoch+1` after fetching the winner.
+- Group state lives in a libsodium-AEAD-wrapped SQLite file outside the M2 chat-db (same isolation pattern previously planned for the libsignal store).
+- `mls_group_id BLOB(32)` column on `Chat` row (server + local). Chats outlive groups: split / leave / rejoin can recreate the group under same `chatId` with a fresh `mlsGroupId`.
+
+**Server surface**
+
+- `mls-keys` router: `publishKeyPackages(deviceId, packages[])`, `fetchKeyPackagesForAccounts(accountIds[])`. Atomic consume in one tx — replaces the M3 `user.keys.byUserIds` directory for v=2 sends.
+- `mls-groups` router: `sendCommit(groupId, commitBytes, welcomesByAccountId)`, `fetchPendingCommits(groupId, sinceEpoch)`. Server distributes Welcome messages to new members; Commits broadcast to current members via SNS+SQS.
+- Prisma: `KeyPackage` (one row = one consumable package) + `GroupCommit` (epoch-ordered log). Drops the libsignal-era `PreKeyBundle` + `OneTimePrekey` tables.
+
+**Identity migration**
+
+- Reuses the Ed25519 identity key generated in M3 as the MLS credential signature key — no fresh keygen, no UX-visible migration.
+- Pre-launch posture: no live v=2 ciphertext to migrate. v=1 libsodium chats either re-key into a new MLS group on first v=2 send, or stay on v=1 for 1:1 fallback (decided per-chat via `chat_versions` sticky state).
+
+**Forward secrecy + recovery**
+
+- MLS provides forward secrecy + post-compromise security via tree-ratcheted epochs. Member-add re-key cost is O(log N) (vs Sender Keys O(N)).
+- KeyPackage pool: 100 per device, top-up at threshold 20. Last-resort KeyPackage (replayable) skipped in Phase 1 — revisit when telemetry shows > 1% sessions hitting empty pool.
+- Commit retention: keep all per group; MLS Resync at 500-commit threshold (Phase 2). Phase 1 ceiling ≈ 1 MB per group.
+- Recovery threat model unchanged from M3: lose phone / uninstall = lose identity. PIN-based recovery + key escrow remain out of scope.
+
+**Acceptance**
+
+- 2-device DM via MLS group; 5-device group with one ciphertext decrypted by all; member add / remove mid-conversation; KeyPackage exhaustion behaviour; multi-account swap on same install; offline catch-up (kill app, send N msgs from peers, relaunch, decrypt all). Acceptance harness extends `chat-db-debug` (current KeyPackage count, group epoch, ratchet tree hash).
 
 #### M4 — Chat UI: 1:1 + group text (3 weeks)
 
@@ -567,7 +564,7 @@ Privkey ops are 100% client-side at every scale — server cost from private-key
 - Images: `expo-image-picker` → `react-native-compressor` → encrypt → R2 → `expo-image` cached display.
 - Video: record / pick → transcode (defer heavy transcode to server-side or accept device-native compression for MVP) → encrypt → R2.
 - Documents: `expo-document-picker` → encrypt → R2.
-- Reuse existing `services/upload` SST stack for presigning; add E2E content-key envelope (file key encrypted to recipient's pub key, separate from R2 object key).
+- Reuse existing `services/upload` SST stack for presigning. Content key transmitted in-band as an MLS application message (one envelope per send, server fans to all group members) — separate from the R2 object key, which stays opaque on the storage path. Bandwidth win at group scale vs the per-recipient libsodium wrap that was originally spec'd.
 - Acceptance: 5MB image arrives end-to-end < 2s on wifi; voice msg playback starts within 200ms of tap; corrupted ciphertext fails closed (no plaintext leak).
 
 #### M6 — Push notifications with E2E decryption (2 weeks)
@@ -575,6 +572,7 @@ Privkey ops are 100% client-side at every scale — server cost from private-key
 - `expo-notifications` for token registration; tokens stored on the API and tied to the device session.
 - iOS Notification Service Extension in `apps/mobile/modules/notification-service/` (Swift). Runs outside the JS runtime; reads the identity seed written in M3 from the shared Keychain group `io.sessions.chat` (set up in M2, populated in M3) — no re-prompt, no JS bridge. Decrypts the payload and presents the plaintext notification.
 - Android: data-only FCM messages handled in a foreground/background Kotlin service; same decrypt-then-display flow.
+- **MLS group-state for NSE.** v=2 messages ride MLS application messages keyed by current group epoch. The main app writes a sealed read-only snapshot of `(groupId → epoch, secrets)` to the shared keychain group on every Commit it processes; the NSE reads but never mutates this snapshot (mutating would race the main app's commit processing). Stale-snapshot fallback: a push arriving on an epoch the snapshot doesn't have falls through to a generic "New message — open app" notification (no plaintext, no race). Acceptable miss rate at Phase 1; revisit with a coordinated commit-applier if it becomes user-visible.
 - Server (`services/api`): on a new message, looks up registered devices for offline members and dispatches ciphertext + minimal metadata via FCM/APNs (no plaintext).
 - Acceptance: device locked, push arrives, plaintext notification appears with sender name and message body; opening the app shows the message already decrypted in local DB.
 
@@ -610,7 +608,7 @@ Build a small AI feature into it — even a basic LLM-powered search or recommen
 
 1. **iOS NSE + E2E key sharing**: shared Keychain group entitlements and provisioning profile gymnastics; cert pinning. Budget extra days.
 2. **WebRTC config plugin**: first prebuild after adding `react-native-webrtc` often breaks; test on a bare device early in M0 by adding a no-op config plugin.
-3. **Signal Protocol port maintenance**: confirm during M3 which Swift/Kotlin port is actively maintained before committing in M3.5.
+3. **OpenMLS native build + UniFFI binding stability**: verify XCFramework + AAR reproducible in CI; pin `openmls` 0.8.x + `uniffi` 0.31.x. Mozilla actively maintains UniFFI (ships in Firefox mobile); OpenMLS 0.8.x is current stable. Bump policy lives in `packages/chat-mls-core/scripts/README.md`.
 4. **DO connection budgeting at scale**: a single DO holds WS sockets in 128MB RAM; plan sharding for any future broadcast-style channels (>10k members).
 5. **SQLCipher binary size**: adds ~3MB; acceptable but tracked.
 
@@ -643,15 +641,17 @@ sessions://chat-db-debug
 
 ### Native Rust libs for native wiring and corresponding toolchains
 
-Both iOS and Android vendor libsignal artifacts produced by
-`packages/chat-crypto/scripts/build-libsignal.sh`. Full prereq list and
-per-platform notes live in `packages/chat-crypto/scripts/README.md`.
+Both iOS and Android vendor OpenMLS artifacts produced by
+`packages/chat-mls-core/scripts/build-mls.sh` (Rust → UniFFI → Swift + Kotlin
+bindings → XCFramework + AAR). Full prereq list and per-platform notes live in
+`packages/chat-mls-core/scripts/README.md`. See ADR-015 for licence chain
+(MIT `openmls` + MPL-2.0 file-scoped `uniffi`).
 
 ```bash
 # Common
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 brew install protobuf
-cargo install cbindgen --version 0.27.0
+cargo install uniffi-bindgen --version 0.31.1
 
 # iOS
 sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
@@ -663,7 +663,7 @@ rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-and
 # NDK install via Android Studio → SDK Manager → set ANDROID_NDK_ROOT
 
 # Build + vendor
-pnpm --filter @repo/chat-crypto exec ./scripts/build-libsignal.sh android
-pnpm --filter @repo/chat-crypto exec ./scripts/build-libsignal.sh ios
+pnpm --filter @repo/chat-mls-core exec ./scripts/build-mls.sh android
+pnpm --filter @repo/chat-mls-core exec ./scripts/build-mls.sh ios
 pnpm rn:rebuild-ios   # from repo root — runs prebuild-clean + run:ios
 ```

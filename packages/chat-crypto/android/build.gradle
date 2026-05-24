@@ -23,6 +23,9 @@ repositories {
 
 dependencies {
   // terl/lazysodium-android — JNA-wrapped libsodium prebuilt for Android ABIs.
-  implementation "com.goterl:lazysodium-android:5.1.4@aar"
+  // 5.1.4 was never published to Maven Central despite being declared here
+  // (worked from local Gradle cache pre-clean; 404s on fresh fetch). 5.2.0 is
+  // the closest avail release per repo.maven.apache.org/.../lazysodium-android/.
+  implementation "com.goterl:lazysodium-android:5.2.0@aar"
   implementation "net.java.dev.jna:jna:5.17.0@aar"
 }

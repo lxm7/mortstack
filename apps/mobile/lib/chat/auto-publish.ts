@@ -9,6 +9,9 @@ import { publishMyChatDevice } from "./publish";
 //   - We DO re-publish if the signed-in user actually changes (sign-out then
 //     sign-in as someone else on the same install).
 // Reset to null on publish failure so the next state change retries.
+//
+// M3.5 MLS KeyPackage publish + top-up will hang off this same guard in
+// Chunk 6 once the MLS engine + tRPC surface land.
 let publishedForUserId: string | null = null;
 
 async function maybePublish(reason: string): Promise<void> {
@@ -24,11 +27,13 @@ async function maybePublish(reason: string): Promise<void> {
 
   publishedForUserId = session.user.id;
   try {
-    const result = await publishMyChatDevice();
-    console.log(`[chat-mvp/M3] device keys published (${reason})`, result);
+    // M3: libsodium pubkey directory entry. MLS KeyPackage publish + top-up
+    // will be added alongside this in Chunk 6 (see ADR-015).
+    const m3Result = await publishMyChatDevice();
+    console.log(`[chat-mvp/M3] device keys published (${reason})`, m3Result);
   } catch (err) {
     publishedForUserId = null;
-    console.error(`[chat-mvp/M3] device keys publish failed (${reason})`, err);
+    console.error(`[chat-mvp/M3] auto-publish failed (${reason})`, err);
   }
 }
 

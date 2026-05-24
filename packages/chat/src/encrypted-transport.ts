@@ -22,6 +22,7 @@ export interface EncryptedSendInput {
 export interface EncryptedSendResult extends SendResult {
   recipientAccountId: string;
   recipientDeviceId: string;
+  frameVersion: 1;
 }
 
 export interface EncryptedIncomingMessage {
@@ -29,6 +30,7 @@ export interface EncryptedIncomingMessage {
   serverMsgId: string;
   senderId: string;
   frame: ChatFrame;
+  frameVersion: 1;
   ts: number;
 }
 
@@ -45,14 +47,22 @@ export interface EncryptedChatTransport {
 
 export interface EncryptedChatTransportOptions {
   underlying: ChatTransport;
+
+  // v=1 needs the libsodium seed (our X25519 secret half). Kept async so the
+  // caller can lazy-load from secure storage.
   getMySeed: () => Promise<Uint8Array>;
-  // The on-wire envelope only carries senderAccountId, not senderDeviceId
-  // (see crypto-pipe.ts). Caller resolves the sender's known X25519 pubs;
-  // crypto-pipe tries each in order. Most-recent-first reduces avg attempts.
+
+  // Identity helper retained for parity with the upcoming MLS path (Chunk 5).
+  // Currently unused on the v=1 happy path; v=1 decrypt routes by X25519 pub.
+  getMyAccountId: () => Promise<string>;
+
+  // v=1: ordered X25519 pubs for the sender's known devices, most-recent
+  // first to reduce avg attempts.
   resolveSenderX25519Pubs: (senderAccountId: string) => Promise<Uint8Array[]>;
-  // Optional: invoked when a frame can't be decrypted with any candidate
-  // key. Useful for telemetry / surfacing "key directory may be stale" to
-  // the UI. Failure to decrypt does NOT crash the connection.
+
+  // Invoked when a frame can't be decrypted with any candidate key. Useful
+  // for telemetry / surfacing "key directory may be stale" to the UI.
+  // Failure to decrypt does NOT crash the connection.
   onDecryptFailure?: (msg: IncomingMessage, reason: string) => void;
 }
 
@@ -62,9 +72,9 @@ export function createEncryptedTransport(
   const { underlying } = opts;
   const decryptedHandlers = new Set<(msg: EncryptedIncomingMessage) => void>();
 
-  // Single subscription against the underlying transport that demuxes
-  // decrypted messages out to all registered handlers. Set up lazily on
-  // first handler registration so the wrapper costs nothing if unused.
+  // Lazy single subscription against the underlying transport that demuxes
+  // decrypted messages to all registered handlers. Set up on first handler
+  // registration so the wrapper costs nothing when unused.
   let unsubscribeFromUnderlying: (() => void) | null = null;
 
   function ensureUnderlyingSubscription() {
@@ -84,25 +94,27 @@ export function createEncryptedTransport(
       opts.onDecryptFailure?.(msg, `pre-decrypt lookup failed: ${String(err)}`);
       return;
     }
-
-    let result;
     try {
-      result = decryptInbound({
+      const result = decryptInbound({
         ciphertext: msg.ciphertext,
         nonce: msg.nonce,
+        senderAccountId: msg.senderId,
         seed,
         candidateSenderX25519Pubs: candidates,
       });
+      dispatch(msg, result.frame);
     } catch (err) {
       opts.onDecryptFailure?.(msg, String(err));
-      return;
     }
+  }
 
+  function dispatch(msg: IncomingMessage, frame: ChatFrame) {
     const decoded: EncryptedIncomingMessage = {
       chatId: msg.chatId,
       serverMsgId: msg.serverMsgId,
       senderId: msg.senderId,
-      frame: result.frame,
+      frame,
+      frameVersion: 1,
       ts: msg.ts,
     };
     for (const h of decryptedHandlers) h(decoded);
@@ -114,8 +126,8 @@ export function createEncryptedTransport(
     const seed = await opts.getMySeed();
     const envelopes = encryptOutbound({
       text: input.text,
-      seed,
       targets: input.targets,
+      seed,
     });
     if (envelopes.length === 0) return [];
 
@@ -131,6 +143,7 @@ export function createEncryptedTransport(
             ...r,
             recipientAccountId: env.recipientAccountId,
             recipientDeviceId: env.recipientDeviceId,
+            frameVersion: env.frameVersion,
           }),
         ),
     );

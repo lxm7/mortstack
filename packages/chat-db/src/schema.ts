@@ -53,8 +53,10 @@ export interface KeyMaterialRow {
 // One row per (peer account, device). Local mirror of the server's
 // UserDevice directory, refreshed via tRPC user.keys.byUserIds.
 // refreshed_at = local epoch-ms the row was last fetched (drives the 24h TTL).
-// server_updated_at = the server-side UserDevice.updatedAt (for diagnostics
-// + future "is the peer rotating frequently?" checks).
+// server_updated_at = the server-side UserDevice.updatedAt (for diagnostics).
+//
+// MLS columns (Chunk 4) will land here as `mls_credential_id` + similar —
+// no signal_device_id column was retained, see ADR-015.
 export interface PeerDeviceRow {
   account_id: string;
   device_id: string;

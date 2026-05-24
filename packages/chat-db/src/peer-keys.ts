@@ -37,7 +37,8 @@ export async function getByAccountIds(
   if (accountIds.length === 0) return [];
   const placeholders = accountIds.map(() => "?").join(",");
   const result = await db.execute(
-    `SELECT account_id, device_id, ed25519_pub, x25519_pub, refreshed_at, server_updated_at
+    `SELECT account_id, device_id, ed25519_pub, x25519_pub,
+            refreshed_at, server_updated_at
        FROM peer_keys
       WHERE account_id IN (${placeholders})`,
     accountIds,
@@ -113,7 +114,8 @@ export async function replaceForAccounts(
       for (const d of devices) {
         await db.execute(
           `INSERT INTO peer_keys
-             (account_id, device_id, ed25519_pub, x25519_pub, refreshed_at, server_updated_at)
+             (account_id, device_id, ed25519_pub, x25519_pub,
+              refreshed_at, server_updated_at)
            VALUES (?, ?, ?, ?, ?, ?)`,
           [
             accountId,

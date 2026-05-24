@@ -123,10 +123,12 @@ class ChatCryptoModule : Module() {
       val (_, signSecret) = deriveSignKeypair(seed)
 
       val signature = ByteArray(SIGNATURE_BYTES)
-      val sigLen = LongArray(1)
+      // lazysodium 5.2.0 widened the sigLen out-param from `long[]` to a JNA
+      // `Pointer`. libsodium accepts NULL there — Ed25519 signatures are
+      // always SIGNATURE_BYTES (64), so we don't need the runtime length.
       val ok = sodium.crypto_sign_detached(
         signature,
-        sigLen,
+        null,
         message,
         message.size.toLong(),
         signSecret,
@@ -142,7 +144,7 @@ class ChatCryptoModule : Module() {
       val ok = sodium.crypto_sign_verify_detached(
         signature,
         message,
-        message.size,
+        message.size.toLong(),
         peerEd25519Pub,
       )
       ok == 0
@@ -166,48 +168,7 @@ class ChatCryptoModule : Module() {
     Function("clearSeed") { ->
       keystoreClearSeed()
     }
-
-    // ----- M3.5 Signal Protocol stubs (chunk 1C wires libsignal) -----
-
-    Function("signalGenerateRegistrationId") { ->
-      throw signalNotImplemented("signalGenerateRegistrationId")
-    }
-
-    Function("signalCreateBundle") {
-      _: Int, _: Int, _: Int, _: Int, _: Int ->
-      throw signalNotImplemented("signalCreateBundle")
-    }
-
-    Function("signalProcessPreKeyBundle") {
-      _: Map<String, Any>, _: Map<String, Any> ->
-      throw signalNotImplemented("signalProcessPreKeyBundle")
-    }
-
-    Function("signalEncrypt") {
-      _: Map<String, Any>, _: ByteArray ->
-      throw signalNotImplemented("signalEncrypt")
-    }
-
-    Function("signalDecrypt") {
-      _: Map<String, Any>, _: Map<String, Any> ->
-      throw signalNotImplemented("signalDecrypt")
-    }
-
-    Function("signalHasSession") { _: Map<String, Any> ->
-      throw signalNotImplemented("signalHasSession")
-    }
-
-    Function("signalDeleteSession") { _: Map<String, Any> ->
-      throw signalNotImplemented("signalDeleteSession")
-    }
-
-    Function("signalRemainingOneTimePreKeys") { ->
-      throw signalNotImplemented("signalRemainingOneTimePreKeys")
-    }
   }
-
-  private fun signalNotImplemented(name: String): ChatCryptoException =
-    ChatCryptoException("M3.5 $name not yet implemented (chunk 1C pending)")
 
   // ----- helpers -----
 
