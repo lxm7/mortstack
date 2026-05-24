@@ -419,6 +419,9 @@ importers:
       react-native:
         specifier: '*'
         version: 0.81.5(@babel/core@7.29.0)(@react-native/metro-config@0.85.3(@babel/core@7.29.0))(@types/react@19.1.17)(react@19.1.0)
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
     devDependencies:
       '@repo/typescript-config':
         specifier: workspace:*
@@ -616,6 +619,9 @@ importers:
       '@repo/chat-crypto':
         specifier: workspace:*
         version: link:../../packages/chat-crypto
+      '@repo/chat-mls-core':
+        specifier: workspace:*
+        version: link:../../packages/chat-mls-core
       '@repo/database':
         specifier: workspace:*
         version: link:../../packages/database
