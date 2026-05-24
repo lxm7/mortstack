@@ -1,2 +1,7 @@
 export { default as ChatMlsCore } from "./ChatMlsCoreModule";
-export type { ChatMlsCoreModuleEvents } from "./ChatMlsCore.types";
+export { MLS_CIPHERSUITE_ID, MLS_GROUP_ID_BYTES } from "./ChatMlsCore.types";
+export type {
+  AddMembersResult,
+  ChatMlsCoreModuleEvents,
+  ProcessedKind,
+} from "./ChatMlsCore.types";
