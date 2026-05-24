@@ -26,6 +26,14 @@ openmls_basic_credential = "0.5.0"
 # from our own helpers without dragging openmls internals into scope.
 tls_codec = { version = "0.4", features = ["derive"] }
 
+# Deterministic signer derivation from the M3 identity seed. blake2 is the
+# KDF (sub-seed under context "sessions/mls-signer/v1"); ed25519-dalek turns
+# the sub-seed into a SignatureKeyPair-compatible (private, public) pair.
+# Same construction strategy the deleted libsignal store used to derive its
+# identity key — different domain-separation tag for crypto isolation.
+blake2 = "0.10"
+ed25519-dalek = { version = "2", default-features = false, features = ["std"] }
+
 # Persistence (rusqlite + bundled-sqlcipher) intentionally NOT pulled in here.
 # Chunk 2 uses openmls_rust_crypto's in-memory MemoryStorage. The SQLCipher-
 # backed StorageProvider lands in Chunk 2.5 and will re-add the dep with the

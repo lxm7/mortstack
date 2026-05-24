@@ -599,6 +599,17 @@ Build a small AI feature into it — even a basic LLM-powered search or recommen
 - Typing indicators and read receipts (over the existing DO channel; respect privacy toggle).
 - Full-text search via SQLite FTS5, indexed on insert.
 - Multi-device session list UI (Better Auth already tracks sessions; build the management screen).
+- **MLS storage scale-up (NOT optional at 1M-DAU scale).** Replace the Chunk 2.5
+  `dump_state`/`load_state` whole-blob snapshotting with a custom
+  `StorageProvider` impl over `rusqlite` + `bundled-sqlcipher-vendored-openssl`.
+  Reason: dump/load rewrites the entire engine HashMap on every mutation — fine
+  at ≤50 groups per user (typical), becomes 5-20 MB/sec sustained writes at
+  1000+ groups per user (power users at Phase 3). Custom provider writes only
+  the changed (label, key, value) entries: per-mutation cost drops from
+  O(total state) to O(touched entries). Scope ≈ 500-800 LoC of typed trait
+  plumbing (~30 methods over a single kv table, one-liner each) + the
+  `vendored-openssl` Cargo feature so the Android NDK cross-compile builds
+  OpenSSL from source. See ADR-015 follow-up note for full rationale.
 
 ### Total realistic timeline
 

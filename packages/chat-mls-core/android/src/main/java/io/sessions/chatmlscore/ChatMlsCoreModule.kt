@@ -32,7 +32,7 @@ class ChatMlsCoreModule : Module() {
 
     // ── Engine lifecycle ──────────────────────────────────────────────────
 
-    Function("initEngine") { accountId: String ->
+    Function("initEngine") { accountId: String, identitySeed: ByteArray ->
       val existing = engine
       if (existing != null) {
         val bound = existing.accountId()
@@ -41,7 +41,7 @@ class ChatMlsCoreModule : Module() {
           "engine bound to '$bound', requested '$accountId' — call resetEngine() first",
         )
       }
-      engine = MlsEngine(accountId)
+      engine = MlsEngine(accountId, identitySeed)
     }
 
     Function("engineAccountId") {
@@ -116,6 +116,18 @@ class ChatMlsCoreModule : Module() {
     Function("memberCount") { groupId: ByteArray ->
       val e = engine ?: throw ChatMlsBridgeException("engine not initialised")
       e.memberCount(groupId).toInt()
+    }
+
+    // ── State persistence (Chunk 2.5) ──────────────────────────────────────
+
+    Function("dumpState") {
+      val e = engine ?: throw ChatMlsBridgeException("engine not initialised")
+      e.dumpState()
+    }
+
+    Function("loadState") { snapshot: ByteArray ->
+      val e = engine ?: throw ChatMlsBridgeException("engine not initialised")
+      e.loadState(snapshot)
     }
   }
 }
