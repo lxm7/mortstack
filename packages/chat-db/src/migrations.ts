@@ -86,9 +86,41 @@ const MIGRATIONS: Migration[] = [
   // chat_versions table (migrations 3 + 4). Both removed per ADR-015 — the
   // libsignal stack was replaced by OpenMLS before any user ran it. If your
   // local chat.db has user_version >= 3, delete it before launching this
-  // branch; the runner is forward-only and will not roll back. Future MLS
-  // schema additions (mls_group_id on chats, MLS epoch state) will land as
-  // migration 3+ in a later chunk.
+  // branch; the runner is forward-only and will not roll back.
+  {
+    version: 3,
+    up: [
+      // Single-row whole-blob snapshot of the OpenMLS engine state, written
+      // after every mutating engine call (Chunk 5). The custom StorageProvider
+      // landing in M8 (ADR-015 follow-up) replaces this with a kv-per-entry
+      // model when typical-user storage profiles outgrow ~50 groups.
+      `CREATE TABLE mls_engine_state (
+        account_id TEXT PRIMARY KEY NOT NULL,
+        snapshot BLOB NOT NULL,
+        updated_at INTEGER NOT NULL
+      ) WITHOUT ROWID`,
+
+      // Local registry of MLS groups this device has joined. last_applied_epoch
+      // is the cursor for fetchPendingCommits paging — we pull commits with
+      // epoch > last_applied_epoch on each poll. chat_id may be null while the
+      // group exists but no Chat row has been created yet (rare; only during
+      // a multi-step group create where the Chat write follows the MLS create).
+      `CREATE TABLE mls_group (
+        group_id BLOB PRIMARY KEY NOT NULL,
+        chat_id TEXT,
+        last_applied_epoch INTEGER NOT NULL DEFAULT 0,
+        joined_at INTEGER NOT NULL
+      ) WITHOUT ROWID`,
+      `CREATE INDEX idx_mls_group_chat ON mls_group (chat_id)`,
+
+      // mls_group_id links a chats row to its MLS group. Nullable because v=1
+      // libsodium 1:1 chats predate MLS and don't have one; v=2 chats always
+      // populate it. See ADR-015 §7 — chats outlive groups, so this column
+      // can be rewritten if a group is destroyed and recreated under same
+      // chat_id with a fresh GroupId.
+      `ALTER TABLE chats ADD COLUMN mls_group_id BLOB`,
+    ],
+  },
 ];
 
 const LAST = MIGRATIONS[MIGRATIONS.length - 1];

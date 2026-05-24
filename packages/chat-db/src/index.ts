@@ -11,4 +11,8 @@ export type {
   PendingOutboxRow,
   KeyMaterialRow,
   PeerDeviceRow,
+  MlsEngineStateRow,
+  MlsGroupRow,
 } from "./schema";
+export * as mls from "./mls-store";
+export type { MlsGroupUpsert, MlsGroupListItem } from "./mls-store";

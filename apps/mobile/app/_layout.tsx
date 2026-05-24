@@ -20,6 +20,9 @@ import { getOrCreateChatIdentity } from "@/lib/chat/identity";
 // Side-effect import — wires publishMyChatDevice() to fire on every
 // auth-state transition (boot + sign-in + user-switch), idempotent per user.
 import "@/lib/chat/auto-publish";
+// Side-effect import — MLS engine bootstrap + KeyPackage top-up + commit/welcome
+// polling (Chunk 5). Replaced by DO-pushed signals in Chunk 6.
+import "@/lib/chat/mls-auto-publish";
 
 SplashScreen.preventAutoHideAsync();
 

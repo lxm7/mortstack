@@ -410,9 +410,18 @@ importers:
 
   packages/chat-mls-core:
     dependencies:
+      '@repo/chat-crypto':
+        specifier: workspace:*
+        version: link:../chat-crypto
+      '@repo/chat-db':
+        specifier: workspace:*
+        version: link:../chat-db
       expo:
         specifier: '*'
         version: 54.0.34(@babel/core@7.29.0)(@expo/dom-webview@55.0.6)(@expo/metro-runtime@6.1.2)(expo-router@6.0.23)(graphql@16.14.0)(react-native@0.81.5(@babel/core@7.29.0)(@react-native/metro-config@0.85.3(@babel/core@7.29.0))(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)(typescript@5.9.2)
+      expo-crypto:
+        specifier: ~15.0.0
+        version: 15.0.9(expo@54.0.34)
       react:
         specifier: '*'
         version: 19.1.0
