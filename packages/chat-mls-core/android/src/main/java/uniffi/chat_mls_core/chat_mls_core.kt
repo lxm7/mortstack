@@ -30,6 +30,7 @@ import java.nio.CharBuffer
 import java.nio.charset.CodingErrorAction
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 
 // This is a helper for safely working with byte buffers returned from the Rust code.
 // A rust-owned buffer is represented by its capacity, its current length, and a
@@ -637,6 +638,26 @@ internal object IntegrityCheckingUniffiLib {
     }
     external fun uniffi_chat_mls_core_checksum_func_ping(
     ): Short
+    external fun uniffi_chat_mls_core_checksum_method_mlsengine_account_id(
+    ): Short
+    external fun uniffi_chat_mls_core_checksum_method_mlsengine_add_members(
+    ): Short
+    external fun uniffi_chat_mls_core_checksum_method_mlsengine_create_group(
+    ): Short
+    external fun uniffi_chat_mls_core_checksum_method_mlsengine_create_key_package(
+    ): Short
+    external fun uniffi_chat_mls_core_checksum_method_mlsengine_current_epoch(
+    ): Short
+    external fun uniffi_chat_mls_core_checksum_method_mlsengine_encrypt_app(
+    ): Short
+    external fun uniffi_chat_mls_core_checksum_method_mlsengine_join_from_welcome(
+    ): Short
+    external fun uniffi_chat_mls_core_checksum_method_mlsengine_member_count(
+    ): Short
+    external fun uniffi_chat_mls_core_checksum_method_mlsengine_process_message(
+    ): Short
+    external fun uniffi_chat_mls_core_checksum_constructor_mlsengine_new(
+    ): Short
     external fun ffi_chat_mls_core_uniffi_contract_version(
     ): Int
 
@@ -645,11 +666,40 @@ internal object IntegrityCheckingUniffiLib {
 
 internal object UniffiLib {
     
+    // The Cleaner for the whole library
+    internal val CLEANER: UniffiCleaner by lazy {
+        UniffiCleaner.create()
+    }
+    
 
     init {
         Native.register(UniffiLib::class.java, findLibraryName(componentName = "chat_mls_core"))
         
     }
+    external fun uniffi_chat_mls_core_fn_clone_mlsengine(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Long
+    external fun uniffi_chat_mls_core_fn_free_mlsengine(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    external fun uniffi_chat_mls_core_fn_constructor_mlsengine_new(`accountId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): Long
+    external fun uniffi_chat_mls_core_fn_method_mlsengine_account_id(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    external fun uniffi_chat_mls_core_fn_method_mlsengine_add_members(`ptr`: Long,`groupId`: RustBuffer.ByValue,`keyPackages`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    external fun uniffi_chat_mls_core_fn_method_mlsengine_create_group(`ptr`: Long,`groupId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    external fun uniffi_chat_mls_core_fn_method_mlsengine_create_key_package(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    external fun uniffi_chat_mls_core_fn_method_mlsengine_current_epoch(`ptr`: Long,`groupId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): Long
+    external fun uniffi_chat_mls_core_fn_method_mlsengine_encrypt_app(`ptr`: Long,`groupId`: RustBuffer.ByValue,`plaintext`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    external fun uniffi_chat_mls_core_fn_method_mlsengine_join_from_welcome(`ptr`: Long,`welcomeBytes`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    external fun uniffi_chat_mls_core_fn_method_mlsengine_member_count(`ptr`: Long,`groupId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): Int
+    external fun uniffi_chat_mls_core_fn_method_mlsengine_process_message(`ptr`: Long,`groupId`: RustBuffer.ByValue,`msgBytes`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
     external fun uniffi_chat_mls_core_fn_func_ping(uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     external fun ffi_chat_mls_core_rustbuffer_alloc(`size`: Long,uniffi_out_err: UniffiRustCallStatus, 
@@ -774,6 +824,36 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_chat_mls_core_checksum_func_ping() != 61247.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_chat_mls_core_checksum_method_mlsengine_account_id() != 57748.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_chat_mls_core_checksum_method_mlsengine_add_members() != 26388.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_chat_mls_core_checksum_method_mlsengine_create_group() != 23166.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_chat_mls_core_checksum_method_mlsengine_create_key_package() != 6637.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_chat_mls_core_checksum_method_mlsengine_current_epoch() != 60776.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_chat_mls_core_checksum_method_mlsengine_encrypt_app() != 51744.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_chat_mls_core_checksum_method_mlsengine_join_from_welcome() != 27609.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_chat_mls_core_checksum_method_mlsengine_member_count() != 39859.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_chat_mls_core_checksum_method_mlsengine_process_message() != 658.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_chat_mls_core_checksum_constructor_mlsengine_new() != 45725.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
 }
 
 /**
@@ -866,6 +946,116 @@ object UniffiWithHandle
  * @suppress
  * */
 object NoHandle
+/**
+ * The cleaner interface for Object finalization code to run.
+ * This is the entry point to any implementation that we're using.
+ *
+ * The cleaner registers objects and returns cleanables, so now we are
+ * defining a `UniffiCleaner` with a `UniffiClenaer.Cleanable` to abstract the
+ * different implmentations available at compile time.
+ *
+ * @suppress
+ */
+interface UniffiCleaner {
+    interface Cleanable {
+        fun clean()
+    }
+
+    fun register(value: Any, cleanUpTask: Runnable): UniffiCleaner.Cleanable
+
+    companion object
+}
+
+// The fallback Jna cleaner, which is available for both Android, and the JVM.
+private class UniffiJnaCleaner : UniffiCleaner {
+    private val cleaner = com.sun.jna.internal.Cleaner.getCleaner()
+
+    override fun register(value: Any, cleanUpTask: Runnable): UniffiCleaner.Cleanable =
+        UniffiJnaCleanable(cleaner.register(value, cleanUpTask))
+}
+
+private class UniffiJnaCleanable(
+    private val cleanable: com.sun.jna.internal.Cleaner.Cleanable,
+) : UniffiCleaner.Cleanable {
+    override fun clean() = cleanable.clean()
+}
+
+
+// We decide at uniffi binding generation time whether we were
+// using Android or not.
+// There are further runtime checks to chose the correct implementation
+// of the cleaner.
+private fun UniffiCleaner.Companion.create(): UniffiCleaner =
+    try {
+        // For safety's sake: if the library hasn't been run in android_cleaner = true
+        // mode, but is being run on Android, then we still need to think about
+        // Android API versions.
+        // So we check if java.lang.ref.Cleaner is there, and use that…
+        java.lang.Class.forName("java.lang.ref.Cleaner")
+        JavaLangRefCleaner()
+    } catch (e: ClassNotFoundException) {
+        // … otherwise, fallback to the JNA cleaner.
+        UniffiJnaCleaner()
+    }
+
+private class JavaLangRefCleaner : UniffiCleaner {
+    val cleaner = java.lang.ref.Cleaner.create()
+
+    override fun register(value: Any, cleanUpTask: Runnable): UniffiCleaner.Cleanable =
+        JavaLangRefCleanable(cleaner.register(value, cleanUpTask))
+}
+
+private class JavaLangRefCleanable(
+    val cleanable: java.lang.ref.Cleaner.Cleanable
+) : UniffiCleaner.Cleanable {
+    override fun clean() = cleanable.clean()
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterUInt: FfiConverter<UInt, Int> {
+    override fun lift(value: Int): UInt {
+        return value.toUInt()
+    }
+
+    override fun read(buf: ByteBuffer): UInt {
+        return lift(buf.getInt())
+    }
+
+    override fun lower(value: UInt): Int {
+        return value.toInt()
+    }
+
+    override fun allocationSize(value: UInt) = 4UL
+
+    override fun write(value: UInt, buf: ByteBuffer) {
+        buf.putInt(value.toInt())
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterULong: FfiConverter<ULong, Long> {
+    override fun lift(value: Long): ULong {
+        return value.toULong()
+    }
+
+    override fun read(buf: ByteBuffer): ULong {
+        return lift(buf.getLong())
+    }
+
+    override fun lower(value: ULong): Long {
+        return value.toLong()
+    }
+
+    override fun allocationSize(value: ULong) = 8UL
+
+    override fun write(value: ULong, buf: ByteBuffer) {
+        buf.putLong(value.toLong())
+    }
+}
 
 /**
  * @suppress
@@ -921,6 +1111,743 @@ public object FfiConverterString: FfiConverter<String, RustBuffer.ByValue> {
         val byteBuf = toUtf8(value)
         buf.putInt(byteBuf.limit())
         buf.put(byteBuf)
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterByteArray: FfiConverterRustBuffer<ByteArray> {
+    override fun read(buf: ByteBuffer): ByteArray {
+        val len = buf.getInt()
+        val byteArr = ByteArray(len)
+        buf.get(byteArr)
+        return byteArr
+    }
+    override fun allocationSize(value: ByteArray): ULong {
+        return 4UL + value.size.toULong()
+    }
+    override fun write(value: ByteArray, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        buf.put(value)
+    }
+}
+
+
+// This template implements a class for working with a Rust struct via a handle
+// to the live Rust struct on the other side of the FFI.
+//
+// There's some subtlety here, because we have to be careful not to operate on a Rust
+// struct after it has been dropped, and because we must expose a public API for freeing
+// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
+//
+//   * Each instance holds an opaque handle to the underlying Rust struct.
+//     Method calls need to read this handle from the object's state and pass it in to
+//     the Rust FFI.
+//
+//   * When an instance is no longer needed, its handle should be passed to a
+//     special destructor function provided by the Rust FFI, which will drop the
+//     underlying Rust struct.
+//
+//   * Given an instance, calling code is expected to call the special
+//     `destroy` method in order to free it after use, either by calling it explicitly
+//     or by using a higher-level helper like the `use` method. Failing to do so risks
+//     leaking the underlying Rust struct.
+//
+//   * We can't assume that calling code will do the right thing, and must be prepared
+//     to handle Kotlin method calls executing concurrently with or even after a call to
+//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
+//
+//   * We must never allow Rust code to operate on the underlying Rust struct after
+//     the destructor has been called, and must never call the destructor more than once.
+//     Doing so may trigger memory unsafety.
+//
+//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
+//     is implemented to call the destructor when the Kotlin object becomes unreachable.
+//     This is done in a background thread. This is not a panacea, and client code should be aware that
+//      1. the thread may starve if some there are objects that have poorly performing
+//     `drop` methods or do significant work in their `drop` methods.
+//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
+//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
+//
+// If we try to implement this with mutual exclusion on access to the handle, there is the
+// possibility of a race between a method call and a concurrent call to `destroy`:
+//
+//    * Thread A starts a method call, reads the value of the handle, but is interrupted
+//      before it can pass the handle over the FFI to Rust.
+//    * Thread B calls `destroy` and frees the underlying Rust struct.
+//    * Thread A resumes, passing the already-read handle value to Rust and triggering
+//      a use-after-free.
+//
+// One possible solution would be to use a `ReadWriteLock`, with each method call taking
+// a read lock (and thus allowed to run concurrently) and the special `destroy` method
+// taking a write lock (and thus blocking on live method calls). However, we aim not to
+// generate methods with any hidden blocking semantics, and a `destroy` method that might
+// block if called incorrectly seems to meet that bar.
+//
+// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
+// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
+// has been called. These are updated according to the following rules:
+//
+//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
+//      The initial value for the flag is false.
+//
+//    * At the start of each method call, we atomically check the counter.
+//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
+//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
+//
+//    * At the end of each method call, we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+//    * When `destroy` is called, we atomically flip the flag from false to true.
+//      If the flag was already true we silently fail.
+//      Otherwise we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
+// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
+//
+// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
+// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
+// of the underlying Rust code.
+//
+// This makes a cleaner a better alternative to _not_ calling `destroy()` as
+// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
+// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
+// thread may be starved, and the app will leak memory.
+//
+// In this case, `destroy`ing manually may be a better solution.
+//
+// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
+// with Rust peers are reclaimed:
+//
+// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
+// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
+// 3. The memory is reclaimed when the process terminates.
+//
+// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
+//
+
+
+public interface MlsEngineInterface {
+    
+    /**
+     * Returns the account_id this engine was constructed for. Useful for
+     * the host code's "is the engine bound to the right account?" check.
+     */
+    fun `accountId`(): kotlin.String
+    
+    /**
+     * Add one or more members to an existing group. Returns the Commit (to
+     * fan out to all *current* members via the DS) and the Welcome (to send
+     * to the new joiners). The pending commit is merged into local state
+     * before returning — caller doesn't need a second call.
+     */
+    fun `addMembers`(`groupId`: kotlin.ByteArray, `keyPackages`: List<kotlin.ByteArray>): AddMembersResult
+    
+    /**
+     * Create a brand-new group with this engine as the sole founder member.
+     * `group_id` is opaque to MLS — caller chooses any 32-byte identifier;
+     * we recommend `sha256(chatId)` or a random 32B (see ADR-015 §7 design
+     * note on Chat.mlsGroupId).
+     */
+    fun `createGroup`(`groupId`: kotlin.ByteArray)
+    
+    /**
+     * Generate one fresh KeyPackage. Caller is responsible for shipping the
+     * returned bytes to the server prekey directory (Chunk 4 — mls-keys
+     * publishKeyPackages route). The matching private material is stored in
+     * `provider.storage()` and consumed when this device joins a group via
+     * `join_from_welcome`.
+     */
+    fun `createKeyPackage`(): kotlin.ByteArray
+    
+    /**
+     * Current epoch counter for the named group — increments by one each
+     * time a Commit is merged. Useful for the Chunk 4 server-side ordering
+     * gate (server refuses to accept a commit at epoch N+2 if it hasn't
+     * seen N+1 yet) and for the Chunk 7 acceptance harness.
+     */
+    fun `currentEpoch`(`groupId`: kotlin.ByteArray): kotlin.ULong
+    
+    /**
+     * Encrypt application plaintext for the named group. The returned bytes
+     * are an MlsMessageOut — server stores ONE blob and fans to all members
+     * (the v=2 wire frame from §M3.5). Forward secrecy: the key material is
+     * discarded immediately; sender cannot decrypt own message.
+     */
+    fun `encryptApp`(`groupId`: kotlin.ByteArray, `plaintext`: kotlin.ByteArray): kotlin.ByteArray
+    
+    /**
+     * Process a Welcome received from another member. Returns the group_id
+     * of the newly-joined group so the caller can route subsequent messages
+     * to the right local state. Welcome already encodes the ratchet tree
+     * (use_ratchet_tree_extension=true in create_group), so no separate
+     * tree fetch is needed.
+     */
+    fun `joinFromWelcome`(`welcomeBytes`: kotlin.ByteArray): kotlin.ByteArray
+    
+    /**
+     * Member count for the named group, including self. 0 = group not loaded.
+     */
+    fun `memberCount`(`groupId`: kotlin.ByteArray): kotlin.UInt
+    
+    /**
+     * Process any incoming MLS message for a group — Application, Commit, or
+     * Proposal. Dispatcher returns a typed result so the caller knows which
+     * shape it got. Commits are auto-merged; proposals are stored as
+     * pending (caller has no current API to commit them — Phase 2 work).
+     */
+    fun `processMessage`(`groupId`: kotlin.ByteArray, `msgBytes`: kotlin.ByteArray): ProcessedKind
+    
+    companion object
+}
+
+open class MlsEngine: Disposable, AutoCloseable, MlsEngineInterface
+{
+
+    @Suppress("UNUSED_PARAMETER")
+    /**
+     * @suppress
+     */
+    constructor(withHandle: UniffiWithHandle, handle: Long) {
+        this.handle = handle
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(handle))
+    }
+
+    /**
+     * @suppress
+     *
+     * This constructor can be used to instantiate a fake object. Only used for tests. Any
+     * attempt to actually use an object constructed this way will fail as there is no
+     * connected Rust object.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    constructor(noHandle: NoHandle) {
+        this.handle = 0
+        this.cleanable = null
+    }
+    /**
+     * One Engine per account on this install. Subsequent constructors with a
+     * different account_id are an error (caller must drop the old Engine
+     * first) — that prevents accidental mixing of multi-account state.
+     */
+    constructor(`accountId`: kotlin.String) :
+        this(UniffiWithHandle, 
+    uniffiRustCallWithError(ChatMlsException) { _status ->
+    UniffiLib.uniffi_chat_mls_core_fn_constructor_mlsengine_new(
+    
+        FfiConverterString.lower(`accountId`),_status)
+}
+    )
+
+    protected val handle: Long
+    protected val cleanable: UniffiCleaner.Cleanable?
+
+    private val wasDestroyed = AtomicBoolean(false)
+    private val callCounter = AtomicLong(1)
+
+    override fun destroy() {
+        // Only allow a single call to this method.
+        // TODO: maybe we should log a warning if called more than once?
+        if (this.wasDestroyed.compareAndSet(false, true)) {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    @Synchronized
+    override fun close() {
+        this.destroy()
+    }
+
+    internal inline fun <R> callWithHandle(block: (handle: Long) -> R): R {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        do {
+            val c = this.callCounter.get()
+            if (c == 0L) {
+                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
+            }
+            if (c == Long.MAX_VALUE) {
+                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
+            }
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
+        // Now we can safely do the method call without the handle being freed concurrently.
+        try {
+            return block(this.uniffiCloneHandle())
+        } finally {
+            // This decrement always matches the increment we performed above.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    // Use a static inner class instead of a closure so as not to accidentally
+    // capture `this` as part of the cleanable's action.
+    private class UniffiCleanAction(private val handle: Long) : Runnable {
+        override fun run() {
+            if (handle == 0.toLong()) {
+                // Fake object created with `NoHandle`, don't try to free.
+                return;
+            }
+            uniffiRustCall { status ->
+                UniffiLib.uniffi_chat_mls_core_fn_free_mlsengine(handle, status)
+            }
+        }
+    }
+
+    /**
+     * @suppress
+     */
+    fun uniffiCloneHandle(): Long {
+        if (handle == 0.toLong()) {
+            throw InternalException("uniffiCloneHandle() called on NoHandle object");
+        }
+        return uniffiRustCall() { status ->
+            UniffiLib.uniffi_chat_mls_core_fn_clone_mlsengine(handle, status)
+        }
+    }
+
+    
+    /**
+     * Returns the account_id this engine was constructed for. Useful for
+     * the host code's "is the engine bound to the right account?" check.
+     */override fun `accountId`(): kotlin.String {
+            return FfiConverterString.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_chat_mls_core_fn_method_mlsengine_account_id(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Add one or more members to an existing group. Returns the Commit (to
+     * fan out to all *current* members via the DS) and the Welcome (to send
+     * to the new joiners). The pending commit is merged into local state
+     * before returning — caller doesn't need a second call.
+     */
+    @Throws(ChatMlsException::class)override fun `addMembers`(`groupId`: kotlin.ByteArray, `keyPackages`: List<kotlin.ByteArray>): AddMembersResult {
+            return FfiConverterTypeAddMembersResult.lift(
+    callWithHandle {
+    uniffiRustCallWithError(ChatMlsException) { _status ->
+    UniffiLib.uniffi_chat_mls_core_fn_method_mlsengine_add_members(
+        it,
+        FfiConverterByteArray.lower(`groupId`),FfiConverterSequenceByteArray.lower(`keyPackages`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Create a brand-new group with this engine as the sole founder member.
+     * `group_id` is opaque to MLS — caller chooses any 32-byte identifier;
+     * we recommend `sha256(chatId)` or a random 32B (see ADR-015 §7 design
+     * note on Chat.mlsGroupId).
+     */
+    @Throws(ChatMlsException::class)override fun `createGroup`(`groupId`: kotlin.ByteArray)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(ChatMlsException) { _status ->
+    UniffiLib.uniffi_chat_mls_core_fn_method_mlsengine_create_group(
+        it,
+        FfiConverterByteArray.lower(`groupId`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Generate one fresh KeyPackage. Caller is responsible for shipping the
+     * returned bytes to the server prekey directory (Chunk 4 — mls-keys
+     * publishKeyPackages route). The matching private material is stored in
+     * `provider.storage()` and consumed when this device joins a group via
+     * `join_from_welcome`.
+     */
+    @Throws(ChatMlsException::class)override fun `createKeyPackage`(): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    callWithHandle {
+    uniffiRustCallWithError(ChatMlsException) { _status ->
+    UniffiLib.uniffi_chat_mls_core_fn_method_mlsengine_create_key_package(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Current epoch counter for the named group — increments by one each
+     * time a Commit is merged. Useful for the Chunk 4 server-side ordering
+     * gate (server refuses to accept a commit at epoch N+2 if it hasn't
+     * seen N+1 yet) and for the Chunk 7 acceptance harness.
+     */
+    @Throws(ChatMlsException::class)override fun `currentEpoch`(`groupId`: kotlin.ByteArray): kotlin.ULong {
+            return FfiConverterULong.lift(
+    callWithHandle {
+    uniffiRustCallWithError(ChatMlsException) { _status ->
+    UniffiLib.uniffi_chat_mls_core_fn_method_mlsengine_current_epoch(
+        it,
+        FfiConverterByteArray.lower(`groupId`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Encrypt application plaintext for the named group. The returned bytes
+     * are an MlsMessageOut — server stores ONE blob and fans to all members
+     * (the v=2 wire frame from §M3.5). Forward secrecy: the key material is
+     * discarded immediately; sender cannot decrypt own message.
+     */
+    @Throws(ChatMlsException::class)override fun `encryptApp`(`groupId`: kotlin.ByteArray, `plaintext`: kotlin.ByteArray): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    callWithHandle {
+    uniffiRustCallWithError(ChatMlsException) { _status ->
+    UniffiLib.uniffi_chat_mls_core_fn_method_mlsengine_encrypt_app(
+        it,
+        FfiConverterByteArray.lower(`groupId`),FfiConverterByteArray.lower(`plaintext`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Process a Welcome received from another member. Returns the group_id
+     * of the newly-joined group so the caller can route subsequent messages
+     * to the right local state. Welcome already encodes the ratchet tree
+     * (use_ratchet_tree_extension=true in create_group), so no separate
+     * tree fetch is needed.
+     */
+    @Throws(ChatMlsException::class)override fun `joinFromWelcome`(`welcomeBytes`: kotlin.ByteArray): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    callWithHandle {
+    uniffiRustCallWithError(ChatMlsException) { _status ->
+    UniffiLib.uniffi_chat_mls_core_fn_method_mlsengine_join_from_welcome(
+        it,
+        FfiConverterByteArray.lower(`welcomeBytes`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Member count for the named group, including self. 0 = group not loaded.
+     */
+    @Throws(ChatMlsException::class)override fun `memberCount`(`groupId`: kotlin.ByteArray): kotlin.UInt {
+            return FfiConverterUInt.lift(
+    callWithHandle {
+    uniffiRustCallWithError(ChatMlsException) { _status ->
+    UniffiLib.uniffi_chat_mls_core_fn_method_mlsengine_member_count(
+        it,
+        FfiConverterByteArray.lower(`groupId`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Process any incoming MLS message for a group — Application, Commit, or
+     * Proposal. Dispatcher returns a typed result so the caller knows which
+     * shape it got. Commits are auto-merged; proposals are stored as
+     * pending (caller has no current API to commit them — Phase 2 work).
+     */
+    @Throws(ChatMlsException::class)override fun `processMessage`(`groupId`: kotlin.ByteArray, `msgBytes`: kotlin.ByteArray): ProcessedKind {
+            return FfiConverterTypeProcessedKind.lift(
+    callWithHandle {
+    uniffiRustCallWithError(ChatMlsException) { _status ->
+    UniffiLib.uniffi_chat_mls_core_fn_method_mlsengine_process_message(
+        it,
+        FfiConverterByteArray.lower(`groupId`),FfiConverterByteArray.lower(`msgBytes`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+
+    
+
+
+    
+    
+    /**
+     * @suppress
+     */
+    companion object
+    
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMlsEngine: FfiConverter<MlsEngine, Long> {
+    override fun lower(value: MlsEngine): Long {
+        return value.uniffiCloneHandle()
+    }
+
+    override fun lift(value: Long): MlsEngine {
+        return MlsEngine(UniffiWithHandle, value)
+    }
+
+    override fun read(buf: ByteBuffer): MlsEngine {
+        return lift(buf.getLong())
+    }
+
+    override fun allocationSize(value: MlsEngine) = 8UL
+
+    override fun write(value: MlsEngine, buf: ByteBuffer) {
+        buf.putLong(lower(value))
+    }
+}
+
+
+
+/**
+ * Outcome of `MlsEngine::add_members` — a Commit to fan out to existing
+ * members + a Welcome to send to each new joiner. `group_info` is None when
+ * the ratchet-tree extension is in use (the tree travels inside Welcome).
+ */
+data class AddMembersResult (
+    var `commit`: kotlin.ByteArray
+    , 
+    var `welcome`: kotlin.ByteArray
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAddMembersResult: FfiConverterRustBuffer<AddMembersResult> {
+    override fun read(buf: ByteBuffer): AddMembersResult {
+        return AddMembersResult(
+            FfiConverterByteArray.read(buf),
+            FfiConverterByteArray.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: AddMembersResult) = (
+            FfiConverterByteArray.allocationSize(value.`commit`) +
+            FfiConverterByteArray.allocationSize(value.`welcome`)
+    )
+
+    override fun write(value: AddMembersResult, buf: ByteBuffer) {
+            FfiConverterByteArray.write(value.`commit`, buf)
+            FfiConverterByteArray.write(value.`welcome`, buf)
+    }
+}
+
+
+
+
+
+sealed class ChatMlsException: kotlin.Exception() {
+    
+    class Internal(
+        
+        val v1: kotlin.String
+        ) : ChatMlsException() {
+        override val message
+            get() = "v1=${ v1 }"
+    }
+    
+
+    
+
+
+    companion object ErrorHandler : UniffiRustCallStatusErrorHandler<ChatMlsException> {
+        override fun lift(error_buf: RustBuffer.ByValue): ChatMlsException = FfiConverterTypeChatMlsError.lift(error_buf)
+    }
+
+    
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeChatMlsError : FfiConverterRustBuffer<ChatMlsException> {
+    override fun read(buf: ByteBuffer): ChatMlsException {
+        
+
+        return when(buf.getInt()) {
+            1 -> ChatMlsException.Internal(
+                FfiConverterString.read(buf),
+                )
+            else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: ChatMlsException): ULong {
+        return when(value) {
+            is ChatMlsException.Internal -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterString.allocationSize(value.v1)
+            )
+        }
+    }
+
+    override fun write(value: ChatMlsException, buf: ByteBuffer) {
+        when(value) {
+            is ChatMlsException.Internal -> {
+                buf.putInt(1)
+                FfiConverterString.write(value.v1, buf)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+
+}
+
+
+
+/**
+ * Discriminated result of `MlsEngine::process_message`. Application = a
+ * decrypted plaintext for the caller to deliver to the chat UI. CommitApplied
+ * = group state advanced (one epoch) — no payload. ProposalQueued = a
+ * proposal was stored as pending; caller can choose to commit later.
+ */
+sealed class ProcessedKind {
+    
+    data class Application(
+        val `plaintext`: kotlin.ByteArray) : ProcessedKind()
+        
+    {
+        
+
+        companion object
+    }
+    
+    object CommitApplied : ProcessedKind()
+    
+    
+    object ProposalQueued : ProcessedKind()
+    
+    
+
+    
+
+    
+    
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeProcessedKind : FfiConverterRustBuffer<ProcessedKind>{
+    override fun read(buf: ByteBuffer): ProcessedKind {
+        return when(buf.getInt()) {
+            1 -> ProcessedKind.Application(
+                FfiConverterByteArray.read(buf),
+                )
+            2 -> ProcessedKind.CommitApplied
+            3 -> ProcessedKind.ProposalQueued
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: ProcessedKind) = when(value) {
+        is ProcessedKind.Application -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterByteArray.allocationSize(value.`plaintext`)
+            )
+        }
+        is ProcessedKind.CommitApplied -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is ProcessedKind.ProposalQueued -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+    }
+
+    override fun write(value: ProcessedKind, buf: ByteBuffer) {
+        when(value) {
+            is ProcessedKind.Application -> {
+                buf.putInt(1)
+                FfiConverterByteArray.write(value.`plaintext`, buf)
+                Unit
+            }
+            is ProcessedKind.CommitApplied -> {
+                buf.putInt(2)
+                Unit
+            }
+            is ProcessedKind.ProposalQueued -> {
+                buf.putInt(3)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+}
+
+
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceByteArray: FfiConverterRustBuffer<List<kotlin.ByteArray>> {
+    override fun read(buf: ByteBuffer): List<kotlin.ByteArray> {
+        val len = buf.getInt()
+        return List<kotlin.ByteArray>(len) {
+            FfiConverterByteArray.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<kotlin.ByteArray>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterByteArray.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<kotlin.ByteArray>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterByteArray.write(it, buf)
+        }
     }
 } fun `ping`(): kotlin.String {
             return FfiConverterString.lift(
