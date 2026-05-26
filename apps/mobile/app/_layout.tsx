@@ -1,3 +1,10 @@
+// MUST be the first import — installs globalThis.crypto.getRandomValues
+// before any other module reads it. nanoid (used by chat-transport) and
+// any noble/* lib pulled in later all depend on it. RN/Hermes doesn't ship
+// the Web Crypto API; this polyfill bridges to the system CSPRNG via a
+// tiny native module (iOS SecRandomCopyBytes / Android SecureRandom).
+import "react-native-get-random-values";
+
 import { useEffect } from "react";
 import { Stack } from "expo-router";
 import { useFonts } from "expo-font";

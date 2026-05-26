@@ -9,7 +9,7 @@
     "check-types": "turbo check-types",
     "test": "turbo test",
     "prepare": "husky",
-    "api": "pnpm --filter @repo/api-server dev",
+    "api": "NODE_OPTIONS=\"--dns-result-order=ipv4first\" pnpm --filter @repo/api-server dev",
     "rn": "turbo start --filter=mobile",
     "rn:ios": "turbo ios --filter=mobile",
     "rn:android": "turbo android --filter=mobile",

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import * as ed25519 from "@noble/ed25519";
 import {
@@ -23,6 +24,65 @@ function decodeB64Strict(s: string): Uint8Array {
 }
 
 export const keysRouter = router({
+  // Current KeyPackage count for the calling account's device. Cheap read
+  // used by the client SDK before publishing — replaces the "publish
+  // threshold+1 to discover the count" path which hits the cap on devices
+  // with stale KPs left over from a reset.
+  count: protectedProcedure
+    .input(z.object({ deviceId: z.string().uuid() }))
+    .output(z.object({ totalForDevice: z.number().int().nonnegative() }))
+    .query(async ({ input, ctx }) => {
+      const device = await ctx.prisma.userDevice.findUnique({
+        where: {
+          accountId_deviceId: {
+            accountId: ctx.account.id,
+            deviceId: input.deviceId,
+          },
+        },
+        select: { id: true },
+      });
+      if (!device) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "device not registered",
+        });
+      }
+      const totalForDevice = await ctx.prisma.keyPackage.count({
+        where: { userDeviceId: device.id },
+      });
+      return { totalForDevice };
+    }),
+
+  // Delete every unconsumed KeyPackage for the calling account's device.
+  // Used by MlsClient.reset() so a fresh engine doesn't compete against
+  // stale-pubkey rows the server still holds (the engine no longer has the
+  // matching private material, so those KPs would dead-end any join). Does
+  // NOT touch the device row itself or any group state.
+  deleteAllForDevice: protectedProcedure
+    .input(z.object({ deviceId: z.string().uuid() }))
+    .output(z.object({ deleted: z.number().int().nonnegative() }))
+    .mutation(async ({ input, ctx }) => {
+      const device = await ctx.prisma.userDevice.findUnique({
+        where: {
+          accountId_deviceId: {
+            accountId: ctx.account.id,
+            deviceId: input.deviceId,
+          },
+        },
+        select: { id: true },
+      });
+      if (!device) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "device not registered",
+        });
+      }
+      const result = await ctx.prisma.keyPackage.deleteMany({
+        where: { userDeviceId: device.id },
+      });
+      return { deleted: result.count };
+    }),
+
   // Publish one or more fresh KeyPackages for the calling account's device.
   //
   // Authenticity (ADR-015 §5): client signs the canonical bytes
