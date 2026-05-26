@@ -1,4 +1,4 @@
-9edb5ecd18ea267dad88e04e8792d46bb53070fcb156dacd878f97b3af166195  ./arm64-v8a/libchat_mls_core.so
-72f6d6f85663f1df14bf12468a110249b159b9000c7af583562fcd0b1c5b29da  ./armeabi-v7a/libchat_mls_core.so
-f51f34de052b1642bae0419b0b07627452023c9432cbf7ff98c0268fe969cb75  ./x86/libchat_mls_core.so
-e1a9bceccb30f6c6057839a003c0eede9ec51d5d0f1f90e0a5586860cad70d6e  ./x86_64/libchat_mls_core.so
+d7cb4d56969f70c152567528eaa4059c5559c151d2e15c0399d358c864aad710  ./arm64-v8a/libchat_mls_core.so
+9a1a495a83600c47b13344e41cbd53021549593cba2d6e01e240f25438efbcfc  ./armeabi-v7a/libchat_mls_core.so
+be7ad73a822c1bcbfe3934626ca370741b62a3cd7a4df6efadec037a9ce46447  ./x86/libchat_mls_core.so
+deec9b07563dc767b945b8f405692d2d57ae652d866b6686e9c3c46c301c9d89  ./x86_64/libchat_mls_core.so

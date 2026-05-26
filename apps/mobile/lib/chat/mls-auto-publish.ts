@@ -1,10 +1,13 @@
 import { AppState, type AppStateStatus } from "react-native";
 import { getChatDb, mls as mlsStore } from "@repo/chat-db";
 import { MlsClient, type MlsRpc } from "@repo/chat-mls-core/client";
+import { ChatMlsCore } from "@repo/chat-mls-core";
 import { trpc } from "@/lib/trpc/client";
 import { loadSessionToken } from "@/lib/auth/session";
 import { useAuthStore } from "@/store/auth";
 import { getOrCreateChatIdentity } from "./identity";
+import { getCurrentChatTransport } from "./transport";
+import { clearChatGroupCache } from "./group-resolver";
 
 // MLS auto-publish + poll loop. Mirrors `auto-publish.ts` for M3 but owns the
 // MLS-side responsibilities:
@@ -35,6 +38,9 @@ let client: MlsClient | null = null;
 // adapter we need and lives near its single caller.
 function makeRpc(): MlsRpc {
   return {
+    keysCount: (input) => trpc.mls.keys.count.query(input),
+    keysDeleteAllForDevice: (input) =>
+      trpc.mls.keys.deleteAllForDevice.mutate(input),
     keysPublish: (input) => trpc.mls.keys.publish.mutate(input),
     keysFetchForAccounts: (input) =>
       trpc.mls.keys.fetchForAccounts.query(input),
@@ -78,6 +84,18 @@ async function bootstrap(authUserId: string): Promise<MlsClient | null> {
 
 async function tick(reason: string): Promise<void> {
   if (!client) return;
+  // Defensive: if the native engine was wiped (Reset button or a process
+  // race) the client object still exists but every native call throws
+  // "engine not initialised". MlsClient.reset() now re-inits inline, but
+  // belt-and-braces: skip the tick rather than spam errors.
+  try {
+    ChatMlsCore.engineAccountId();
+  } catch {
+    console.warn(
+      `[chat-mvp/M3.5] tick (${reason}) skipped — engine not initialised`,
+    );
+    return;
+  }
   try {
     const top = await client.topUpKeyPackagesIfBelow();
     if (top.published > 0) {
@@ -91,6 +109,15 @@ async function tick(reason: string): Promise<void> {
       console.log(
         `[chat-mvp/M3.5] joined groups (${reason}): ${welcomes.joinedGroupIds.length}`,
       );
+      // Clear the process-level resolver cache for each newly-joined chatId so
+      // any stale null cached before the Welcome was processed doesn't block
+      // subsequent v=2 decryption.
+      for (const gid of welcomes.joinedGroupIds) {
+        let hexStr = "";
+        for (let i = 0; i < Math.min(gid.length, 8); i++)
+          hexStr += (gid[i] ?? 0).toString(16).padStart(2, "0");
+        clearChatGroupCache(`mls-${hexStr}`);
+      }
     }
 
     // Poll commits for every locally-known group. At Phase 1 scale the
@@ -105,6 +132,19 @@ async function tick(reason: string): Promise<void> {
           `[chat-mvp/M3.5] applied ${out.applied} commit(s) for group, epoch=${out.lastAppliedEpoch}`,
         );
       }
+    }
+
+    // Subscribe WS to every MLS-linked chatId so the Chat DO fanout actually
+    // reaches us. Without this, joining a Welcome links the chat row locally
+    // but the DO's `attached` set never includes this user → sender's
+    // application messages are persisted but never fan out to our socket.
+    // subscribe(...) dedupes internally, so calling every tick is cheap.
+    const transport = getCurrentChatTransport();
+    if (transport) {
+      const chatIds = groups
+        .map((g) => g.chatId)
+        .filter((id): id is string => !!id);
+      if (chatIds.length > 0) transport.subscribe(chatIds);
     }
   } catch (err) {
     console.error(`[chat-mvp/M3.5] tick failed (${reason})`, err);

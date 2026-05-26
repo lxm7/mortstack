@@ -30,6 +30,15 @@ import { resolveChatGroupId } from "@/lib/chat/group-resolver";
 const ChatTransportContext = createContext<EncryptedChatTransport | null>(null);
 const ChatStateContext = createContext<ConnectionState>("idle");
 
+// Module-level singleton ref. There is exactly one ChatTransportProvider at
+// app root, so this mirrors the React context but is reachable from non-React
+// code (e.g. the MLS auto-publish loop that needs to subscribe WS after
+// joining a Welcome).
+let currentTransport: EncryptedChatTransport | null = null;
+export function getCurrentChatTransport(): EncryptedChatTransport | null {
+  return currentTransport;
+}
+
 export function useChatTransport(): EncryptedChatTransport {
   const t = useContext(ChatTransportContext);
   if (!t) {
@@ -88,6 +97,15 @@ export function ChatTransportProvider({ children }: { children: ReactNode }) {
 
   // Bridge transport state → React state.
   useEffect(() => transport.onState(setState), [transport]);
+
+  // Publish to module-level singleton so the MLS auto-publish loop (non-React
+  // code) can call subscribe(...) after joining a Welcome.
+  useEffect(() => {
+    currentTransport = transport;
+    return () => {
+      if (currentTransport === transport) currentTransport = null;
+    };
+  }, [transport]);
 
   // Connect / disconnect based on session presence.
   const sessionPresent = !!session;

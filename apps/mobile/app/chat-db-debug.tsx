@@ -201,7 +201,13 @@ function MlsAcceptancePanel() {
 //
 // Buttons here drive MlsClient lifecycle helpers; the "send" path is the
 // normal encrypted transport (v=2 routes once the chat has an mls_group_id).
-function MlsLifecyclePanel({ chatId }: { chatId: string }) {
+function MlsLifecyclePanel({
+  chatId,
+  onChatIdChange,
+}: {
+  chatId: string;
+  onChatIdChange: (next: string) => void;
+}) {
   const [peerInput, setPeerInput] = useState("");
   const [log, setLog] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -237,15 +243,31 @@ function MlsLifecyclePanel({ chatId }: { chatId: string }) {
       run("createGroup", async () => {
         const client = getMlsClient()!;
         const dbHandle = await getChatDb();
-        // Ensure the chat row exists so setChatMlsGroupId has something to
-        // update — production callers come in via the M4 chat-list create
-        // flow which seeds this row.
-        await mlsStore.ensureChatForDebug(dbHandle.db, chatId, "group");
-        const { groupId } = await client.createGroup({ chatId });
-        clearChatGroupCache(chatId);
-        return `gid ${hex(groupId, 6)} · chat ${chatId} linked`;
+        // Derive a deterministic chatId from the new GroupId so the founder
+        // and joiner converge on the same chats row without out-of-band
+        // coordination. The joiner side mirrors this convention in
+        // MlsClient.pollPendingWelcomes (M4 chat-create RPC replaces both).
+        const { groupId } = await client.createGroup();
+        // Plain hex of first 8 bytes — must match MlsClient.hexShort used
+        // by the joiner's pollPendingWelcomes so both sides converge.
+        let gidHex = "";
+        for (let i = 0; i < Math.min(groupId.length, 8); i++) {
+          gidHex += (groupId[i] ?? 0).toString(16).padStart(2, "0");
+        }
+        const derivedChatId = `mls-${gidHex}`;
+        await mlsStore.ensureChatForDebug(dbHandle.db, derivedChatId, "group");
+        await mlsStore.setChatMlsGroupId(dbHandle.db, derivedChatId, groupId);
+        // Also backfill mls_group.chat_id so the tick's listGroups() returns
+        // this chatId and auto-subscribes the WS channel on future ticks.
+        await mlsStore.upsertGroup(dbHandle.db, {
+          groupId,
+          chatId: derivedChatId,
+        });
+        clearChatGroupCache(derivedChatId);
+        onChatIdChange(derivedChatId);
+        return `gid ${hex(groupId, 6)} · chat ${derivedChatId} linked`;
       }),
-    [chatId, run],
+    [onChatIdChange, run],
   );
 
   const onAddPeer = useCallback(
@@ -284,9 +306,33 @@ function MlsLifecyclePanel({ chatId }: { chatId: string }) {
     () =>
       run("pollWelcomes", async () => {
         const out = await getMlsClient()!.pollPendingWelcomes();
-        return `joined=${out.joinedGroupIds.length}`;
+        // Pivot the harness chatId to a joined MLS group so the chatId
+        // useEffect sends `sub` for it (DO fanout requires attachment).
+        // Two-stage fallback: prefer the just-joined group; otherwise pick
+        // any group already known to chat-db. The fallback handles the case
+        // where the 30s auto-tick consumed the Welcome before the user
+        // tapped this button (server is consume-on-fetch, so the explicit
+        // poll comes back with joined=0 even though state is correct).
+        let pivot: string | null = null;
+        const first = out.joinedGroupIds[0];
+        if (first) {
+          let gidHex = "";
+          for (let i = 0; i < Math.min(first.length, 8); i++) {
+            gidHex += (first[i] ?? 0).toString(16).padStart(2, "0");
+          }
+          pivot = `mls-${gidHex}`;
+        } else {
+          const dbHandle = await getChatDb();
+          const groups = await mlsStore.listGroups(dbHandle.db);
+          const existing = groups.find(
+            (g) => typeof g.chatId === "string" && g.chatId.startsWith("mls-"),
+          );
+          if (existing?.chatId) pivot = existing.chatId;
+        }
+        if (pivot) onChatIdChange(pivot);
+        return `joined=${out.joinedGroupIds.length}${pivot ? ` · pivot=${pivot}` : ""}`;
       }),
-    [run],
+    [onChatIdChange, run],
   );
 
   const onForceCommits = useCallback(
@@ -473,6 +519,32 @@ export default function ChatDbDebug() {
     loadMe();
   }, [refresh, loadIdentity, loadMe]);
 
+  // Cold-open pivot: if the engine already joined an MLS group on a prior
+  // tick (e.g. sim B reopens the app after the 30s poll consumed a Welcome),
+  // jump straight to that chatId so the user can send replies without
+  // manually pasting `mls-<hex>`. Only fires while the chatId is still the
+  // default placeholder — never overrides a deliberate user choice.
+  useEffect(() => {
+    if (chatId !== CHAT_ID_TEST) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { db } = await getChatDb();
+        const groups = await mlsStore.listGroups(db);
+        const first = groups.find(
+          (g): g is typeof g & { chatId: string } =>
+            typeof g.chatId === "string" && g.chatId.startsWith("mls-"),
+        );
+        if (!cancelled && first) setChatId(first.chatId);
+      } catch {
+        // listGroups failure is non-fatal; user can still set chatId manually.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [chatId]);
+
   // Live inbox — subscribe to decrypted message stream. The encrypted
   // transport already wires resolveSenderX25519Pubs to getPeerDevices so the
   // sender's pub lookup is automatic.
@@ -597,13 +669,28 @@ export default function ChatDbDebug() {
   }, [identity, lastCipher, me?.accountId]);
 
   const onSend = useCallback(async () => {
-    if (peerTargets.length === 0 || peerTargets[0]?.devices.length === 0) {
-      setSendResults((prev) =>
-        ["err: no peer devices — lookup peer first", ...prev].slice(0, 20),
-      );
-      return;
-    }
+    // v=2 sends route by chats.mls_group_id and don't need peer targets.
+    // The guard below applies to v=1 only — checked by peeking chat-db.
     try {
+      const { db } = await getChatDb();
+      const row = await db.execute(
+        "SELECT mls_group_id FROM chats WHERE id = ?",
+        [chatId],
+      );
+      const hasMls = !!(row.rows?.[0] as { mls_group_id?: unknown } | undefined)
+        ?.mls_group_id;
+      if (
+        !hasMls &&
+        (peerTargets.length === 0 || peerTargets[0]?.devices.length === 0)
+      ) {
+        setSendResults((prev) =>
+          [
+            "err: v=1 send needs peer devices — lookup peer or create v=2 group first",
+            ...prev,
+          ].slice(0, 20),
+        );
+        return;
+      }
       const results = await transport.send({
         chatId,
         text,
@@ -657,7 +744,7 @@ export default function ChatDbDebug() {
         <MlsAcceptancePanel />
 
         {/* ── Chunk 7: MLS lifecycle harness ─────────────────────────── */}
-        <MlsLifecyclePanel chatId={chatId} />
+        <MlsLifecyclePanel chatId={chatId} onChatIdChange={setChatId} />
 
         {/* ── M3: My identity ─────────────────────────────────────────── */}
         <YStack bg="$backgroundHover" p="$3" borderRadius="$3" gap="$1">
@@ -790,16 +877,24 @@ export default function ChatDbDebug() {
           <Text color="$color" fontSize="$4" fontWeight="600">
             send via encrypted transport
           </Text>
+          <Text color="$color" fontSize="$1">
+            chatId (read-only — set by Create v=2 group):
+          </Text>
+          <Text color="$color" fontSize="$2" selectable bg="$background" p="$2">
+            {chatId}
+          </Text>
+          <Text color="$color" fontSize="$1">
+            message text:
+          </Text>
           <Input
-            value={chatId}
-            onChangeText={setChatId}
-            placeholder="chatId"
+            value={text}
+            onChangeText={setText}
+            placeholder="message text to send"
             autoCapitalize="none"
-            autoCorrect={false}
           />
           <XStack gap="$2">
             <Button size="$2" onPress={onSend}>
-              {`Send "${text.slice(0, 24)}"`}
+              Send
             </Button>
             <Button size="$2" onPress={() => transport.subscribe([chatId])}>
               Subscribe

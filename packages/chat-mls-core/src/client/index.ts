@@ -29,6 +29,10 @@ import {
 // supply an in-memory mock without dragging the network in.
 
 export interface MlsRpc {
+  keysCount(input: { deviceId: string }): Promise<{ totalForDevice: number }>;
+  keysDeleteAllForDevice(input: {
+    deviceId: string;
+  }): Promise<{ deleted: number }>;
   keysPublish(
     input: PublishKeyPackagesInput,
   ): Promise<PublishKeyPackagesOutput>;
@@ -78,6 +82,18 @@ function fromB64(s: string): Uint8Array {
   const out = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out;
+}
+
+// Stable short hex of the first 8 bytes — used to derive a deterministic
+// harness chatId from a GroupId so founder + joiner converge on the same
+// chats row without out-of-band coordination. Production chat-create
+// (M4) replaces this with a server-issued chatId.
+function hexShort(bytes: Uint8Array): string {
+  const n = Math.min(bytes.length, 8);
+  let s = "";
+  for (let i = 0; i < n; i++)
+    s += (bytes[i] ?? 0).toString(16).padStart(2, "0");
+  return s;
 }
 
 async function sha256(bytes: Uint8Array): Promise<Uint8Array> {
@@ -133,7 +149,33 @@ export class MlsClient {
     const row = await mlsStore.loadEngineSnapshot(this.db.db, this.accountId);
     if (row) {
       ChatMlsCore.loadState(row.snapshot);
+      // Repair pass — backfills chats.mls_group_id for any mls_group row
+      // joined before the pollWelcomes-linking patch existed. Idempotent;
+      // skips rows already correctly linked. Drops out as a no-op once M4
+      // chat-create RPC replaces the harness convention.
+      await this.repairChatLinks();
       return { source: "snapshot" };
+    }
+    // No local snapshot — engine starts empty. If the server still holds
+    // KPs for this device from a prior install / wipe / app reinstall,
+    // those KPs are orphaned (the privkey material lived in the lost
+    // snapshot). Anyone consuming an orphan KP gets an unjoinable Welcome.
+    // Wipe them so the upcoming topUp publishes a fresh batch the engine
+    // can actually back. Best-effort.
+    try {
+      const out = await this.rpc.keysDeleteAllForDevice({
+        deviceId: this.deviceId,
+      });
+      if (out.deleted > 0) {
+        console.log(
+          `[mls] bootstrap (fresh) cleared ${out.deleted} orphan server KP(s)`,
+        );
+      }
+    } catch (err) {
+      console.warn(
+        "[mls] bootstrap (fresh): keysDeleteAllForDevice failed",
+        err,
+      );
     }
     return { source: "fresh" };
   }
@@ -149,22 +191,15 @@ export class MlsClient {
     if (target > KEY_PACKAGE_PER_DEVICE_CAP)
       target = KEY_PACKAGE_PER_DEVICE_CAP;
 
-    // First boot of the process: we don't know the pool size yet. Read it
-    // by publishing zero KPs — except the wire schema requires ≥1 per call.
-    // Instead, optimistically aim for `threshold + 1` KPs so the publish
-    // both surfaces the totalForDevice in its response AND tops up by a
-    // small amount in the worst case. The cap rejects gracefully if we
-    // were already at the ceiling.
+    // First boot of the process: ask the server how many KPs we currently
+    // have. This avoids hitting the cap on devices with stale KPs left
+    // over from a reset (engine lost the privkeys but server still holds
+    // the pubs). One read query > an optimistic publish that could fail.
     if (this.lastKnownPoolSize === null) {
-      const published = await this.publishKeyPackagesBatch(threshold + 1);
-      this.lastKnownPoolSize = published.totalForDevice;
-      if (published.totalForDevice >= target) {
-        return {
-          published: published.published,
-          totalForDevice: published.totalForDevice,
-        };
-      }
-      // Fall through to top up the rest.
+      const { totalForDevice } = await this.rpc.keysCount({
+        deviceId: this.deviceId,
+      });
+      this.lastKnownPoolSize = totalForDevice;
     }
 
     const deficit = Math.max(0, target - this.lastKnownPoolSize);
@@ -210,8 +245,27 @@ export class MlsClient {
         );
         continue;
       }
+      // Joiner-side chat-row link (Chunk 7 harness interim — M4 chat-create
+      // RPC will replace this with a server-synced row). The Welcome itself
+      // doesn't carry an application chatId; we derive a deterministic one
+      // from the GroupId so both sides converge on the same row without
+      // out-of-band coordination. M4 hashes/IDs flow through Chat.create
+      // proper.
+      const harnessChatId = `mls-${hexShort(groupId)}`;
+      await mlsStore.ensureChatForDebug(this.db.db, harnessChatId, "group");
+      const linkResult = await mlsStore.setChatMlsGroupId(
+        this.db.db,
+        harnessChatId,
+        groupId,
+      );
+      if (linkResult.updates === 0) {
+        console.warn(
+          `[mls] pollPendingWelcomes: setChatMlsGroupId wrote 0 rows for ${harnessChatId} — chats row missing?`,
+        );
+      }
       await mlsStore.upsertGroup(this.db.db, {
         groupId,
+        chatId: harnessChatId,
         initialEpoch: ChatMlsCore.currentEpoch(groupId),
       });
       joined.push(groupId);
@@ -469,6 +523,23 @@ export class MlsClient {
     await mlsStore.clearEngineSnapshot(this.db.db, this.accountId);
     await mlsStore.clearAllGroups(this.db.db);
     this.lastKnownPoolSize = null;
+    // Wipe server-side KPs too — the engine just lost the privkeys that
+    // matched them, so any future join attempt using a stale KP would
+    // dead-end on the joiner side. Best-effort: log + continue if the
+    // server can't be reached.
+    try {
+      const out = await this.rpc.keysDeleteAllForDevice({
+        deviceId: this.deviceId,
+      });
+      console.log(`[mls] reset wiped ${out.deleted} server-side KP(s)`);
+    } catch (err) {
+      console.warn("[mls] reset: keysDeleteAllForDevice failed", err);
+    }
+    // Re-init the engine so background tasks (auto-publish timer, send path)
+    // don't trip "engine not initialised" until the next bootstrap. The
+    // caller is still signed in as the same account — reset is "wipe state",
+    // not "log out".
+    ChatMlsCore.initEngine(this.accountId, this.identitySeed);
   }
 
   // Snapshot the entire engine to chat-db. Called after every mutating
@@ -488,6 +559,28 @@ export class MlsClient {
   }
 
   // ── Internal helpers ──────────────────────────────────────────────────────
+
+  // Backfill chats.mls_group_id for mls_group rows joined before
+  // pollPendingWelcomes started linking automatically. The harness chatId
+  // is the same `mls-<hex>` convention both sides use, so the founder and
+  // joiner converge on the same row. Idempotent: a row already linked
+  // takes the UPDATE path but sets the same bytes.
+  private async repairChatLinks(): Promise<void> {
+    const groups = await mlsStore.listGroups(this.db.db);
+    for (const g of groups) {
+      const harnessChatId = `mls-${hexShort(g.groupId)}`;
+      await mlsStore.ensureChatForDebug(this.db.db, harnessChatId, "group");
+      await mlsStore.setChatMlsGroupId(this.db.db, harnessChatId, g.groupId);
+      // Update the mls_group row's chat_id field too if it's null, so
+      // listGroups results stay consistent with the chats join.
+      if (g.chatId == null) {
+        await mlsStore.upsertGroup(this.db.db, {
+          groupId: g.groupId,
+          chatId: harnessChatId,
+        });
+      }
+    }
+  }
 
   // Single-batch publish: generate `count` KPs from the engine, build the
   // proof, ship. Used by the top-up loop above; kept private because the

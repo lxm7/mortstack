@@ -51,11 +51,19 @@ use crate::error::ChatMlsError;
 const CIPHERSUITE: Ciphersuite = Ciphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519;
 
 /// Domain-separation tag for deriving the MLS signer sub-seed from the M3
-/// identity seed. Bumping the `v1` suffix = a breaking signer-identity
-/// rotation; do NOT change without a coordinated migration. Distinct from
-/// other tags ("sessions/x25519/v1" etc.) so the derived keys are
-/// cryptographically independent of M3's libsodium box keypair.
-const MLS_SIGNER_DERIVE_CONTEXT: &[u8] = b"sessions/mls-signer/v1";
+/// identity seed PLUS the accountId. Bumping the `vN` suffix = a breaking
+/// signer-identity rotation; do NOT change without a coordinated migration.
+/// Distinct from other tags ("sessions/x25519/v1" etc.) so the derived keys
+/// are cryptographically independent of M3's libsodium box keypair.
+///
+/// v2 bump (2026-05): mix accountId into the BLAKE2b update stream so that
+/// multiple accounts on the same install (or two iOS Simulators that share
+/// the keychain access group on the same Mac, and therefore the same
+/// identity_seed) derive DIFFERENT signers. Without this mix, two accounts
+/// sharing one seed produced identical MLS sig keys and OpenMLS rejected
+/// the second one as "Duplicate signature key in proposals and group" the
+/// moment one tried to add the other as a member.
+const MLS_SIGNER_DERIVE_CONTEXT: &[u8] = b"sessions/mls-signer/v2";
 
 /// Outcome of `MlsEngine::add_members` — a Commit to fan out to existing
 /// members + a Welcome to send to each new joiner.
@@ -113,7 +121,7 @@ impl MlsEngine {
     #[uniffi::constructor]
     pub fn new(account_id: String, identity_seed: Vec<u8>) -> Result<Arc<Self>, ChatMlsError> {
         let provider = OpenMlsRustCrypto::default();
-        let signer = derive_signer(&identity_seed)?;
+        let signer = derive_signer(&account_id, &identity_seed)?;
         signer
             .store(provider.storage())
             .map_err(|e| ChatMlsError::ctx("signer.store", e))?;
@@ -449,17 +457,34 @@ impl MlsEngine {
 }
 
 /// Derive the MLS signer's Ed25519 keypair deterministically from the M3
-/// identity seed. BLAKE2b-256 with a domain-separation tag yields the 32-byte
-/// ed25519 signing key seed; the public key falls out via ed25519-dalek.
-fn derive_signer(identity_seed: &[u8]) -> Result<SignatureKeyPair, ChatMlsError> {
+/// identity seed AND the accountId. BLAKE2b-256 over the domain tag,
+/// length-prefixed accountId bytes, and the 32-byte identity seed yields a
+/// 32-byte ed25519 signing key seed; the public key falls out via
+/// ed25519-dalek.
+///
+/// Length-prefix on the accountId prevents canonicalisation ambiguity: an
+/// attacker who could choose accountId and seed independently must not be
+/// able to find two (accountId, seed) pairs whose concatenations alias. A
+/// 4-byte big-endian length prefix is sufficient — accountIds are cuids
+/// well under 4 GiB.
+fn derive_signer(
+    account_id: &str,
+    identity_seed: &[u8],
+) -> Result<SignatureKeyPair, ChatMlsError> {
     if identity_seed.len() != 32 {
         return Err(ChatMlsError::Internal(format!(
             "identity_seed must be 32 bytes (got {})",
             identity_seed.len()
         )));
     }
+    let account_bytes = account_id.as_bytes();
+    let account_len: u32 = account_bytes.len().try_into().map_err(|_| {
+        ChatMlsError::Internal("accountId longer than u32::MAX bytes".into())
+    })?;
     let mut hasher = Blake2b::<U32>::new();
     hasher.update(MLS_SIGNER_DERIVE_CONTEXT);
+    hasher.update(account_len.to_be_bytes());
+    hasher.update(account_bytes);
     hasher.update(identity_seed);
     let sub_seed: [u8; 32] = hasher.finalize().into();
 
@@ -625,6 +650,32 @@ mod tests {
             ProcessedKind::Application { plaintext } => assert_eq!(plaintext, b"post-snapshot"),
             other => panic!("expected Application, got {other:?}"),
         }
+    }
+
+    /// Regression — two accounts sharing the same identity_seed (e.g. two iOS
+    /// Simulators on the same Mac that share the keychain access group)
+    /// MUST derive different MLS signers, otherwise add_members fails with
+    /// `DuplicateSignatureKey`. Pre-v2 derivation depended only on the seed,
+    /// so both engines came out with identical Ed25519 keys.
+    #[test]
+    fn shared_seed_different_accounts_derive_distinct_signers() {
+        let shared = seed(0xAA);
+        let alice = MlsEngine::new("alice@sessions".into(), shared.clone()).unwrap();
+        let bob = MlsEngine::new("bob@sessions".into(), shared.clone()).unwrap();
+        assert_ne!(
+            alice.signer.public(),
+            bob.signer.public(),
+            "shared seed but distinct accountId should produce distinct signers"
+        );
+
+        // End-to-end: the founder + the peer can actually share a group
+        // without OpenMLS rejecting the proposal as duplicate-sig-key.
+        let gid = group_id("shared-seed");
+        alice.create_group(gid.clone()).unwrap();
+        let bob_kp = bob.create_key_package().unwrap();
+        let added = alice.add_members(gid.clone(), vec![bob_kp]).unwrap();
+        bob.join_from_welcome(added.welcome).unwrap();
+        assert_eq!(alice.member_count(gid).unwrap(), 2);
     }
 
     #[test]

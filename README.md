@@ -36,13 +36,19 @@ cd apps
 
 Terminal 1: pnpm --filter @repo/api-server dev
 Terminal 2: pnpm --filter @repo/chat-ws dev  
- Terminal 3: pnpm --filter mobile expo start # Metro — keep open
+Terminal 3: pnpm --filter mobile expo start # Metro — keep open
 Terminal 4: xcrun simctl spawn <UDID-1> log
 stream ... # sim 1 logs  
- Terminal 5: xcrun simctl spawn <UDID-2> log  
+Terminal 5: xcrun simctl spawn <UDID-2> log  
  stream ... # sim 2 logs  
- Terminal 6: scratchpad for `expo run:ios      
+Terminal 6: scratchpad for `expo run:ios      
   --device <name>` when needed
+
+### General running:
+
+xcrun simctl list devices available
+pnpm --filter mobile start
+pnpm --filter mobile exec expo run:ios --device "$sim1"
 
 ## Prerequisites
 
@@ -548,6 +554,10 @@ Group-native end-to-end encryption replacing the M3 libsodium box. See ADR-015 f
 
 - 2-device DM via MLS group; 5-device group with one ciphertext decrypted by all; member add / remove mid-conversation; KeyPackage exhaustion behaviour; multi-account swap on same install; offline catch-up (kill app, send N msgs from peers, relaunch, decrypt all). Acceptance harness extends `chat-db-debug` (current KeyPackage count, group epoch, ratchet tree hash).
 
+**Follow-up (M3.5 cleanup, pre-M4)**
+
+- `mls.keys.fetchForAccounts` server-side dedupe: today it iterates every `UserDevice` row for the requested accountId, so stale rows from a prior install + the current row both return a KP. Both KPs share the same MLS signer (signer is `(accountId, identity_seed)`-derived per ADR-015 §3 + engine.rs:454 v2), so the consumer's `add_members` rejects them as `DuplicateSignatureKey`. Phase 1 is single-device-per-account; collapse to one bundle per accountId (most-recent `UserDevice.updatedAt`). Multi-device proper unblocks later when account-linking is real. Filed during M3.5 2-sim acceptance.
+
 #### M4 — Chat UI: 1:1 + group text (3 weeks)
 
 - `@repo/chat` exports `<ChatList />`, `<ChatScreen chatId>`, `useChats()`, `useMessages(chatId)`, `useSendMessage()`.
@@ -599,17 +609,6 @@ Build a small AI feature into it — even a basic LLM-powered search or recommen
 - Typing indicators and read receipts (over the existing DO channel; respect privacy toggle).
 - Full-text search via SQLite FTS5, indexed on insert.
 - Multi-device session list UI (Better Auth already tracks sessions; build the management screen).
-- **MLS storage scale-up (NOT optional at 1M-DAU scale).** Replace the Chunk 2.5
-  `dump_state`/`load_state` whole-blob snapshotting with a custom
-  `StorageProvider` impl over `rusqlite` + `bundled-sqlcipher-vendored-openssl`.
-  Reason: dump/load rewrites the entire engine HashMap on every mutation — fine
-  at ≤50 groups per user (typical), becomes 5-20 MB/sec sustained writes at
-  1000+ groups per user (power users at Phase 3). Custom provider writes only
-  the changed (label, key, value) entries: per-mutation cost drops from
-  O(total state) to O(touched entries). Scope ≈ 500-800 LoC of typed trait
-  plumbing (~30 methods over a single kv table, one-liner each) + the
-  `vendored-openssl` Cargo feature so the Android NDK cross-compile builds
-  OpenSSL from source. See ADR-015 follow-up note for full rationale.
 
 ### Total realistic timeline
 
