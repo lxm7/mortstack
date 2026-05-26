@@ -15,4 +15,5 @@ export type {
   MlsGroupRow,
 } from "./schema";
 export * as mls from "./mls-store";
+export { createBoundMlsStore } from "./mls-store";
 export type { MlsGroupUpsert, MlsGroupListItem } from "./mls-store";

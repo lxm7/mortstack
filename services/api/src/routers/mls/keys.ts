@@ -163,6 +163,16 @@ export const keysRouter = router({
           })),
         });
 
+        // Phase 1 single-device-per-account: any other UserDevice row for
+        // this account is stale (prior install / reset). KeyPackages cascade
+        // via FK. README §M3.5 follow-up.
+        await tx.userDevice.deleteMany({
+          where: {
+            accountId: ctx.account.id,
+            id: { not: device.id },
+          },
+        });
+
         return {
           published: kpBytesList.length,
           totalForDevice: existing + kpBytesList.length,
@@ -189,8 +199,15 @@ export const keysRouter = router({
       // Resolve target devices first so we know which (deviceId → ed25519Pub)
       // to return alongside each consumed KeyPackage. One round-trip; reads
       // outside the consume tx are fine — the consume tx is per-device.
+      //
+      // Phase 1 dedupe: one device per accountId (most recent). Stale rows
+      // from prior installs share the MLS signer with the live row, so
+      // duplicate KPs hit DuplicateSignatureKey on add_members. Multi-device
+      // unblocks when M4 account-linking lands. README §M3.5 follow-up.
       const devices = await ctx.prisma.userDevice.findMany({
         where: { accountId: { in: input.accountIds } },
+        orderBy: [{ accountId: "asc" }, { updatedAt: "desc" }],
+        distinct: ["accountId"],
         select: {
           id: true,
           accountId: true,

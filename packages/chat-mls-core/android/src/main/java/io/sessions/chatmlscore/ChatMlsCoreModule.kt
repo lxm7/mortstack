@@ -76,6 +76,11 @@ class ChatMlsCoreModule : Module() {
       mapOf("commit" to result.commit, "welcome" to result.welcome)
     }
 
+    Function("removeMembersByAccounts") { groupId: ByteArray, accountIds: List<String> ->
+      val e = engine ?: throw ChatMlsBridgeException("engine not initialised")
+      e.removeMembersByAccounts(groupId, accountIds)
+    }
+
     Function("joinFromWelcome") { welcomeBytes: ByteArray ->
       val e = engine ?: throw ChatMlsBridgeException("engine not initialised")
       e.joinFromWelcome(welcomeBytes)

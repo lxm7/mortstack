@@ -71,6 +71,16 @@ declare class ChatMlsCoreModule extends NativeModule<ChatMlsCoreModuleEvents> {
   // before this call returns — no second call needed.
   addMembers(groupId: Uint8Array, keyPackages: Uint8Array[]): AddMembersResult;
 
+  // Remove peers from an existing group by accountId. Engine resolves each
+  // accountId to a LeafNodeIndex by matching BasicCredential bytes, emits a
+  // single Commit (no Welcome — Remove is unidirectional), and merges the
+  // pending commit into local state before returning the Commit bytes.
+  // Caller fans the Commit via publishCommit; remaining members apply it.
+  removeMembersByAccounts(
+    groupId: Uint8Array,
+    accountIds: string[],
+  ): Uint8Array;
+
   // Process a Welcome received from another member's add_members call. The
   // engine extracts the GroupId from the Welcome and stores the new group
   // locally; the returned bytes are that same GroupId so the caller can route

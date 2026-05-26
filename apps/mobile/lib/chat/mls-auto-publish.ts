@@ -1,6 +1,12 @@
 import { AppState, type AppStateStatus } from "react-native";
-import { getChatDb, mls as mlsStore } from "@repo/chat-db";
-import { MlsClient, type MlsRpc } from "@repo/chat-mls-core/client";
+import * as Crypto from "expo-crypto";
+import { ChatCrypto } from "@repo/chat-crypto";
+import { getChatDb, mls as mlsStore, createBoundMlsStore } from "@repo/chat-db";
+import {
+  MlsClient,
+  type MlsCryptoApi,
+  type MlsRpc,
+} from "@repo/chat-mls-core/client";
 import { ChatMlsCore } from "@repo/chat-mls-core";
 import { trpc } from "@/lib/trpc/client";
 import { loadSessionToken } from "@/lib/auth/session";
@@ -8,6 +14,25 @@ import { useAuthStore } from "@/store/auth";
 import { getOrCreateChatIdentity } from "./identity";
 import { getCurrentChatTransport } from "./transport";
 import { clearChatGroupCache } from "./group-resolver";
+
+// Mobile crypto adapter — three primitives MlsClient needs out of band of
+// the MLS engine itself. Built once and reused across MlsClient instances
+// (in practice there's only one per signed-in user). expo-crypto provides
+// SHA-256 + random; libsodium-via-ChatCrypto provides the M3 Ed25519 sign.
+const mobileMlsCrypto: MlsCryptoApi = {
+  digestSha256: async (bytes) => {
+    const buf = await Crypto.digest(
+      Crypto.CryptoDigestAlgorithm.SHA256,
+      // expo-crypto types arg as BufferSource; RN's Uint8Array narrows in
+      // ways TS rejects under strict — runtime accepts either.
+      bytes as unknown as ArrayBuffer,
+    );
+    return new Uint8Array(buf);
+  },
+  getRandomBytes: (n) => Crypto.getRandomBytes(n),
+  signEd25519Detached: (message, seed) =>
+    ChatCrypto.signDetached(message, seed),
+};
 
 // MLS auto-publish + poll loop. Mirrors `auto-publish.ts` for M3 but owns the
 // MLS-side responsibilities:
@@ -71,7 +96,9 @@ async function bootstrap(authUserId: string): Promise<MlsClient | null> {
     deviceId: identity.deviceId,
     identitySeed: identity.seed,
     rpc: makeRpc(),
-    db: dbHandle,
+    engine: ChatMlsCore,
+    crypto: mobileMlsCrypto,
+    mlsStore: createBoundMlsStore(dbHandle),
   });
 
   const { source } = await c.bootstrap();
