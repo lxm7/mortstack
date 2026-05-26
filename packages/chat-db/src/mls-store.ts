@@ -1,4 +1,5 @@
 import type { DB } from "@op-engineering/op-sqlite";
+import type { ChatDbHandle } from "./client";
 import type { MlsEngineStateRow, MlsGroupRow } from "./schema";
 
 // op-sqlite returns BLOB columns as ArrayBuffer (sometimes ArrayBuffer-like
@@ -204,4 +205,31 @@ export async function ensureChatForDebug(
     [chatId, kind, now, now],
   );
   return { created: true };
+}
+
+// ── Pre-bound store for MlsClient DI ────────────────────────────────────────
+// Returns an object whose methods are the namespace functions above with the
+// DB handle already curried. Structurally matches @repo/chat-mls-core's
+// MlsStoreApi (duck-typed — keeps the import edge one-way: chat-mls-core →
+// chat-db, never reverse).
+export function createBoundMlsStore(handle: ChatDbHandle) {
+  const db = handle.db;
+  return {
+    loadEngineSnapshot: (accountId: string) =>
+      loadEngineSnapshot(db, accountId),
+    saveEngineSnapshot: (accountId: string, snapshot: Uint8Array) =>
+      saveEngineSnapshot(db, accountId, snapshot),
+    clearEngineSnapshot: (accountId: string) =>
+      clearEngineSnapshot(db, accountId),
+    upsertGroup: (input: MlsGroupUpsert) => upsertGroup(db, input),
+    setLastAppliedEpoch: (groupId: Uint8Array, epoch: number) =>
+      setLastAppliedEpoch(db, groupId, epoch),
+    getGroup: (groupId: Uint8Array) => getGroup(db, groupId),
+    listGroups: () => listGroups(db),
+    clearAllGroups: () => clearAllGroups(db),
+    setChatMlsGroupId: (chatId: string, groupId: Uint8Array) =>
+      setChatMlsGroupId(db, chatId, groupId),
+    ensureChatForDebug: (chatId: string, kind: "direct" | "group" = "group") =>
+      ensureChatForDebug(db, chatId, kind),
+  };
 }

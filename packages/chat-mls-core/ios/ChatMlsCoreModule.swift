@@ -84,6 +84,12 @@ public class ChatMlsCoreModule: Module {
       return ["commit": result.commit, "welcome": result.welcome]
     }
 
+    Function("removeMembersByAccounts") {
+      (groupId: Data, accountIds: [String]) throws -> Data in
+      guard let e = self.engine else { throw BridgeError.engineNotInitialized }
+      return try e.removeMembersByAccounts(groupId: groupId, accountIds: accountIds)
+    }
+
     Function("joinFromWelcome") { (welcomeBytes: Data) throws -> Data in
       guard let e = self.engine else { throw BridgeError.engineNotInitialized }
       return try e.joinFromWelcome(welcomeBytes: welcomeBytes)

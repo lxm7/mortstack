@@ -6,11 +6,12 @@ publish = false
 license = "MIT"
 description = "OpenMLS engine for Sessions chat (Rust core, UniFFI bindings)"
 
-# cdylib → required by UniFFI bindgen at dev time (dlopen the lib for symbol scan)
+# rlib      → consumed by node/ napi-rs crate (test harness)
+# cdylib    → required by UniFFI bindgen at dev time (dlopen the lib for symbol scan)
 # staticlib → linked into iOS XCFramework and Android jniLibs
 [lib]
 name = "chat_mls_core"
-crate-type = ["cdylib", "staticlib"]
+crate-type = ["rlib", "cdylib", "staticlib"]
 
 [dependencies]
 # Pinned per ADR-015. Bump policy: bump openmls + traits + rust_crypto +

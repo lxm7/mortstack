@@ -1,15 +1,11 @@
-// RN-only MLS client SDK. Wraps the ChatMlsCore native module + chat-db +
-// an injected mls.* RPC surface. Lives under `@repo/chat-mls-core/client` so
-// callers (apps/mobile) get a typed boundary without the server pulling RN
-// native deps.
-//
-// The RPC interface is injected (not imported) so this package never depends
-// on the tRPC client/AppRouter — keeps the monorepo edges clean.
+// Platform-agnostic MLS client SDK. All platform-specific dependencies
+// (native engine, crypto primitives, chat-db, mls.* RPC) are injected via
+// options — no module-level imports of RN/Expo or Node-only code. Mobile
+// constructs an MlsClient by wiring ChatMlsCoreModule + expo-crypto +
+// ChatCrypto + chat-db's bound mlsStore; Node test harness wires the napi
+// binding + Web Crypto + @noble/ed25519 + an InMemory this.mlsStore.
 
-import * as Crypto from "expo-crypto";
-import { ChatCrypto } from "@repo/chat-crypto";
-import { mls as mlsStore, type ChatDbHandle } from "@repo/chat-db";
-import ChatMlsCore from "../ChatMlsCoreModule";
+import type { AddMembersResult, ProcessedKind } from "../ChatMlsCore.types";
 import {
   KEY_PACKAGE_PER_DEVICE_CAP,
   KEY_PACKAGE_PUBLISH_BATCH_MAX,
@@ -22,6 +18,87 @@ import {
   type PublishWelcomesInput,
   type PublishWelcomesOutput,
 } from "../wire";
+
+// ── Injected engine ─────────────────────────────────────────────────────────
+// Mirrors the ChatMlsCoreModule TS surface. Mobile passes the singleton from
+// requireNativeModule("ChatMlsCore"); Node tests pass a per-device factory
+// instance wrapping the napi MlsEngine class.
+
+export interface MlsEngineModule {
+  initEngine(accountId: string, identitySeed: Uint8Array): void;
+  engineAccountId(): string;
+  resetEngine(): void;
+  dumpState(): Uint8Array;
+  loadState(snapshot: Uint8Array): void;
+  createKeyPackage(): Uint8Array;
+  createGroup(groupId: Uint8Array): void;
+  addMembers(groupId: Uint8Array, keyPackages: Uint8Array[]): AddMembersResult;
+  removeMembersByAccounts(
+    groupId: Uint8Array,
+    accountIds: string[],
+  ): Uint8Array;
+  joinFromWelcome(welcomeBytes: Uint8Array): Uint8Array;
+  encryptApp(groupId: Uint8Array, plaintext: Uint8Array): Uint8Array;
+  processMessage(groupId: Uint8Array, msgBytes: Uint8Array): ProcessedKind;
+  currentEpoch(groupId: Uint8Array): number;
+  memberCount(groupId: Uint8Array): number;
+}
+
+// ── Injected crypto ─────────────────────────────────────────────────────────
+// Three primitives consumed by MlsClient outside of MLS itself — keep small
+// so adapters stay one-liners.
+
+export interface MlsCryptoApi {
+  /** sha256 of arbitrary bytes — async to allow Web Crypto / expo-crypto. */
+  digestSha256(bytes: Uint8Array): Promise<Uint8Array>;
+  /** N cryptographically-strong random bytes. */
+  getRandomBytes(n: number): Uint8Array;
+  /** Ed25519 detached signature over `message` keyed by `seed` (32B). */
+  signEd25519Detached(message: Uint8Array, seed: Uint8Array): Uint8Array;
+}
+
+// ── Injected mlsStore ───────────────────────────────────────────────────────
+// Pre-bound to a database handle. Mobile builds this via
+// @repo/chat-db createBoundMlsStore(handle); Node tests pass an in-memory
+// implementation. MlsClient never sees the underlying storage type.
+
+export interface MlsGroupLocal {
+  group_id: Uint8Array;
+  chat_id: string | null;
+  last_applied_epoch: number;
+  joined_at: number;
+}
+
+export interface MlsGroupListItem {
+  groupId: Uint8Array;
+  chatId: string | null;
+  lastAppliedEpoch: number;
+}
+
+export interface MlsStoreApi {
+  loadEngineSnapshot(
+    accountId: string,
+  ): Promise<{ snapshot: Uint8Array; updated_at: number } | null>;
+  saveEngineSnapshot(accountId: string, snapshot: Uint8Array): Promise<void>;
+  clearEngineSnapshot(accountId: string): Promise<void>;
+  upsertGroup(input: {
+    groupId: Uint8Array;
+    chatId?: string | null;
+    initialEpoch?: number;
+  }): Promise<void>;
+  setLastAppliedEpoch(groupId: Uint8Array, epoch: number): Promise<void>;
+  getGroup(groupId: Uint8Array): Promise<MlsGroupLocal | null>;
+  listGroups(): Promise<MlsGroupListItem[]>;
+  clearAllGroups(): Promise<void>;
+  setChatMlsGroupId(
+    chatId: string,
+    groupId: Uint8Array,
+  ): Promise<{ updates: number }>;
+  ensureChatForDebug(
+    chatId: string,
+    kind?: "direct" | "group",
+  ): Promise<{ created: boolean }>;
+}
 
 // ── Injected RPC ────────────────────────────────────────────────────────────
 // The caller supplies a thin object that maps each MlsClient method to a
@@ -96,17 +173,6 @@ function hexShort(bytes: Uint8Array): string {
   return s;
 }
 
-async function sha256(bytes: Uint8Array): Promise<Uint8Array> {
-  // expo-crypto.digest types its arg as BufferSource (= ArrayBuffer | view),
-  // but Uint8Array<ArrayBufferLike> from RN's lib narrows to view+SAB which
-  // BufferSource rejects in TS 5.x. The runtime accepts either; cast.
-  const buf = await Crypto.digest(
-    Crypto.CryptoDigestAlgorithm.SHA256,
-    bytes as unknown as ArrayBuffer,
-  );
-  return new Uint8Array(buf);
-}
-
 // ── MlsClient ───────────────────────────────────────────────────────────────
 
 export interface MlsClientOptions {
@@ -117,7 +183,9 @@ export interface MlsClientOptions {
    *  (ADR-015 §5). */
   identitySeed: Uint8Array;
   rpc: MlsRpc;
-  db: ChatDbHandle;
+  engine: MlsEngineModule;
+  crypto: MlsCryptoApi;
+  mlsStore: MlsStoreApi;
 }
 
 export class MlsClient {
@@ -125,7 +193,9 @@ export class MlsClient {
   private readonly deviceId: string;
   private readonly identitySeed: Uint8Array;
   private readonly rpc: MlsRpc;
-  private readonly db: ChatDbHandle;
+  private readonly engine: MlsEngineModule;
+  private readonly crypto: MlsCryptoApi;
+  private readonly mlsStore: MlsStoreApi;
   /** Last server-reported pool size for this device. Set by topUp; consulted
    *  by maybeTopUp before issuing a publish. Sticky across MlsClient
    *  instances within a process — fresh boots refetch via a single
@@ -137,18 +207,20 @@ export class MlsClient {
     this.deviceId = opts.deviceId;
     this.identitySeed = opts.identitySeed;
     this.rpc = opts.rpc;
-    this.db = opts.db;
+    this.engine = opts.engine;
+    this.crypto = opts.crypto;
+    this.mlsStore = opts.mlsStore;
   }
 
   // Construct the native engine + restore the previous snapshot if one
   // exists. Idempotent across calls within a process — re-running with the
   // same accountId is a no-op on the native side; the snapshot reload is
-  // guarded by ChatMlsCore.engineAccountId().
+  // guarded by this.engine.engineAccountId().
   async bootstrap(): Promise<{ source: "fresh" | "snapshot" }> {
-    ChatMlsCore.initEngine(this.accountId, this.identitySeed);
-    const row = await mlsStore.loadEngineSnapshot(this.db.db, this.accountId);
+    this.engine.initEngine(this.accountId, this.identitySeed);
+    const row = await this.mlsStore.loadEngineSnapshot(this.accountId);
     if (row) {
-      ChatMlsCore.loadState(row.snapshot);
+      this.engine.loadState(row.snapshot);
       // Repair pass — backfills chats.mls_group_id for any mls_group row
       // joined before the pollWelcomes-linking patch existed. Idempotent;
       // skips rows already correctly linked. Drops out as a no-op once M4
@@ -234,7 +306,7 @@ export class MlsClient {
       const welcomeBytes = fromB64(w.welcomeB64);
       let groupId: Uint8Array;
       try {
-        groupId = ChatMlsCore.joinFromWelcome(welcomeBytes);
+        groupId = this.engine.joinFromWelcome(welcomeBytes);
       } catch (err) {
         // Welcome may be addressed to a different device under the same
         // account (recipientDeviceId narrowing not applied), or the engine
@@ -252,9 +324,8 @@ export class MlsClient {
       // out-of-band coordination. M4 hashes/IDs flow through Chat.create
       // proper.
       const harnessChatId = `mls-${hexShort(groupId)}`;
-      await mlsStore.ensureChatForDebug(this.db.db, harnessChatId, "group");
-      const linkResult = await mlsStore.setChatMlsGroupId(
-        this.db.db,
+      await this.mlsStore.ensureChatForDebug(harnessChatId, "group");
+      const linkResult = await this.mlsStore.setChatMlsGroupId(
         harnessChatId,
         groupId,
       );
@@ -263,10 +334,10 @@ export class MlsClient {
           `[mls] pollPendingWelcomes: setChatMlsGroupId wrote 0 rows for ${harnessChatId} — chats row missing?`,
         );
       }
-      await mlsStore.upsertGroup(this.db.db, {
+      await this.mlsStore.upsertGroup({
         groupId,
         chatId: harnessChatId,
-        initialEpoch: ChatMlsCore.currentEpoch(groupId),
+        initialEpoch: this.engine.currentEpoch(groupId),
       });
       joined.push(groupId);
     }
@@ -281,7 +352,7 @@ export class MlsClient {
   async pollPendingCommits(
     groupId: Uint8Array,
   ): Promise<{ applied: number; lastAppliedEpoch: number }> {
-    const local = await mlsStore.getGroup(this.db.db, groupId);
+    const local = await this.mlsStore.getGroup(groupId);
     if (!local) {
       throw new Error("[mls] pollPendingCommits called for unknown group");
     }
@@ -294,7 +365,7 @@ export class MlsClient {
     let applied = 0;
     let lastApplied = local.last_applied_epoch;
     for (const c of commits) {
-      const result = ChatMlsCore.processMessage(groupId, fromB64(c.commitB64));
+      const result = this.engine.processMessage(groupId, fromB64(c.commitB64));
       if (result.kind !== "commitApplied") {
         throw new Error(
           `[mls] expected commitApplied at epoch ${c.epoch}, got ${result.kind}`,
@@ -304,7 +375,7 @@ export class MlsClient {
       applied++;
     }
     if (applied > 0) {
-      await mlsStore.setLastAppliedEpoch(this.db.db, groupId, lastApplied);
+      await this.mlsStore.setLastAppliedEpoch(groupId, lastApplied);
       await this.persistSnapshot();
     }
     return { applied, lastAppliedEpoch: lastApplied };
@@ -336,7 +407,7 @@ export class MlsClient {
     // Caller's engine merged the pending commit locally before calling
     // publishCommit, so the local epoch already matches input.epoch.
     // Just bump the cursor so a subsequent poll asks for sinceEpoch+1.
-    await mlsStore.setLastAppliedEpoch(this.db.db, input.groupId, input.epoch);
+    await this.mlsStore.setLastAppliedEpoch(input.groupId, input.epoch);
     await this.persistSnapshot();
     return res;
   }
@@ -416,15 +487,15 @@ export class MlsClient {
   async createGroup(input?: {
     chatId?: string | null;
   }): Promise<{ groupId: Uint8Array }> {
-    const groupId = Crypto.getRandomBytes(32);
-    ChatMlsCore.createGroup(groupId);
-    await mlsStore.upsertGroup(this.db.db, {
+    const groupId = this.crypto.getRandomBytes(32);
+    this.engine.createGroup(groupId);
+    await this.mlsStore.upsertGroup({
       groupId,
       chatId: input?.chatId ?? null,
-      initialEpoch: ChatMlsCore.currentEpoch(groupId),
+      initialEpoch: this.engine.currentEpoch(groupId),
     });
     if (input?.chatId) {
-      await mlsStore.setChatMlsGroupId(this.db.db, input.chatId, groupId);
+      await this.mlsStore.setChatMlsGroupId(input.chatId, groupId);
     }
     await this.persistSnapshot();
     return { groupId };
@@ -475,8 +546,8 @@ export class MlsClient {
     // engine.addMembers merges the pending commit locally before returning
     // — local epoch is now `previous + 1`. The server hasn't seen it yet;
     // publishCommit posts the commit at that new epoch.
-    const result = ChatMlsCore.addMembers(input.groupId, kpBytes);
-    const epoch = ChatMlsCore.currentEpoch(input.groupId);
+    const result = this.engine.addMembers(input.groupId, kpBytes);
+    const epoch = this.engine.currentEpoch(input.groupId);
 
     // Persist BEFORE shipping the commit. If the network step fails the
     // engine's local epoch is already incremented; on retry the
@@ -509,6 +580,43 @@ export class MlsClient {
     };
   }
 
+  // Remove one or more accounts from an existing group. Engine matches each
+  // accountId against current BasicCredential identity bytes, emits a single
+  // Commit, advances the local epoch. Remove is unidirectional — no Welcome.
+  // Server router treats this Commit identically to any other (groups router
+  // is proposal-agnostic per ADR-015).
+  //
+  // Removed members continue to hold any pre-remove ciphertexts they had,
+  // but their group state is frozen at epoch N when the Commit lands at
+  // epoch N+1 — subsequent app messages won't decrypt for them.
+  async removeMembersByAccounts(input: {
+    groupId: Uint8Array;
+    accountIds: string[];
+  }): Promise<{ epoch: number }> {
+    if (input.accountIds.length === 0) {
+      throw new Error("[mls] removeMembersByAccounts requires ≥1 accountId");
+    }
+
+    const commit = this.engine.removeMembersByAccounts(
+      input.groupId,
+      input.accountIds,
+    );
+    const epoch = this.engine.currentEpoch(input.groupId);
+
+    // Persist BEFORE shipping — same failure-mode rationale as addMembers:
+    // engine's local epoch is already incremented, retry would CONFLICT and
+    // caller pollPendingCommits + re-derives.
+    await this.persistSnapshot();
+
+    await this.publishCommit({
+      groupId: input.groupId,
+      epoch,
+      commitBytes: commit,
+    });
+
+    return { epoch };
+  }
+
   // Drop the in-memory MLS engine + the chat-db snapshot + the local group
   // registry. Used by the README acceptance scenario "multi-account swap on
   // same install" and by the debug "reset engine" button. Does NOT touch
@@ -519,9 +627,9 @@ export class MlsClient {
   // groups per ADR-015 §7. Any future create-group on those chat rows
   // overwrites the column.
   async reset(): Promise<void> {
-    ChatMlsCore.resetEngine();
-    await mlsStore.clearEngineSnapshot(this.db.db, this.accountId);
-    await mlsStore.clearAllGroups(this.db.db);
+    this.engine.resetEngine();
+    await this.mlsStore.clearEngineSnapshot(this.accountId);
+    await this.mlsStore.clearAllGroups();
     this.lastKnownPoolSize = null;
     // Wipe server-side KPs too — the engine just lost the privkeys that
     // matched them, so any future join attempt using a stale KP would
@@ -539,7 +647,21 @@ export class MlsClient {
     // don't trip "engine not initialised" until the next bootstrap. The
     // caller is still signed in as the same account — reset is "wipe state",
     // not "log out".
-    ChatMlsCore.initEngine(this.accountId, this.identitySeed);
+    this.engine.initEngine(this.accountId, this.identitySeed);
+  }
+
+  // Wipe ONLY the server-side KeyPackage pool for this device. Engine state
+  // is untouched. Used by the acceptance harness to simulate exhaustion:
+  // after drain, the next fetchForAccounts(this account) returns []; a peer
+  // attempting addMembersByAccounts on us hits the "no KeyPackages available"
+  // throw. The auto-publish tick will refill on its next firing (30s loop),
+  // so test windows are short.
+  async drainServerKeyPackages(): Promise<{ deleted: number }> {
+    const out = await this.rpc.keysDeleteAllForDevice({
+      deviceId: this.deviceId,
+    });
+    this.lastKnownPoolSize = 0;
+    return out;
   }
 
   // Snapshot the entire engine to chat-db. Called after every mutating
@@ -547,8 +669,8 @@ export class MlsClient {
   // <500KB blob); the M8 StorageProvider replaces this with per-entry
   // writes when typical-user storage profiles outgrow it.
   async persistSnapshot(): Promise<void> {
-    const snapshot = ChatMlsCore.dumpState();
-    await mlsStore.saveEngineSnapshot(this.db.db, this.accountId, snapshot);
+    const snapshot = this.engine.dumpState();
+    await this.mlsStore.saveEngineSnapshot(this.accountId, snapshot);
   }
 
   // Local view of the KeyPackage pool — the value the server returned on
@@ -566,15 +688,15 @@ export class MlsClient {
   // joiner converge on the same row. Idempotent: a row already linked
   // takes the UPDATE path but sets the same bytes.
   private async repairChatLinks(): Promise<void> {
-    const groups = await mlsStore.listGroups(this.db.db);
+    const groups = await this.mlsStore.listGroups();
     for (const g of groups) {
       const harnessChatId = `mls-${hexShort(g.groupId)}`;
-      await mlsStore.ensureChatForDebug(this.db.db, harnessChatId, "group");
-      await mlsStore.setChatMlsGroupId(this.db.db, harnessChatId, g.groupId);
+      await this.mlsStore.ensureChatForDebug(harnessChatId, "group");
+      await this.mlsStore.setChatMlsGroupId(harnessChatId, g.groupId);
       // Update the mls_group row's chat_id field too if it's null, so
       // listGroups results stay consistent with the chats join.
       if (g.chatId == null) {
-        await mlsStore.upsertGroup(this.db.db, {
+        await this.mlsStore.upsertGroup({
           groupId: g.groupId,
           chatId: harnessChatId,
         });
@@ -594,7 +716,7 @@ export class MlsClient {
 
     const kpBytesList: Uint8Array[] = [];
     for (let i = 0; i < cap; i++) {
-      kpBytesList.push(ChatMlsCore.createKeyPackage());
+      kpBytesList.push(this.engine.createKeyPackage());
     }
 
     // Sha256 over concatenated KP bytes — must match the server-side digest
@@ -607,9 +729,9 @@ export class MlsClient {
       concat.set(kp, off);
       off += kp.length;
     }
-    const digest = await sha256(concat);
+    const digest = await this.crypto.digestSha256(concat);
     const canonical = canonicalPublishProofBytes(this.deviceId, digest);
-    const sig = ChatCrypto.signDetached(canonical, this.identitySeed);
+    const sig = this.crypto.signEd25519Detached(canonical, this.identitySeed);
 
     const out = await this.rpc.keysPublish({
       deviceId: this.deviceId,

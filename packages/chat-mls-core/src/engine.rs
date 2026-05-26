@@ -216,6 +216,46 @@ impl MlsEngine {
         })
     }
 
+    /// Remove members by accountId. Resolves each accountId to a
+    /// LeafNodeIndex by matching BasicCredential identity bytes, then emits
+    /// a single Commit. Remove is unidirectional in MLS (no Welcome). Caller
+    /// fans the Commit to remaining members via the existing publish path.
+    ///
+    /// Errors if any requested accountId is not currently a member.
+    pub fn remove_members_by_accounts(
+        &self,
+        group_id: Vec<u8>,
+        account_ids: Vec<String>,
+    ) -> Result<Vec<u8>, ChatMlsError> {
+        self.with_group_mut(&group_id, |group, this| {
+            let mut requested: std::collections::HashSet<String> =
+                account_ids.into_iter().collect();
+            let mut indices: Vec<LeafNodeIndex> = Vec::with_capacity(requested.len());
+            for member in group.members() {
+                if let Ok(account) = std::str::from_utf8(member.credential.serialized_content()) {
+                    if requested.remove(account) {
+                        indices.push(member.index);
+                    }
+                }
+            }
+            if !requested.is_empty() {
+                return Err(ChatMlsError::Internal(format!(
+                    "remove_members: account(s) not found in group: {requested:?}"
+                )));
+            }
+
+            let (commit_msg, _welcome, _gi) = group
+                .remove_members(&this.provider, &this.signer, &indices)
+                .map_err(|e| ChatMlsError::ctx("remove_members", e))?;
+            group
+                .merge_pending_commit(&this.provider)
+                .map_err(|e| ChatMlsError::ctx("merge_pending_commit", e))?;
+            commit_msg
+                .tls_serialize_detached()
+                .map_err(|e| ChatMlsError::ctx("commit tls_serialize", e))
+        })
+    }
+
     pub fn join_from_welcome(&self, welcome_bytes: Vec<u8>) -> Result<Vec<u8>, ChatMlsError> {
         let msg_in = MlsMessageIn::tls_deserialize_exact(&welcome_bytes)
             .map_err(|e| ChatMlsError::ctx("welcome msg deserialize", e))?;
@@ -608,6 +648,67 @@ mod tests {
         assert_eq!(bob.current_epoch(gid.clone()).unwrap(), 2);
         assert_eq!(carol.current_epoch(gid.clone()).unwrap(), 2);
         assert_eq!(alice.member_count(gid).unwrap(), 3);
+    }
+
+    #[test]
+    fn remove_member_mid_conversation_advances_epoch() {
+        let alice = engine("alice@sessions", 0xA0);
+        let bob = engine("bob@sessions", 0xB0);
+        let carol = engine("carol@sessions", 0xC0);
+        let gid = group_id("g-shrink");
+
+        alice.create_group(gid.clone()).unwrap();
+        let kps = vec![
+            bob.create_key_package().unwrap(),
+            carol.create_key_package().unwrap(),
+        ];
+        let added = alice.add_members(gid.clone(), kps).unwrap();
+        bob.join_from_welcome(added.welcome.clone()).unwrap();
+        carol.join_from_welcome(added.welcome).unwrap();
+        assert_eq!(alice.member_count(gid.clone()).unwrap(), 3);
+
+        let commit = alice
+            .remove_members_by_accounts(gid.clone(), vec!["carol@sessions".into()])
+            .unwrap();
+
+        // Remaining member bob applies the commit and advances epoch.
+        match bob.process_message(gid.clone(), commit).unwrap() {
+            ProcessedKind::CommitApplied => (),
+            other => panic!("expected CommitApplied, got {other:?}"),
+        }
+
+        assert_eq!(alice.current_epoch(gid.clone()).unwrap(), 2);
+        assert_eq!(bob.current_epoch(gid.clone()).unwrap(), 2);
+        assert_eq!(alice.member_count(gid.clone()).unwrap(), 2);
+        assert_eq!(bob.member_count(gid.clone()).unwrap(), 2);
+
+        // Post-remove send only reaches bob; carol's epoch is frozen at the
+        // pre-remove state so the new ciphertext won't decrypt for her.
+        let cipher = alice.encrypt_app(gid.clone(), b"private now".to_vec()).unwrap();
+        match bob.process_message(gid.clone(), cipher.clone()).unwrap() {
+            ProcessedKind::Application { plaintext } => assert_eq!(plaintext, b"private now"),
+            other => panic!("expected Application, got {other:?}"),
+        }
+        assert!(carol.process_message(gid, cipher).is_err());
+    }
+
+    #[test]
+    fn remove_nonmember_errors() {
+        let alice = engine("alice@sessions", 0xA0);
+        let bob = engine("bob@sessions", 0xB0);
+        let gid = group_id("g-rm-err");
+
+        alice.create_group(gid.clone()).unwrap();
+        let bob_kp = bob.create_key_package().unwrap();
+        let added = alice.add_members(gid.clone(), vec![bob_kp]).unwrap();
+        bob.join_from_welcome(added.welcome).unwrap();
+
+        let err = alice
+            .remove_members_by_accounts(gid, vec!["ghost@sessions".into()])
+            .unwrap_err();
+        match err {
+            ChatMlsError::Internal(msg) => assert!(msg.contains("not found")),
+        }
     }
 
     /// Chunk 2.5 acceptance — engine state survives drop + recreate when the

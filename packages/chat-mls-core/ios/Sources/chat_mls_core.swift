@@ -547,6 +547,16 @@ public protocol MlsEngineProtocol: AnyObject, Sendable {
     
     func processMessage(groupId: Data, msgBytes: Data) throws  -> ProcessedKind
     
+    /**
+     * Remove members by accountId. Resolves each accountId to a
+     * LeafNodeIndex by matching BasicCredential identity bytes, then emits
+     * a single Commit. Remove is unidirectional in MLS (no Welcome). Caller
+     * fans the Commit to remaining members via the existing publish path.
+     *
+     * Errors if any requested accountId is not currently a member.
+     */
+    func removeMembersByAccounts(groupId: Data, accountIds: [String]) throws  -> Data
+    
 }
 open class MlsEngine: MlsEngineProtocol, @unchecked Sendable {
     fileprivate let handle: UInt64
@@ -729,6 +739,24 @@ open func processMessage(groupId: Data, msgBytes: Data)throws  -> ProcessedKind 
             self.uniffiCloneHandle(),
         FfiConverterData.lower(groupId),
         FfiConverterData.lower(msgBytes),$0
+    )
+})
+}
+    
+    /**
+     * Remove members by accountId. Resolves each accountId to a
+     * LeafNodeIndex by matching BasicCredential identity bytes, then emits
+     * a single Commit. Remove is unidirectional in MLS (no Welcome). Caller
+     * fans the Commit to remaining members via the existing publish path.
+     *
+     * Errors if any requested accountId is not currently a member.
+     */
+open func removeMembersByAccounts(groupId: Data, accountIds: [String])throws  -> Data  {
+    return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeChatMlsError_lift) {
+    uniffi_chat_mls_core_fn_method_mlsengine_remove_members_by_accounts(
+            self.uniffiCloneHandle(),
+        FfiConverterData.lower(groupId),
+        FfiConverterSequenceString.lower(accountIds),$0
     )
 })
 }
@@ -995,6 +1023,31 @@ public func FfiConverterTypeProcessedKind_lower(_ value: ProcessedKind) -> RustB
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
+    typealias SwiftType = [String]
+
+    public static func write(_ value: [String], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterString.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [String] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [String]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterString.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceData: FfiConverterRustBuffer {
     typealias SwiftType = [Data]
 
@@ -1072,6 +1125,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_chat_mls_core_checksum_method_mlsengine_process_message() != 44101) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_chat_mls_core_checksum_method_mlsengine_remove_members_by_accounts() != 56537) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_chat_mls_core_checksum_constructor_mlsengine_new() != 5760) {

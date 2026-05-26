@@ -302,6 +302,46 @@ function MlsLifecyclePanel({
     [chatId, peerInput, run],
   );
 
+  const onDrainKPs = useCallback(
+    () =>
+      run("drainKPs", async () => {
+        const client = getMlsClient()!;
+        const out = await client.drainServerKeyPackages();
+        return `wiped ${out.deleted} KP(s) — pool empty, auto-publish will refill on next tick (≤30s)`;
+      }),
+    [run],
+  );
+
+  const onRemovePeer = useCallback(
+    () =>
+      run("removeMembers", async () => {
+        const client = getMlsClient()!;
+        const dbHandle = await getChatDb();
+        const peer = peerInput.trim();
+        if (!peer) throw new Error("peer accountId empty");
+        const result = await dbHandle.db.execute(
+          "SELECT mls_group_id FROM chats WHERE id = ?",
+          [chatId],
+        );
+        const row = (result.rows?.[0] ?? null) as {
+          mls_group_id: unknown;
+        } | null;
+        if (!row?.mls_group_id) {
+          throw new Error("chat has no mls_group_id — run Create group first");
+        }
+        const groupId =
+          row.mls_group_id instanceof Uint8Array
+            ? row.mls_group_id
+            : new Uint8Array(row.mls_group_id as ArrayBuffer);
+        const out = await client.removeMembersByAccounts({
+          groupId,
+          accountIds: [peer],
+        });
+        return `epoch=${out.epoch}`;
+      }),
+    [chatId, peerInput, run],
+  );
+
   const onForceWelcomes = useCallback(
     () =>
       run("pollWelcomes", async () => {
@@ -383,6 +423,9 @@ function MlsLifecyclePanel({
         <Button size="$2" onPress={() => void onAddPeer()} disabled={busy}>
           Add peer
         </Button>
+        <Button size="$2" onPress={() => void onRemovePeer()} disabled={busy}>
+          Remove peer
+        </Button>
         <Button
           size="$2"
           onPress={() => void onForceWelcomes()}
@@ -392,6 +435,9 @@ function MlsLifecyclePanel({
         </Button>
         <Button size="$2" onPress={() => void onForceCommits()} disabled={busy}>
           Force commits
+        </Button>
+        <Button size="$2" onPress={() => void onDrainKPs()} disabled={busy}>
+          Drain KPs
         </Button>
         <Button size="$2" onPress={() => void onReset()} disabled={busy}>
           Reset engine

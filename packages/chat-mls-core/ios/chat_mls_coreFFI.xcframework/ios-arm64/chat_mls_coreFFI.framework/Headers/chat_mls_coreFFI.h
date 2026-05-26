@@ -313,6 +313,11 @@ uint32_t uniffi_chat_mls_core_fn_method_mlsengine_member_count(uint64_t ptr, Rus
 RustBuffer uniffi_chat_mls_core_fn_method_mlsengine_process_message(uint64_t ptr, RustBuffer group_id, RustBuffer msg_bytes, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_MLS_CORE_FN_METHOD_MLSENGINE_REMOVE_MEMBERS_BY_ACCOUNTS
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_MLS_CORE_FN_METHOD_MLSENGINE_REMOVE_MEMBERS_BY_ACCOUNTS
+RustBuffer uniffi_chat_mls_core_fn_method_mlsengine_remove_members_by_accounts(uint64_t ptr, RustBuffer group_id, RustBuffer account_ids, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_MLS_CORE_FN_FUNC_PING
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_MLS_CORE_FN_FUNC_PING
 RustBuffer uniffi_chat_mls_core_fn_func_ping(RustCallStatus *_Nonnull out_status
@@ -648,6 +653,12 @@ uint16_t uniffi_chat_mls_core_checksum_method_mlsengine_member_count(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_MLS_CORE_CHECKSUM_METHOD_MLSENGINE_PROCESS_MESSAGE
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_MLS_CORE_CHECKSUM_METHOD_MLSENGINE_PROCESS_MESSAGE
 uint16_t uniffi_chat_mls_core_checksum_method_mlsengine_process_message(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_MLS_CORE_CHECKSUM_METHOD_MLSENGINE_REMOVE_MEMBERS_BY_ACCOUNTS
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_MLS_CORE_CHECKSUM_METHOD_MLSENGINE_REMOVE_MEMBERS_BY_ACCOUNTS
+uint16_t uniffi_chat_mls_core_checksum_method_mlsengine_remove_members_by_accounts(void
     
 );
 #endif
