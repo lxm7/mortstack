@@ -1,4 +1,4 @@
-import { chatWsHmacSecret } from "./chat-secrets";
+import { chatWsHmacSecret, chatWsInternalUrl } from "./chat-secrets";
 import { databaseUrl, secrets } from "./secrets";
 import { mediaBucket, nftMetadataBucket } from "./storage";
 
@@ -41,7 +41,13 @@ export const apiFunction = new sst.aws.Function("Api", {
   architecture: "arm64",
   memory: "512 MB",
   timeout: "30 seconds",
-  link: [...secrets, chatWsHmacSecret, mediaBucket, nftMetadataBucket],
+  link: [
+    ...secrets,
+    chatWsHmacSecret,
+    chatWsInternalUrl,
+    mediaBucket,
+    nftMetadataBucket,
+  ],
   environment: {
     NODE_ENV: $app.stage === "production" ? "production" : "development",
     // SST `link` exposes secrets via Resource.X.value but does not inject

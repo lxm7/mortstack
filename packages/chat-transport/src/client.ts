@@ -13,6 +13,7 @@ export type ConnectionState =
 
 export type IncomingMessage = Extract<ServerToClient, { t: "msg" }>;
 export type IncomingError = Extract<ServerToClient, { t: "err" }>;
+export type IncomingMlsWelcome = Extract<ServerToClient, { t: "mls-welcome" }>;
 
 export interface ChatTransportOptions {
   // Cloudflare Worker URL. Use ws:// for local wrangler, wss:// in prod.
@@ -51,6 +52,7 @@ export interface ChatTransport {
   onMessage(handler: (msg: IncomingMessage) => void): () => void;
   onState(handler: (state: ConnectionState) => void): () => void;
   onError(handler: (err: IncomingError) => void): () => void;
+  onMlsWelcome(handler: (m: IncomingMlsWelcome) => void): () => void;
 }
 
 interface PendingSend {
@@ -85,6 +87,7 @@ export function createChatTransport(opts: ChatTransportOptions): ChatTransport {
   const messageHandlers = new Set<(m: IncomingMessage) => void>();
   const stateHandlers = new Set<(s: ConnectionState) => void>();
   const errorHandlers = new Set<(e: IncomingError) => void>();
+  const mlsWelcomeHandlers = new Set<(m: IncomingMlsWelcome) => void>();
 
   function setState(next: ConnectionState) {
     if (state === next) return;
@@ -156,6 +159,9 @@ export function createChatTransport(opts: ChatTransportOptions): ChatTransport {
       }
       case "msg":
         for (const h of messageHandlers) h(env);
+        return;
+      case "mls-welcome":
+        for (const h of mlsWelcomeHandlers) h(env);
         return;
       case "err":
         for (const h of errorHandlers) h(env);
@@ -279,6 +285,11 @@ export function createChatTransport(opts: ChatTransportOptions): ChatTransport {
     return () => errorHandlers.delete(handler);
   }
 
+  function onMlsWelcome(handler: (m: IncomingMlsWelcome) => void) {
+    mlsWelcomeHandlers.add(handler);
+    return () => mlsWelcomeHandlers.delete(handler);
+  }
+
   return {
     get state() {
       return state;
@@ -290,6 +301,7 @@ export function createChatTransport(opts: ChatTransportOptions): ChatTransport {
     onMessage,
     onState,
     onError,
+    onMlsWelcome,
   };
 }
 

@@ -11,6 +11,7 @@ import {
   FETCH_PENDING_WELCOMES_PAGE_MAX,
 } from "@repo/chat-mls-core/wire";
 import { router, protectedProcedure } from "../../trpc";
+import { notifyMlsWelcome } from "../../lib/chat-ws-push";
 
 // ── mls.groups.* ─────────────────────────────────────────────────────────────
 // Delivery Service for MLS — commit log + welcome routing per ADR-015 §6/§7.
@@ -132,6 +133,17 @@ export const groupsRouter = router({
       }));
 
       const result = await ctx.prisma.groupWelcome.createMany({ data });
+
+      // Best-effort wake-up so peers consume the Welcome instantly instead
+      // of waiting for the 30s background poll. Failure is silently swallowed
+      // — the poll path is the correctness guarantee. Resolves accountIds →
+      // authUserIds (UserInbox DOs key on authUserId).
+      const recipientAccounts = await ctx.prisma.account.findMany({
+        where: { id: { in: recipientIds } },
+        select: { authUserId: true },
+      });
+      void notifyMlsWelcome(recipientAccounts.map((a) => a.authUserId));
+
       return { delivered: result.count };
     }),
 

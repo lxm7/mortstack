@@ -83,8 +83,8 @@ export const chatWsWorker = new sst.cloudflare.Worker("ChatWs", {
       // existing Durable Objects"). On error 10079 ("got tag X expected Y"),
       // align oldTag with the current deployed tag and bump newTag.
       args.migrations = {
-        oldTag: "v5",
-        newTag: "v6",
+        oldTag: "v6",
+        newTag: "v7",
         newSqliteClasses: [],
         renamedClasses: [],
         deletedClasses: [],

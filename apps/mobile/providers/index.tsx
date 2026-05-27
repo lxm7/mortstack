@@ -6,6 +6,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import config from "@/tamagui.config";
 import { queryClient } from "@/lib/query/client";
 import { ChatTransportProvider } from "@/lib/chat/transport";
+import { MobileChatStoreProvider } from "@/lib/chat/store-provider";
 
 export function Providers({ children }: { children: ReactNode }) {
   const colorScheme = useColorScheme();
@@ -17,7 +18,9 @@ export function Providers({ children }: { children: ReactNode }) {
         defaultTheme={colorScheme === "dark" ? "dark" : "light"}
       >
         <QueryClientProvider client={queryClient}>
-          <ChatTransportProvider>{children}</ChatTransportProvider>
+          <ChatTransportProvider>
+            <MobileChatStoreProvider>{children}</MobileChatStoreProvider>
+          </ChatTransportProvider>
         </QueryClientProvider>
       </TamaguiProvider>
     </GestureHandlerRootView>

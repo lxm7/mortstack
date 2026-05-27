@@ -53,6 +53,10 @@ export interface EncryptedChatTransport {
   onMessage(handler: (msg: EncryptedIncomingMessage) => void): () => void;
   onState(handler: (state: ConnectionState) => void): () => void;
   onError(handler: (err: IncomingError) => void): () => void;
+  /** Server-pushed MLS Welcome wake-up. Caller should call
+   *  MlsClient.pollPendingWelcomes() immediately. Best-effort: the 30s
+   *  background poll remains the correctness fallback. */
+  onMlsWelcome(handler: (ts: number) => void): () => void;
 }
 
 export interface EncryptedChatTransportOptions {
@@ -268,5 +272,7 @@ export function createEncryptedTransport(
     onMessage,
     onState: (handler) => underlying.onState(handler),
     onError: (handler) => underlying.onError(handler),
+    onMlsWelcome: (handler) =>
+      underlying.onMlsWelcome((env) => handler(env.ts)),
   };
 }

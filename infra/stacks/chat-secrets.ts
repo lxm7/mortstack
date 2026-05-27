@@ -8,3 +8,15 @@
 // pnpm sst secret set ChatWsHmacSecret "$(openssl rand -hex 32)"
 
 export const chatWsHmacSecret = new sst.Secret("ChatWsHmacSecret");
+
+// chat-ws Worker URL — value comes from the deploy. Defined here (not in
+// chat-ws.ts) so api.ts can `link` it without inducing the api → chat-ws →
+// api cycle (chat-ws.ts already imports apiFunction.url from api.ts).
+//
+// Set after first deploy of chat-ws:
+//   1. Read the Worker URL: `cat .sst/outputs.json | jq -r .chatWs`
+//   2. pnpm sst secret set ChatWsInternalUrl "<that-url>"
+//
+// Workers URLs change on account/zone rebinds but are stable across normal
+// deploys; re-set only when the Worker is re-created.
+export const chatWsInternalUrl = new sst.Secret("ChatWsInternalUrl");
