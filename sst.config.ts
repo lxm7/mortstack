@@ -41,6 +41,9 @@ export default $config({
     // Secrets (Neon, Cloudflare, Better Auth)
     await import("./infra/stacks/secrets");
 
+    // chat push secrets (APNs + FCM credentials for the M6 push fanout Lambda). These
+    await import("./infra/stacks/chat-push-secrets");
+
     // Storage (Cloudflare R2 buckets + CDN)
     const { storage } = await import("./infra/stacks/storage");
 

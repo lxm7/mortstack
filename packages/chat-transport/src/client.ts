@@ -41,6 +41,13 @@ export interface SendInput {
   chatId: string;
   ciphertext: Uint8Array;
   nonce: Uint8Array;
+  // Caller-controlled idempotency key. When supplied, replaces the
+  // internally-generated nanoid so the SAME clientMsgId is used across
+  // retry attempts. The server already dedupes on (chatId, clientMsgId)
+  // (Prisma @@unique), so duplicate dispatches return the original
+  // serverMsgId. Outbox worker passes the outbox row id; ad-hoc callers
+  // (e.g. debug screen) omit it.
+  clientMsgId?: string;
 }
 
 export interface SendResult {
@@ -258,7 +265,27 @@ export function createChatTransport(opts: ChatTransportOptions): ChatTransport {
 
   function send(input: SendInput): Promise<SendResult> {
     return new Promise<SendResult>((resolve, reject) => {
-      const clientMsgId = nanoid(21);
+      const clientMsgId = input.clientMsgId ?? nanoid(21);
+      // Replay-safety: if the same clientMsgId is already in-flight, attach
+      // a second resolver to the same pending entry instead of registering
+      // two — server would ack only the first one. This happens when the
+      // worker dispatches a retry while the prior attempt's promise hasn't
+      // been rejected yet (rare but possible across reconnect storms).
+      const existing = pending.get(clientMsgId);
+      if (existing) {
+        const prevResolve = existing.resolve;
+        const prevReject = existing.reject;
+        existing.resolve = (r) => {
+          prevResolve(r);
+          resolve(r);
+        };
+        existing.reject = (e) => {
+          prevReject(e);
+          reject(e);
+        };
+        sendFrame(existing.payload);
+        return;
+      }
       const payload: ClientToServer & { t: "send" } = {
         t: "send",
         chatId: input.chatId,

@@ -375,44 +375,7 @@ impl MlsEngine {
     /// magic header before touching state — a corrupt or wrong-version blob
     /// is rejected without mutating the engine.
     pub fn load_state(&self, bytes: Vec<u8>) -> Result<(), ChatMlsError> {
-        if bytes.len() < 8 || &bytes[..4] != b"MLS1" {
-            return Err(ChatMlsError::Internal(
-                "load_state: bad magic / version".into(),
-            ));
-        }
-        let count = u32::from_be_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]) as usize;
-        let mut new_map: HashMap<Vec<u8>, Vec<u8>> = HashMap::with_capacity(count);
-        let mut i = 8;
-        for _ in 0..count {
-            if i + 4 > bytes.len() {
-                return Err(ChatMlsError::Internal("load_state: truncated k_len".into()));
-            }
-            let k_len = u32::from_be_bytes([bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]])
-                as usize;
-            i += 4;
-            if i + k_len > bytes.len() {
-                return Err(ChatMlsError::Internal("load_state: truncated key".into()));
-            }
-            let k = bytes[i..i + k_len].to_vec();
-            i += k_len;
-            if i + 4 > bytes.len() {
-                return Err(ChatMlsError::Internal("load_state: truncated v_len".into()));
-            }
-            let v_len = u32::from_be_bytes([bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]])
-                as usize;
-            i += 4;
-            if i + v_len > bytes.len() {
-                return Err(ChatMlsError::Internal("load_state: truncated value".into()));
-            }
-            let v = bytes[i..i + v_len].to_vec();
-            i += v_len;
-            new_map.insert(k, v);
-        }
-        if i != bytes.len() {
-            return Err(ChatMlsError::Internal(
-                "load_state: trailing bytes after declared count".into(),
-            ));
-        }
+        let new_map = parse_snapshot(&bytes)?;
 
         // Swap the storage HashMap and clear the group cache atomically with
         // respect to other engine calls (Expo serialises Function calls, but
@@ -494,6 +457,176 @@ impl MlsEngine {
         let group = guard.get_mut(group_id).expect("just inserted above");
         f(group, self)
     }
+}
+
+// ── NSE (read-only, ephemeral) engine ────────────────────────────────────────
+//
+// Notification Service Extension entry point (iOS NSE + Android FMS). Lives
+// out-of-process on iOS, in-process on Android, but in both cases on the
+// hot path of a locked-screen push delivery — must be fast, allocation-light,
+// and absolutely incapable of mutating durable state.
+//
+// Why a separate type instead of reusing MlsEngine:
+//   * No signer. The NSE never originates messages, so we don't need the
+//     identity seed and we don't want it sitting in the extension process.
+//     Inbound application messages verify the SENDER's signature using keys
+//     already inside the loaded snapshot's storage; the local signer is
+//     irrelevant.
+//   * Hard reject of commits/welcomes/proposals at the type boundary. The
+//     extension must not advance epoch / merge tree changes — those mutations
+//     belong to the main app, which is the single writer for the snapshot
+//     (ADR-015 §M6 read-only-snapshot race). Surfacing a separate type
+//     prevents the extension code from accidentally calling `add_members` /
+//     `merge_staged_commit` on a stale snapshot.
+//   * Drop-and-discard lifecycle. The provider is fresh per call; even if
+//     OpenMLS internally bumps secret-tree generation while decrypting, the
+//     bump dies with the provider — never written back to the sealed
+//     snapshot on disk.
+
+#[derive(uniffi::Object)]
+pub struct NseEngine {
+    provider: OpenMlsRustCrypto,
+}
+
+impl std::fmt::Debug for NseEngine {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("NseEngine")
+    }
+}
+
+/// Constructor + sole UniFFI entry point. The sealed snapshot has already
+/// been unsealed by the caller (Swift / Kotlin libsodium wrapper); we receive
+/// the raw `dump_state` output.
+#[uniffi::export]
+pub fn engine_for_nse(snapshot: Vec<u8>) -> Result<Arc<NseEngine>, ChatMlsError> {
+    let map = parse_snapshot(&snapshot)?;
+    let provider = OpenMlsRustCrypto::default();
+    {
+        let mut values = provider
+            .storage()
+            .values
+            .write()
+            .map_err(|e| ChatMlsError::ctx("nse storage write lock", e))?;
+        *values = map;
+    }
+    Ok(Arc::new(NseEngine { provider }))
+}
+
+#[uniffi::export]
+impl NseEngine {
+    /// Decrypt a single inbound application message and return its plaintext.
+    ///
+    /// `ciphertext` is the wire payload as the chat-transport push envelope
+    /// delivers it: either the bare MLS message bytes, or those bytes with a
+    /// one-byte v=2 frame prefix (0x02). We strip the prefix transparently.
+    ///
+    /// `nonce` is accepted to match the chat-transport v=1 envelope shape
+    /// (the wrapper layer passes both `ciphertextB64` and `nonceB64`). For
+    /// v=2 the nonce is empty and the field is ignored — MLS is its own
+    /// self-describing AEAD frame. We keep the parameter so the Swift /
+    /// Kotlin call sites don't have to branch on version before calling.
+    ///
+    /// REJECTS anything that isn't an application message: KeyPackage,
+    /// Welcome, GroupInfo all fail at `try_into_protocol_message`; Commits
+    /// and Proposals are caught explicitly so the error surface is a clear
+    /// "snapshot stale" signal to the caller rather than a generic
+    /// process_message failure.
+    pub fn process_nse_application(
+        &self,
+        ciphertext: Vec<u8>,
+        _nonce: Vec<u8>,
+    ) -> Result<Vec<u8>, ChatMlsError> {
+        if ciphertext.is_empty() {
+            return Err(ChatMlsError::Internal("nse: empty ciphertext".into()));
+        }
+        // Strip the v=2 frame version byte if the caller forwarded the wire
+        // envelope unchanged. crypto-pipe.ts prepends 0x02 before sending; the
+        // push fan-out re-publishes that same blob, so it arrives here with
+        // the prefix still in place.
+        let mls_bytes: &[u8] = if ciphertext[0] == 0x02 {
+            &ciphertext[1..]
+        } else {
+            &ciphertext
+        };
+
+        let msg_in = MlsMessageIn::tls_deserialize_exact(mls_bytes)
+            .map_err(|e| ChatMlsError::ctx("nse msg_in deserialize", e))?;
+        let protocol_msg: ProtocolMessage = msg_in
+            .try_into_protocol_message()
+            .map_err(|e| ChatMlsError::ctx("nse try_into_protocol_message", e))?;
+
+        // Reject Commit / Proposal before touching storage. ContentType is
+        // visible without state — cheap pre-flight.
+        if !matches!(protocol_msg.content_type(), ContentType::Application) {
+            return Err(ChatMlsError::Internal(
+                "nse: non-application content rejected".into(),
+            ));
+        }
+
+        let group_id = protocol_msg.group_id().clone();
+        let mut group = MlsGroup::load(self.provider.storage(), &group_id)
+            .map_err(|e| ChatMlsError::ctx("nse MlsGroup::load", e))?
+            .ok_or_else(|| ChatMlsError::Internal("nse: group not found in snapshot".into()))?;
+
+        let processed = group
+            .process_message(&self.provider, protocol_msg)
+            .map_err(|e| ChatMlsError::ctx("nse process_message", e))?;
+
+        match processed.into_content() {
+            ProcessedMessageContent::ApplicationMessage(app) => Ok(app.into_bytes()),
+            ProcessedMessageContent::StagedCommitMessage(_)
+            | ProcessedMessageContent::ProposalMessage(_)
+            | ProcessedMessageContent::ExternalJoinProposalMessage(_) => Err(
+                ChatMlsError::Internal("nse: non-application processed content".into()),
+            ),
+        }
+    }
+}
+
+/// Parse a `dump_state` snapshot blob into the raw storage map. Used by both
+/// `MlsEngine::load_state` (in-place swap on a long-lived engine) and
+/// `engine_for_nse` (one-shot fresh provider). Validates the magic header
+/// and length-prefix bounds before allocating the destination map.
+fn parse_snapshot(bytes: &[u8]) -> Result<HashMap<Vec<u8>, Vec<u8>>, ChatMlsError> {
+    if bytes.len() < 8 || &bytes[..4] != b"MLS1" {
+        return Err(ChatMlsError::Internal(
+            "load_state: bad magic / version".into(),
+        ));
+    }
+    let count = u32::from_be_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]) as usize;
+    let mut new_map: HashMap<Vec<u8>, Vec<u8>> = HashMap::with_capacity(count);
+    let mut i = 8;
+    for _ in 0..count {
+        if i + 4 > bytes.len() {
+            return Err(ChatMlsError::Internal("load_state: truncated k_len".into()));
+        }
+        let k_len =
+            u32::from_be_bytes([bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]]) as usize;
+        i += 4;
+        if i + k_len > bytes.len() {
+            return Err(ChatMlsError::Internal("load_state: truncated key".into()));
+        }
+        let k = bytes[i..i + k_len].to_vec();
+        i += k_len;
+        if i + 4 > bytes.len() {
+            return Err(ChatMlsError::Internal("load_state: truncated v_len".into()));
+        }
+        let v_len =
+            u32::from_be_bytes([bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]]) as usize;
+        i += 4;
+        if i + v_len > bytes.len() {
+            return Err(ChatMlsError::Internal("load_state: truncated value".into()));
+        }
+        let v = bytes[i..i + v_len].to_vec();
+        i += v_len;
+        new_map.insert(k, v);
+    }
+    if i != bytes.len() {
+        return Err(ChatMlsError::Internal(
+            "load_state: trailing bytes after declared count".into(),
+        ));
+    }
+    Ok(new_map)
 }
 
 /// Derive the MLS signer's Ed25519 keypair deterministically from the M3
@@ -797,6 +930,177 @@ mod tests {
         let err = e.load_state(bad).unwrap_err();
         match err {
             ChatMlsError::Internal(msg) => assert!(msg.contains("truncated")),
+        }
+    }
+
+    // ── NSE engine ──────────────────────────────────────────────────────────
+    // Round-trips a sender → wire-blob → NSE-snapshot pipeline that mirrors
+    // what the chat-push Lambda + NSE wrapper do on a real device.
+
+    fn v2_wire(cipher: Vec<u8>) -> Vec<u8> {
+        // Mirror crypto-pipe.ts encryptOutboundMls: prepend 0x02 version
+        // byte before the MLS message bytes.
+        let mut out = Vec::with_capacity(cipher.len() + 1);
+        out.push(0x02);
+        out.extend_from_slice(&cipher);
+        out
+    }
+
+    #[test]
+    fn nse_decrypts_application_from_snapshot() {
+        let alice = engine("alice@sessions", 0xA0);
+        let bob = engine("bob@sessions", 0xB0);
+        let gid = group_id("dm-nse");
+
+        alice.create_group(gid.clone()).unwrap();
+        let bob_kp = bob.create_key_package().unwrap();
+        let added = alice.add_members(gid.clone(), vec![bob_kp]).unwrap();
+        bob.join_from_welcome(added.welcome).unwrap();
+
+        // Bob snapshots BEFORE the inbound application arrives — exactly the
+        // ordering the main app guarantees (snapshot is sealed on every
+        // engine mutation, the push race targets the unmerged-commit window).
+        let snapshot = bob.dump_state().unwrap();
+
+        let cipher = alice.encrypt_app(gid.clone(), b"hello from nse".to_vec()).unwrap();
+        let wire = v2_wire(cipher);
+
+        let nse = engine_for_nse(snapshot).unwrap();
+        let pt = nse.process_nse_application(wire, vec![]).unwrap();
+        assert_eq!(pt, b"hello from nse");
+    }
+
+    #[test]
+    fn nse_decrypts_bare_mls_bytes_without_v2_prefix() {
+        // Sanity — if the wire stripper upstream already removes the version
+        // byte, the engine still decrypts. Covers the future case where the
+        // Lambda repackages the payload.
+        let alice = engine("alice@sessions", 0xA0);
+        let bob = engine("bob@sessions", 0xB0);
+        let gid = group_id("dm-nse-bare");
+
+        alice.create_group(gid.clone()).unwrap();
+        let bob_kp = bob.create_key_package().unwrap();
+        let added = alice.add_members(gid.clone(), vec![bob_kp]).unwrap();
+        bob.join_from_welcome(added.welcome).unwrap();
+        let snapshot = bob.dump_state().unwrap();
+
+        let cipher = alice.encrypt_app(gid, b"bare".to_vec()).unwrap();
+        let nse = engine_for_nse(snapshot).unwrap();
+        let pt = nse.process_nse_application(cipher, vec![]).unwrap();
+        assert_eq!(pt, b"bare");
+    }
+
+    #[test]
+    fn nse_rejects_commit() {
+        // Pre-arranged group with three members, then Alice removes Carol.
+        // The Commit she emits is a Commit MlsMessageIn — NOT an application
+        // message — and the NSE engine must surface a clear error instead of
+        // merging the commit into the stale snapshot.
+        let alice = engine("alice@sessions", 0xA0);
+        let bob = engine("bob@sessions", 0xB0);
+        let carol = engine("carol@sessions", 0xC0);
+        let gid = group_id("g-nse-commit");
+
+        alice.create_group(gid.clone()).unwrap();
+        let kps = vec![
+            bob.create_key_package().unwrap(),
+            carol.create_key_package().unwrap(),
+        ];
+        let added = alice.add_members(gid.clone(), kps).unwrap();
+        bob.join_from_welcome(added.welcome.clone()).unwrap();
+        carol.join_from_welcome(added.welcome).unwrap();
+
+        // Bob snapshots while still at the 3-member epoch.
+        let snapshot = bob.dump_state().unwrap();
+
+        let commit = alice
+            .remove_members_by_accounts(gid, vec!["carol@sessions".into()])
+            .unwrap();
+        let wire = v2_wire(commit);
+
+        let nse = engine_for_nse(snapshot).unwrap();
+        let err = nse.process_nse_application(wire, vec![]).unwrap_err();
+        match err {
+            ChatMlsError::Internal(msg) => assert!(
+                msg.contains("non-application"),
+                "expected non-application rejection, got: {msg}"
+            ),
+        }
+    }
+
+    #[test]
+    fn nse_rejects_welcome_bytes() {
+        // Welcome is an MlsMessageIn variant that try_into_protocol_message
+        // refuses — the NSE surface should error cleanly without panic.
+        let alice = engine("alice@sessions", 0xA0);
+        let bob = engine("bob@sessions", 0xB0);
+        let gid = group_id("g-nse-welcome");
+
+        alice.create_group(gid.clone()).unwrap();
+        let bob_kp = bob.create_key_package().unwrap();
+        let added = alice.add_members(gid.clone(), vec![bob_kp]).unwrap();
+        bob.join_from_welcome(added.welcome.clone()).unwrap();
+        let snapshot = bob.dump_state().unwrap();
+
+        let wire = v2_wire(added.welcome);
+        let nse = engine_for_nse(snapshot).unwrap();
+        let err = nse.process_nse_application(wire, vec![]).unwrap_err();
+        match err {
+            ChatMlsError::Internal(msg) => assert!(
+                msg.contains("try_into_protocol_message")
+                    || msg.contains("non-application"),
+                "unexpected error: {msg}"
+            ),
+        }
+    }
+
+    #[test]
+    fn nse_rejects_unknown_group() {
+        // Snapshot is from a fresh engine that's never joined any group —
+        // MlsGroup::load returns None and we surface "group not found".
+        let alice = engine("alice@sessions", 0xA0);
+        let bob = engine("bob@sessions", 0xB0);
+        let gid = group_id("g-nse-orphan");
+
+        alice.create_group(gid.clone()).unwrap();
+        let bob_kp = bob.create_key_package().unwrap();
+        let added = alice.add_members(gid.clone(), vec![bob_kp]).unwrap();
+        bob.join_from_welcome(added.welcome).unwrap();
+        let cipher = alice.encrypt_app(gid, b"orphan".to_vec()).unwrap();
+
+        // Snapshot belongs to a *different* engine that never joined the group.
+        let other = engine("other@sessions", 0xD0);
+        let snapshot = other.dump_state().unwrap();
+
+        let nse = engine_for_nse(snapshot).unwrap();
+        let err = nse
+            .process_nse_application(v2_wire(cipher), vec![])
+            .unwrap_err();
+        match err {
+            ChatMlsError::Internal(msg) => assert!(
+                msg.contains("group not found"),
+                "expected group-not-found, got: {msg}"
+            ),
+        }
+    }
+
+    #[test]
+    fn nse_rejects_empty_ciphertext() {
+        let alice = engine("alice@sessions", 0xA0);
+        let snapshot = alice.dump_state().unwrap();
+        let nse = engine_for_nse(snapshot).unwrap();
+        let err = nse.process_nse_application(vec![], vec![]).unwrap_err();
+        match err {
+            ChatMlsError::Internal(msg) => assert!(msg.contains("empty")),
+        }
+    }
+
+    #[test]
+    fn nse_rejects_bad_snapshot() {
+        let err = engine_for_nse(b"NOT_A_SNAPSHOT".to_vec()).unwrap_err();
+        match err {
+            ChatMlsError::Internal(msg) => assert!(msg.contains("bad magic")),
         }
     }
 }

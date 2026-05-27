@@ -35,10 +35,17 @@ export interface MlsApi {
 // version it's emitting. The `ts` is the sender's local epoch-ms — purely
 // informational, never trusted for ordering (server assigns serverMsgId
 // which carries authoritative ts).
+//
+// `sender` is the sender's display-name snapshot at send time. Optional
+// because (a) v=1 doesn't populate it, (b) the user may not have a Profile
+// yet, and (c) the receiver-side NSE/FCM treats absence as "show generic
+// title". Carrying it inside the ciphertext is necessary because the NSE
+// has no network access at notification-decrypt time and can't look it up.
 export interface ChatFrame {
   v: number;
   text: string;
   ts: number;
+  sender?: string;
 }
 
 export interface RecipientDevice {
@@ -131,6 +138,9 @@ export interface EncryptOutboundMlsOpts {
   groupId: Uint8Array;
   mls: MlsApi;
   now?: number;
+  // Sender display name attached to the plaintext frame. Read by the
+  // recipient's NSE/FCM decryptor for the push-notification title.
+  sender?: string;
 }
 
 // v=2 MLS group-native send. One plaintext → one application message →
@@ -147,6 +157,10 @@ export function encryptOutboundMls(
 ): OutboundMlsEnvelope {
   const ts = opts.now ?? Date.now();
   const frame: ChatFrame = { v: FRAME_VERSION_V2, text: opts.text, ts };
+  // Only attach `sender` when provided — keeps the key out of the msgpack map
+  // entirely (vs encoding `null`), so receivers can rely on simple "key
+  // present" semantics and the wire stays minimal.
+  if (opts.sender !== undefined) frame.sender = opts.sender;
   const plaintext = encode(frame);
   const mlsBytes = opts.mls.encryptApp(opts.groupId, plaintext);
   // Prepend version byte so decryptInbound dispatches without needing the
@@ -281,5 +295,11 @@ function parseFrame(plaintext: Uint8Array, expectedV: number): ChatFrame {
   if (typeof f.text !== "string" || typeof f.ts !== "number") {
     throw new DecryptError("frame field types mismatch");
   }
-  return { v: expectedV, text: f.text, ts: f.ts };
+  const senderRaw = "sender" in f ? f.sender : undefined;
+  if (senderRaw !== undefined && typeof senderRaw !== "string") {
+    throw new DecryptError("frame.sender, when present, must be a string");
+  }
+  const out: ChatFrame = { v: expectedV, text: f.text, ts: f.ts };
+  if (senderRaw !== undefined) out.sender = senderRaw;
+  return out;
 }

@@ -1,7 +1,7 @@
 // Thread screen — inverted FlashList of messages, Tamagui composer, Telegram-
 // ish bubbles. Outgoing right (brand), incoming left (surface). Per-bubble
-// timestamp + sender display (groups only). Optimistic send is M4-3's stub;
-// M4-6 plugs in the actual MLS encrypt + transport.send + ACK reconciliation.
+// timestamp + sender display (groups only). Long-press on a failed own
+// bubble opens BubbleActionSheet (retry / delete).
 
 import { useCallback, useMemo, useState } from "react";
 import { KeyboardAvoidingView, Platform, StyleSheet } from "react-native";
@@ -11,27 +11,17 @@ import { Button, Input, Spinner, Text, View, XStack, YStack } from "tamagui";
 
 import {
   useChat,
+  useDeleteMessage,
   useMessages,
+  useRetryMessage,
   useSendMessage,
   type Member,
   type Message,
 } from "@repo/chat";
 
 import { useAuthStore } from "@/store/auth";
-
-function formatTime(ms: number): string {
-  const d = new Date(ms);
-  return `${d.getHours().toString().padStart(2, "0")}:${d
-    .getMinutes()
-    .toString()
-    .padStart(2, "0")}`;
-}
-
-function statusIcon(status: Message["status"]): string {
-  if (status === "sending") return "⌛";
-  if (status === "failed") return "⚠︎";
-  return "✓";
-}
+import { BubbleActionSheet } from "@/lib/chat/components/BubbleActionSheet";
+import { MessageBubble } from "@/lib/chat/components/MessageBubble";
 
 export default function ChatThreadScreen() {
   const router = useRouter();
@@ -40,8 +30,11 @@ export default function ChatThreadScreen() {
   const { chat } = useChat(chatId);
   const { messages } = useMessages(chatId);
   const { send } = useSendMessage();
+  const { retry } = useRetryMessage();
+  const { delete: deleteMessage } = useDeleteMessage();
   const myAuthUserId = useAuthStore((s) => s.session?.user.id ?? null);
   const [text, setText] = useState("");
+  const [sheetTarget, setSheetTarget] = useState<Message | null>(null);
 
   // Members lookup table for sender display in group chats.
   const memberByAuthUserId = useMemo(() => {
@@ -62,6 +55,13 @@ export default function ChatThreadScreen() {
   // oldest-first store array so the first rendered row is the newest.
   const reversed = useMemo(() => [...messages].reverse(), [messages]);
 
+  const handleLongPress = useCallback((m: Message) => {
+    // Only failed bubbles have actionable options right now; the sheet
+    // itself ignores other statuses, but we also gate here to avoid the
+    // brief animation flash for sending/sent rows.
+    if (m.status === "failed") setSheetTarget(m);
+  }, []);
+
   const renderItem = useCallback(
     ({ item }: { item: Message }) => (
       <MessageBubble
@@ -69,9 +69,10 @@ export default function ChatThreadScreen() {
         isMine={item.senderAuthUserId === myAuthUserId}
         isGroup={chat?.kind === "group"}
         sender={memberByAuthUserId.get(item.senderAuthUserId) ?? null}
+        onLongPress={handleLongPress}
       />
     ),
-    [chat?.kind, memberByAuthUserId, myAuthUserId],
+    [chat?.kind, handleLongPress, memberByAuthUserId, myAuthUserId],
   );
 
   const title = useMemo(() => {
@@ -187,61 +188,17 @@ export default function ChatThreadScreen() {
           </Button>
         </XStack>
       </YStack>
+      <BubbleActionSheet
+        message={sheetTarget}
+        onClose={() => setSheetTarget(null)}
+        onRetry={(m) =>
+          void retry({ chatId: m.chatId, clientMsgId: m.clientMsgId })
+        }
+        onDelete={(m) =>
+          void deleteMessage({ chatId: m.chatId, clientMsgId: m.clientMsgId })
+        }
+      />
     </KeyboardAvoidingView>
-  );
-}
-
-function MessageBubble({
-  message,
-  isMine,
-  isGroup,
-  sender,
-}: {
-  message: Message;
-  isMine: boolean;
-  isGroup: boolean;
-  sender: Member | null;
-}) {
-  return (
-    <XStack px="$3" py="$1" justifyContent={isMine ? "flex-end" : "flex-start"}>
-      <YStack
-        maxWidth="80%"
-        backgroundColor={isMine ? "$brand" : "$backgroundHover"}
-        px="$3"
-        py="$2"
-        borderRadius="$4"
-        gap="$1"
-      >
-        {!isMine && isGroup && (
-          <Text fontSize="$1" color="$placeholderColor" fontWeight="600">
-            {sender?.handle ?? sender?.displayName ?? "Unknown"}
-          </Text>
-        )}
-        <Text color={isMine ? "white" : "$color"} fontSize="$4">
-          {message.text}
-        </Text>
-        <XStack justifyContent="flex-end" gap="$1" alignItems="center">
-          <Text
-            fontSize="$1"
-            color={isMine ? "rgba(255,255,255,0.7)" : "$placeholderColor"}
-          >
-            {formatTime(message.createdAt)}
-          </Text>
-          {isMine && (
-            <Text
-              fontSize="$1"
-              color={
-                message.status === "failed"
-                  ? "#ffd1d1"
-                  : "rgba(255,255,255,0.85)"
-              }
-            >
-              {statusIcon(message.status)}
-            </Text>
-          )}
-        </XStack>
-      </YStack>
-    </XStack>
   );
 }
 

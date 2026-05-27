@@ -3,6 +3,10 @@ import { trpc } from "@/lib/trpc/client";
 export interface MyAccount {
   accountId: string;
   identityTier: string;
+  // Primary Profile's display name. Null until the user creates a Profile.
+  // Used by the chat pipe to attach `sender` to outbound v=2 frames so the
+  // recipient's NSE can show "Alice: hi" instead of "New message".
+  displayName: string | null;
 }
 
 // Singleton-cached fetch of the signed-in user's Account. The accountId is

@@ -67,6 +67,18 @@ export interface ChatStoreActions {
    *  rejects or the encrypt step throws. Caller may retry by sending the
    *  same text again — a fresh clientMsgId will be generated. */
   failOptimisticMessage(input: { chatId: string; clientMsgId: string }): void;
+  /** Flip a failed message back to "sending" — used by useRetryMessage so
+   *  the bubble's UI returns to ⌛ the instant the user taps retry, even
+   *  before the worker actually dispatches. No-op if the row isn't in
+   *  status="failed". */
+  retryOptimisticMessage(input: { chatId: string; clientMsgId: string }): void;
+  /** Locally remove a message from the in-memory list. Used by
+   *  useDeleteMessage on failed bubbles. Persistence-layer delete is
+   *  caller's responsibility (chat-db.messages-store.deleteByClientMsgId). */
+  removeMessageByClientMsgId(input: {
+    chatId: string;
+    clientMsgId: string;
+  }): void;
   /** Inject (or clear) the persistence API. Idempotent. */
   setPersistApi(api: MessagePersistApi | null): void;
   /** Merge a batch of persisted messages into the per-chat slice. Used by
@@ -250,8 +262,36 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const existing = list[idx]!;
     if (existing.status === "sent") return; // already confirmed elsewhere
     const next = [...list];
-    next[idx] = { ...existing, status: "failed" };
+    const updated: Message = { ...existing, status: "failed" };
+    next[idx] = updated;
     messages.set(input.chatId, next);
+    set({ messages });
+    firePersist(get().persistApi, updated);
+  },
+
+  retryOptimisticMessage(input) {
+    const messages = new Map(get().messages);
+    const list = messages.get(input.chatId);
+    if (!list) return;
+    const idx = list.findIndex((m) => m.clientMsgId === input.clientMsgId);
+    if (idx < 0) return;
+    const existing = list[idx]!;
+    if (existing.status !== "failed") return;
+    const next = [...list];
+    const updated: Message = { ...existing, status: "sending" };
+    next[idx] = updated;
+    messages.set(input.chatId, next);
+    set({ messages });
+    firePersist(get().persistApi, updated);
+  },
+
+  removeMessageByClientMsgId(input) {
+    const messages = new Map(get().messages);
+    const list = messages.get(input.chatId);
+    if (!list) return;
+    const filtered = list.filter((m) => m.clientMsgId !== input.clientMsgId);
+    if (filtered.length === list.length) return;
+    messages.set(input.chatId, filtered);
     set({ messages });
   },
 

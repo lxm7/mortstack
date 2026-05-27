@@ -83,3 +83,4 @@ packages/chat-crypto/ios/SignalFfi.xcframework/
 packages/chat-crypto/ios/SignalFfi.xcframework.sha256
 packages/chat-crypto/android/libs/*.aar
 packages/chat-crypto/android/libs/*.aar.sha256
+packages/chat-mls-core/ios/chat_mls_coreFFI.xcframework/**/chat_mls_coreFFI

@@ -21,6 +21,11 @@ export interface EncryptedSendInput {
   text: string;
   /** Required for v=1 chats; ignored for v=2 (MLS routes by groupId). */
   targets: FanoutTarget[];
+  /** Idempotency key forwarded to the underlying transport. Outbox worker
+   *  supplies the outbox row id so retries reuse the same key and the
+   *  server's (chatId, clientMsgId) unique constraint dedupes. Optional —
+   *  when absent the transport generates a nanoid internally. */
+  clientMsgId?: string;
 }
 
 export interface EncryptedSendResultV1 extends SendResult {
@@ -82,6 +87,13 @@ export interface EncryptedChatTransportOptions {
   // v=2: the MLS engine. Required when resolveChatGroupId can return non-null.
   // Bound to the caller's MlsClient on the mobile side; tests inject a mock.
   mls?: MlsApi;
+
+  // Optional sender display-name supplier for outbound v=2 frames. Resolved
+  // per-send so a profile-name change is reflected on the next message. Null
+  // return = omit the `sender` field from the frame (recipient NSE falls back
+  // to a generic title). v=1 path ignores this — legacy 1:1 chats predate
+  // the field.
+  getMyDisplayName?: () => Promise<string | null>;
 
   // Invoked when a frame can't be decrypted with any candidate key. Useful
   // for telemetry / surfacing "key directory may be stale" to the UI.
@@ -208,15 +220,23 @@ export function createEncryptedTransport(
     if (opts.mls && opts.resolveChatGroupId) {
       const groupId = await opts.resolveChatGroupId(input.chatId);
       if (groupId) {
+        // Resolve display name in parallel with anything else the caller
+        // wants to await — currently nothing, but if a snapshot/ratchet
+        // persist call lands here later it should not block on this read.
+        const sender = opts.getMyDisplayName
+          ? await opts.getMyDisplayName().catch(() => null)
+          : null;
         const env = encryptOutboundMls({
           text: input.text,
           groupId,
           mls: opts.mls,
+          ...(sender ? { sender } : {}),
         });
         const r = await underlying.send({
           chatId: input.chatId,
           ciphertext: env.ciphertext,
           nonce: env.nonce,
+          ...(input.clientMsgId ? { clientMsgId: input.clientMsgId } : {}),
         });
         return [{ ...r, frameVersion: 2 }];
       }
@@ -230,12 +250,21 @@ export function createEncryptedTransport(
     });
     if (envelopes.length === 0) return [];
 
+    // v=1 fan-out sends one envelope per (recipient, device). Each gets its
+    // own clientMsgId so server dedupe stays per-device; if the caller
+    // supplied a base clientMsgId we suffix the device id to keep all v=1
+    // dispatches stable under retry while remaining unique per row.
     const sends = envelopes.map((env) =>
       underlying
         .send({
           chatId: input.chatId,
           ciphertext: env.ciphertext,
           nonce: env.nonce,
+          ...(input.clientMsgId
+            ? {
+                clientMsgId: `${input.clientMsgId}:${env.recipientDeviceId}`,
+              }
+            : {}),
         })
         .then(
           (r): EncryptedSendResultV1 => ({

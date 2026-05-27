@@ -809,6 +809,162 @@ public func FfiConverterTypeMlsEngine_lower(_ value: MlsEngine) -> UInt64 {
 
 
 
+
+
+public protocol NseEngineProtocol: AnyObject, Sendable {
+    
+    /**
+     * Decrypt a single inbound application message and return its plaintext.
+     *
+     * `ciphertext` is the wire payload as the chat-transport push envelope
+     * delivers it: either the bare MLS message bytes, or those bytes with a
+     * one-byte v=2 frame prefix (0x02). We strip the prefix transparently.
+     *
+     * `nonce` is accepted to match the chat-transport v=1 envelope shape
+     * (the wrapper layer passes both `ciphertextB64` and `nonceB64`). For
+     * v=2 the nonce is empty and the field is ignored — MLS is its own
+     * self-describing AEAD frame. We keep the parameter so the Swift /
+     * Kotlin call sites don't have to branch on version before calling.
+     *
+     * REJECTS anything that isn't an application message: KeyPackage,
+     * Welcome, GroupInfo all fail at `try_into_protocol_message`; Commits
+     * and Proposals are caught explicitly so the error surface is a clear
+     * "snapshot stale" signal to the caller rather than a generic
+     * process_message failure.
+     */
+    func processNseApplication(ciphertext: Data, nonce: Data) throws  -> Data
+    
+}
+open class NseEngine: NseEngineProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_chat_mls_core_fn_clone_nseengine(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_chat_mls_core_fn_free_nseengine(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Decrypt a single inbound application message and return its plaintext.
+     *
+     * `ciphertext` is the wire payload as the chat-transport push envelope
+     * delivers it: either the bare MLS message bytes, or those bytes with a
+     * one-byte v=2 frame prefix (0x02). We strip the prefix transparently.
+     *
+     * `nonce` is accepted to match the chat-transport v=1 envelope shape
+     * (the wrapper layer passes both `ciphertextB64` and `nonceB64`). For
+     * v=2 the nonce is empty and the field is ignored — MLS is its own
+     * self-describing AEAD frame. We keep the parameter so the Swift /
+     * Kotlin call sites don't have to branch on version before calling.
+     *
+     * REJECTS anything that isn't an application message: KeyPackage,
+     * Welcome, GroupInfo all fail at `try_into_protocol_message`; Commits
+     * and Proposals are caught explicitly so the error surface is a clear
+     * "snapshot stale" signal to the caller rather than a generic
+     * process_message failure.
+     */
+open func processNseApplication(ciphertext: Data, nonce: Data)throws  -> Data  {
+    return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeChatMlsError_lift) {
+    uniffi_chat_mls_core_fn_method_nseengine_process_nse_application(
+            self.uniffiCloneHandle(),
+        FfiConverterData.lower(ciphertext),
+        FfiConverterData.lower(nonce),$0
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNseEngine: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = NseEngine
+
+    public static func lift(_ handle: UInt64) throws -> NseEngine {
+        return NseEngine(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: NseEngine) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NseEngine {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: NseEngine, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNseEngine_lift(_ handle: UInt64) throws -> NseEngine {
+    return try FfiConverterTypeNseEngine.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNseEngine_lower(_ value: NseEngine) -> UInt64 {
+    return FfiConverterTypeNseEngine.lower(value)
+}
+
+
+
+
 /**
  * Outcome of `MlsEngine::add_members` — a Commit to fan out to existing
  * members + a Welcome to send to each new joiner.
@@ -1075,6 +1231,18 @@ public func ping() -> String  {
     )
 })
 }
+/**
+ * Constructor + sole UniFFI entry point. The sealed snapshot has already
+ * been unsealed by the caller (Swift / Kotlin libsodium wrapper); we receive
+ * the raw `dump_state` output.
+ */
+public func engineForNse(snapshot: Data)throws  -> NseEngine  {
+    return try  FfiConverterTypeNseEngine_lift(try rustCallWithError(FfiConverterTypeChatMlsError_lift) {
+    uniffi_chat_mls_core_fn_func_engine_for_nse(
+        FfiConverterData.lower(snapshot),$0
+    )
+})
+}
 
 private enum InitializationResult {
     case ok
@@ -1092,6 +1260,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.contractVersionMismatch
     }
     if (uniffi_chat_mls_core_checksum_func_ping() != 61247) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_chat_mls_core_checksum_func_engine_for_nse() != 7353) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_chat_mls_core_checksum_method_mlsengine_account_id() != 28029) {
@@ -1128,6 +1299,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_chat_mls_core_checksum_method_mlsengine_remove_members_by_accounts() != 56537) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_chat_mls_core_checksum_method_nseengine_process_nse_application() != 59348) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_chat_mls_core_checksum_constructor_mlsengine_new() != 5760) {
