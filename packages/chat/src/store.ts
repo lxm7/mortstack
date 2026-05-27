@@ -12,7 +12,7 @@
 
 import { create } from "zustand";
 
-import type { ChatApi, ChatRecord, Message } from "./types";
+import type { ChatApi, ChatRecord, Message, MessagePersistApi } from "./types";
 
 export interface ChatStoreState {
   chats: Map<string, ChatRecord>;
@@ -25,6 +25,10 @@ export interface ChatStoreState {
   messages: Map<string, Message[]>;
   bootstrapStatus: "idle" | "loading" | "ready" | "error";
   bootstrapError: string | null;
+  /** Optional local persistence (M4-followup #25). Set by the provider on
+   *  mount; null in environments without a backing store. Mutating
+   *  actions fire-and-forget through this on success. */
+  persistApi: MessagePersistApi | null;
 }
 
 export interface ChatStoreActions {
@@ -63,6 +67,13 @@ export interface ChatStoreActions {
    *  rejects or the encrypt step throws. Caller may retry by sending the
    *  same text again — a fresh clientMsgId will be generated. */
   failOptimisticMessage(input: { chatId: string; clientMsgId: string }): void;
+  /** Inject (or clear) the persistence API. Idempotent. */
+  setPersistApi(api: MessagePersistApi | null): void;
+  /** Merge a batch of persisted messages into the per-chat slice. Used by
+   *  the provider after bootstrap loads chats — calls load() per chatId
+   *  and feeds the result here. Idempotent: skips ids already in the
+   *  in-memory list. */
+  hydrateMessages(chatId: string, persisted: Message[]): void;
   /** Wipe everything. Used on sign-out and from tests. */
   reset(): void;
 }
@@ -75,7 +86,26 @@ const emptyState: ChatStoreState = {
   messages: new Map(),
   bootstrapStatus: "idle",
   bootstrapError: null,
+  persistApi: null,
 };
+
+function firePersist(api: MessagePersistApi | null, msg: Message): void {
+  if (!api) return;
+  void api
+    .persist({
+      id: msg.id,
+      chatId: msg.chatId,
+      senderAuthUserId: msg.senderAuthUserId,
+      text: msg.text,
+      status: msg.status,
+      clientMsgId: msg.clientMsgId,
+      serverSerial: msg.serverSerial ?? null,
+      createdAt: msg.createdAt,
+    })
+    .catch((err) => {
+      console.warn("[chat-store] persist failed", err);
+    });
+}
 
 export const useChatStore = create<ChatStore>((set, get) => ({
   ...emptyState,
@@ -166,6 +196,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       ? [input.chatId, ...order.filter((id) => id !== input.chatId)]
       : order;
     set({ messages, chatOrder: next });
+    firePersist(get().persistApi, msg);
   },
 
   addOptimisticMessage(input) {
@@ -207,6 +238,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     next[idx] = updated;
     messages.set(input.chatId, next);
     set({ messages });
+    firePersist(get().persistApi, updated);
   },
 
   failOptimisticMessage(input) {
@@ -223,12 +255,35 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set({ messages });
   },
 
+  setPersistApi(api) {
+    set({ persistApi: api });
+  },
+
+  hydrateMessages(chatId, persisted) {
+    if (persisted.length === 0) return;
+    const messages = new Map(get().messages);
+    const existing = messages.get(chatId) ?? [];
+    const seenIds = new Set(existing.map((m) => m.id));
+    const additions = persisted.filter((m) => !seenIds.has(m.id));
+    if (additions.length === 0) return;
+    // Sort merged list by createdAt ascending so the inverted FlashList
+    // still renders newest at the visual bottom.
+    const merged = [...existing, ...additions].sort(
+      (a, b) => a.createdAt - b.createdAt,
+    );
+    messages.set(chatId, merged);
+    set({ messages });
+  },
+
   reset() {
     set({
       ...emptyState,
       chats: new Map(),
       chatOrder: [],
       messages: new Map(),
+      // Preserve persistApi across resets — caller (provider) controls its
+      // lifetime independently from auth state.
+      persistApi: get().persistApi,
     });
   },
 }));

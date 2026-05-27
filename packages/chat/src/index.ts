@@ -55,4 +55,6 @@ export type {
   ChatCreateOutput,
   UserSearchInput,
   UserSearchOutput,
+  MessagePersistApi,
+  PersistMessageInput,
 } from "./types";

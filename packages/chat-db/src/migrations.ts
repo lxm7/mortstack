@@ -121,6 +121,22 @@ const MIGRATIONS: Migration[] = [
       `ALTER TABLE chats ADD COLUMN mls_group_id BLOB`,
     ],
   },
+  {
+    version: 4,
+    up: [
+      // M4-followup #25: persistent plaintext for cold-start rehydration.
+      // MLS forward secrecy advances the ratchet on first decrypt — without
+      // a cached plaintext, opening the app cold loses every prior message.
+      // Column is nullable; existing rows stay null until they're re-sent
+      // or migrated, but Phase 1 has no live v=2 messages pre-M4 anyway.
+      //
+      // client_msg_id mirrors the sender's local id so we can match an
+      // optimistic-send entry to its server-assigned row on confirm.
+      `ALTER TABLE messages ADD COLUMN plaintext TEXT`,
+      `ALTER TABLE messages ADD COLUMN client_msg_id TEXT`,
+      `CREATE INDEX idx_messages_client_msg_id ON messages (client_msg_id)`,
+    ],
+  },
 ];
 
 const LAST = MIGRATIONS[MIGRATIONS.length - 1];
