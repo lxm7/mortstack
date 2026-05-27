@@ -20,10 +20,9 @@ declare global {
     // the chat-delivered topic; the chat-push Lambda (M6) dispatches APNs/FCM.
     CHAT_DELIVERED_TOPIC_ARN: string;
     AWS_REGION: string;
-    // SST-linked secrets surface as SCREAMING_SNAKE_CASE env vars on the
-    // Worker binding (same pattern as CHAT_WS_HMAC_SECRET above).
-    CHAT_WS_AWS_ACCESS_KEY_ID: string;
-    CHAT_WS_AWS_SECRET_ACCESS_KEY: string;
+    // Note: AWS creds for SigV4 publish come via `Resource.X.value` from
+    // the SST `sst` import (linked CF Worker secrets pattern). They are NOT
+    // exposed as env bindings; do not add them here.
   }
 }
 

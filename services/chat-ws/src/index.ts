@@ -40,6 +40,12 @@ export default {
     const session = await verifySession(env, token);
     if (!session) return new Response("unauthorized", { status: 401 });
 
+    // M6: deviceId is optional. UserInbox stores it on the WS attachment so
+    // Chat DO can ask "is this recipient device attached?" before publishing
+    // a push event. Unknown / missing deviceId is treated as offline (= a
+    // push will be sent), so this is safe to omit during client rollout.
+    const deviceId = url.searchParams.get("did") ?? "";
+
     // Route to per-user inbox DO. idFromName makes routing deterministic.
     const stub = env.USER_INBOX.get(env.USER_INBOX.idFromName(session.userId));
 
@@ -49,6 +55,7 @@ export default {
       headers: new Headers(request.headers),
     });
     forwarded.headers.set("x-user-id", session.userId);
+    if (deviceId) forwarded.headers.set("x-device-id", deviceId);
 
     return stub.fetch(forwarded);
   },

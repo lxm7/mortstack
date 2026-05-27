@@ -15,7 +15,12 @@
         "keychain-access-groups": [
           "$(AppIdentifierPrefix)io.sessions.app",
           "$(AppIdentifierPrefix)io.sessions.chat"
-        ]
+        ],
+        "aps-environment": "development",
+        "com.apple.security.application-groups": ["group.io.sessions.shared"]
+      },
+      "infoPlist": {
+        "UIBackgroundModes": ["remote-notification"]
       }
     },
     "android": {
@@ -29,6 +34,12 @@
       "expo-router",
       "expo-font",
       "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "mode": "production"
+        }
+      ],
       [
         "expo-build-properties",
         {

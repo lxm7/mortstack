@@ -186,6 +186,12 @@ export interface MlsClientOptions {
   engine: MlsEngineModule;
   crypto: MlsCryptoApi;
   mlsStore: MlsStoreApi;
+  /** M6 (ADR-013): invoked with the raw engine snapshot after every
+   *  successful persistSnapshot(). Mobile wires this to write a sealed copy
+   *  to the iOS NSE / Android FMS shared container so the extension can
+   *  decrypt incoming push payloads. Errors here MUST NOT throw — push is
+   *  best-effort and a write failure should not break the in-app send path. */
+  onAfterPersistSnapshot?: (snapshot: Uint8Array) => Promise<void> | void;
 }
 
 export class MlsClient {
@@ -196,6 +202,9 @@ export class MlsClient {
   private readonly engine: MlsEngineModule;
   private readonly crypto: MlsCryptoApi;
   private readonly mlsStore: MlsStoreApi;
+  private readonly onAfterPersistSnapshot?: (
+    snapshot: Uint8Array,
+  ) => Promise<void> | void;
   /** Last server-reported pool size for this device. Set by topUp; consulted
    *  by maybeTopUp before issuing a publish. Sticky across MlsClient
    *  instances within a process — fresh boots refetch via a single
@@ -210,6 +219,7 @@ export class MlsClient {
     this.engine = opts.engine;
     this.crypto = opts.crypto;
     this.mlsStore = opts.mlsStore;
+    this.onAfterPersistSnapshot = opts.onAfterPersistSnapshot;
   }
 
   // Construct the native engine + restore the previous snapshot if one
@@ -671,6 +681,17 @@ export class MlsClient {
   async persistSnapshot(): Promise<void> {
     const snapshot = this.engine.dumpState();
     await this.mlsStore.saveEngineSnapshot(this.accountId, snapshot);
+    if (this.onAfterPersistSnapshot) {
+      try {
+        await this.onAfterPersistSnapshot(snapshot);
+      } catch (err) {
+        // Best-effort. Push notification decrypt is allowed to degrade to
+        // a generic "New message" fallback in the NSE/FMS if the snapshot
+        // is stale or missing — surfacing this error would break the send
+        // path, which is unrelated. Log + continue.
+        console.error("[mls/persistSnapshot] onAfter callback failed", err);
+      }
+    }
   }
 
   // Local view of the KeyPackage pool — the value the server returned on

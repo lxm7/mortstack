@@ -157,6 +157,91 @@ const keysRouter = router({
     }),
 });
 
+// ── user.push.* ─────────────────────────────────────────────────────────────
+// APNs / FCM token registration for M6 push fanout. Tokens live one-per-row
+// in PushToken with FK → UserDevice. Idempotent upsert on token UNIQUE so
+// re-registers after app launch don't churn rows.
+//
+// The caller scopes by deviceId (the client-generated UUID already used by
+// keys.publish) — we look up the UserDevice and verify it belongs to the
+// authenticated Account before touching tokens.
+
+const PUSH_TOKEN_MIN = 16;
+const PUSH_TOKEN_MAX = 4096; // FCM tokens can run >1KB; APNs are 64 hex chars.
+
+const PushRegisterInput = z.object({
+  deviceId: z.string().uuid(),
+  platform: z.enum(["APNS", "FCM"]),
+  token: z.string().min(PUSH_TOKEN_MIN).max(PUSH_TOKEN_MAX),
+  appBundleId: z.string().min(1).max(255),
+});
+
+const PushUnregisterInput = z.object({
+  token: z.string().min(PUSH_TOKEN_MIN).max(PUSH_TOKEN_MAX),
+});
+
+const pushRouter = router({
+  register: protectedProcedure
+    .input(PushRegisterInput)
+    .mutation(async ({ input, ctx }) => {
+      const device = await ctx.prisma.userDevice.findUnique({
+        where: {
+          accountId_deviceId: {
+            accountId: ctx.account.id,
+            deviceId: input.deviceId,
+          },
+        },
+        select: { id: true },
+      });
+      if (!device) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message:
+            "userDevice not found — publish keys before registering a push token",
+        });
+      }
+
+      // Upsert on token (UNIQUE). If a token re-appears on a different
+      // device (rare: app re-install reusing the same APNs token), we
+      // rebind it to the caller's device — last writer wins, matching
+      // APNs/FCM single-owner semantics.
+      const row = await ctx.prisma.pushToken.upsert({
+        where: { token: input.token },
+        create: {
+          userDeviceId: device.id,
+          platform: input.platform,
+          token: input.token,
+          appBundleId: input.appBundleId,
+        },
+        update: {
+          userDeviceId: device.id,
+          platform: input.platform,
+          appBundleId: input.appBundleId,
+          lastSeenAt: new Date(),
+          disabledAt: null,
+        },
+        select: { id: true, lastSeenAt: true },
+      });
+      return row;
+    }),
+
+  unregister: protectedProcedure
+    .input(PushUnregisterInput)
+    .mutation(async ({ input, ctx }) => {
+      // Tombstone (set disabledAt) rather than delete — keeps the row for
+      // the dead-token cleanup contract (D7) and prevents racing
+      // re-registrations during sign-out.
+      await ctx.prisma.pushToken.updateMany({
+        where: {
+          token: input.token,
+          device: { accountId: ctx.account.id },
+        },
+        data: { disabledAt: new Date() },
+      });
+      return { ok: true as const };
+    }),
+});
+
 // ── user.search ─────────────────────────────────────────────────────────────
 // Handle-prefix lookup for the M4 "New Chat" picker. Resolves to the
 // Profile's primary OWNER Account so the caller can issue chat.create with
@@ -176,6 +261,7 @@ const SearchInput = z.object({
 
 export const userRouter = router({
   keys: keysRouter,
+  push: pushRouter,
 
   search: protectedProcedure
     .input(SearchInput)

@@ -20,6 +20,11 @@ export interface ChatTransportOptions {
   url: string;
   // Async — bearer token may live in SecureStore. Called on every connect.
   getToken: () => Promise<string | null>;
+  // M6: optional device id appended to the WS URL as `?did=…`. The Worker
+  // forwards it to UserInbox so a per-device presence hint can be attached
+  // to chat.msg.delivered SNS events. If omitted, push fanout treats the
+  // user as offline (= sends a push); only the dedupe efficiency is lost.
+  getDeviceId?: () => Promise<string | null>;
   // Subscriptions are re-applied automatically on reconnect.
   initialSubscriptions?: string[];
   // Defaults below are reasonable; override in tests.
@@ -187,7 +192,11 @@ export function createChatTransport(opts: ChatTransportOptions): ChatTransport {
       // Bearer token rides in Sec-WebSocket-Protocol. RN's WebSocket accepts
       // a string or array as second arg; the server picks `bearer` and uses
       // the rest as the token.
-      ws = new WebSocket(opts.url, ["bearer", token]);
+      const deviceId = opts.getDeviceId ? await opts.getDeviceId() : null;
+      const url = deviceId
+        ? `${opts.url}${opts.url.includes("?") ? "&" : "?"}did=${encodeURIComponent(deviceId)}`
+        : opts.url;
+      ws = new WebSocket(url, ["bearer", token]);
       ws.binaryType = "arraybuffer";
     } catch {
       scheduleReconnect();
