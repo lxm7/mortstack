@@ -57,6 +57,10 @@ let lastAppState: AppStateStatus = AppState.currentState;
 // Singleton MlsClient for the current signed-in account. Re-created when the
 // user changes; null between sign-out and the next sign-in.
 let client: MlsClient | null = null;
+// Subscription on the chat-ws transport's `mls-welcome` wake-up frame.
+// Attached once after bootstrap; detached on sign-out. Wake-ups trigger an
+// immediate tick which polls Welcomes + Commits, skipping the 30s delay.
+let welcomePushUnsub: (() => void) | null = null;
 
 // Wire the injected RPC adapter — pulls each method off the typed tRPC
 // client. Kept inline (not in a separate file) because it's the only
@@ -106,11 +110,40 @@ async function bootstrap(authUserId: string): Promise<MlsClient | null> {
     `[chat-mvp/M3.5] mls engine ready (source=${source}, account=${me.accountId})`,
   );
   bootstrappedForUserId = authUserId;
+
+  // Hook the server-push wake-up to a tick — skips the 30s poll wait when
+  // a peer creates a chat with us or adds us to a group mid-conversation.
+  // The transport may be null at this point (provider mounts after auth);
+  // the next tick re-checks via getCurrentChatTransport.
+  attachWelcomePushHandler();
+
   return c;
+}
+
+function attachWelcomePushHandler(): void {
+  if (welcomePushUnsub) return;
+  const transport = getCurrentChatTransport();
+  if (!transport) return;
+  welcomePushUnsub = transport.onMlsWelcome(() => {
+    void tick("ws-welcome-push");
+  });
+}
+
+function detachWelcomePushHandler(): void {
+  if (!welcomePushUnsub) return;
+  try {
+    welcomePushUnsub();
+  } catch {
+    // ignore
+  }
+  welcomePushUnsub = null;
 }
 
 async function tick(reason: string): Promise<void> {
   if (!client) return;
+  // Lazy-attach the welcome push handler in case the transport wasn't
+  // mounted at bootstrap (provider mounts after auth). Idempotent.
+  attachWelcomePushHandler();
   // Defensive: if the native engine was wiped (Reset button or a process
   // race) the client object still exists but every native call throws
   // "engine not initialised". MlsClient.reset() now re-inits inline, but
@@ -194,6 +227,7 @@ async function onAuthChange(reason: string): Promise<void> {
   if (!session?.user.id) {
     // Signed out — tear the loop down so we don't keep polling.
     stopTimer();
+    detachWelcomePushHandler();
     client = null;
     bootstrappedForUserId = null;
     return;

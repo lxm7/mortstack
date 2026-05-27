@@ -50,6 +50,13 @@ export type ServerToClient =
   // Hello frame — server confirms connection bound to this userId. Sent once
   // immediately after WS upgrade.
   | { t: "hello"; userId: string; ts: number }
+  // Wake-up signal: the API published one or more MLS Welcomes addressed to
+  // this user (new chat created, or this user was added to an existing
+  // group mid-conversation). Receiver should immediately call
+  // mlsClient.pollPendingWelcomes() to consume them — bypasses the 30s
+  // background poll. Best-effort: the 30s poll remains the correctness
+  // guarantee in case the push fails or the client is offline at send time.
+  | { t: "mls-welcome"; ts: number }
   // Soft error — connection stays open. Use error.code for routing.
   | { t: "err"; code: ChatErrorCode; msg?: string }
   | { t: "pong" };

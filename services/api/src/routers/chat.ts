@@ -28,6 +28,10 @@ const ChatPreview = z.object({
   members: z.array(
     z.object({
       accountId: z.string(),
+      // Better Auth user id — needed client-side to resolve
+      // ChatMessage.senderId (which is the authUserId) back to a member's
+      // accountId + handle for display.
+      authUserId: z.string(),
       handle: z.string().nullable(),
       displayName: z.string().nullable(),
     }),
@@ -246,6 +250,7 @@ export const chatRouter = router({
             const d = display.get(m.userId);
             return {
               accountId: d?.accountId ?? "",
+              authUserId: m.userId,
               handle: d?.handle ?? null,
               displayName: d?.displayName ?? null,
             };
@@ -291,6 +296,7 @@ export const chatRouter = router({
           const d = display.get(m.userId);
           return {
             accountId: d?.accountId ?? "",
+            authUserId: m.userId,
             handle: d?.handle ?? null,
             displayName: d?.displayName ?? null,
           };

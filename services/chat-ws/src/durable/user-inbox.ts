@@ -227,6 +227,27 @@ export class UserInbox extends DurableObject<Env> {
     }
   }
 
+  // Fan a single `mls-welcome` wake-up to every socket of this user. Called
+  // by the Worker's /internal/notify endpoint after the API publishes one or
+  // more Welcomes addressed to this user. Lets the client skip the 30s
+  // background poll on new-chat and add-member-mid-conv flows.
+  async notifyMlsWelcome(payload: { ts: number }): Promise<void> {
+    const sockets = this.ctx.getWebSockets();
+    if (sockets.length === 0) return;
+    const frame = encodeFrame({
+      t: "mls-welcome",
+      ts: payload.ts,
+    } satisfies ServerToClient);
+    for (const ws of sockets) {
+      if (ws.readyState !== WebSocket.READY_STATE_OPEN) continue;
+      try {
+        ws.send(frame);
+      } catch {
+        // ignore
+      }
+    }
+  }
+
   // Send a single `err` frame to every socket of this user. Connection stays
   // open — errors are soft and routed by code.
   async error(payload: { code: ChatErrorCode; msg?: string }): Promise<void> {
