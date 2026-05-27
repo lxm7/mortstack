@@ -72,6 +72,7 @@ export function ChatTransportProvider({ children }: { children: ReactNode }) {
       underlying,
       getMySeed: async () => (await getOrCreateChatIdentity()).seed,
       getMyAccountId: async () => (await getMyAccount()).accountId,
+      getMyDisplayName: async () => (await getMyAccount()).displayName,
       resolveSenderX25519Pubs: async (senderId) => {
         const map = await getPeerDevices([senderId]);
         return (map.get(senderId) ?? []).map((d) => d.x25519Pub);

@@ -638,6 +638,8 @@ internal object IntegrityCheckingUniffiLib {
     }
     external fun uniffi_chat_mls_core_checksum_func_ping(
     ): Short
+    external fun uniffi_chat_mls_core_checksum_func_engine_for_nse(
+    ): Short
     external fun uniffi_chat_mls_core_checksum_method_mlsengine_account_id(
     ): Short
     external fun uniffi_chat_mls_core_checksum_method_mlsengine_add_members(
@@ -659,6 +661,10 @@ internal object IntegrityCheckingUniffiLib {
     external fun uniffi_chat_mls_core_checksum_method_mlsengine_member_count(
     ): Short
     external fun uniffi_chat_mls_core_checksum_method_mlsengine_process_message(
+    ): Short
+    external fun uniffi_chat_mls_core_checksum_method_mlsengine_remove_members_by_accounts(
+    ): Short
+    external fun uniffi_chat_mls_core_checksum_method_nseengine_process_nse_application(
     ): Short
     external fun uniffi_chat_mls_core_checksum_constructor_mlsengine_new(
     ): Short
@@ -708,8 +714,18 @@ internal object UniffiLib {
     ): Int
     external fun uniffi_chat_mls_core_fn_method_mlsengine_process_message(`ptr`: Long,`groupId`: RustBuffer.ByValue,`msgBytes`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
+    external fun uniffi_chat_mls_core_fn_method_mlsengine_remove_members_by_accounts(`ptr`: Long,`groupId`: RustBuffer.ByValue,`accountIds`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    external fun uniffi_chat_mls_core_fn_clone_nseengine(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Long
+    external fun uniffi_chat_mls_core_fn_free_nseengine(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    external fun uniffi_chat_mls_core_fn_method_nseengine_process_nse_application(`ptr`: Long,`ciphertext`: RustBuffer.ByValue,`nonce`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
     external fun uniffi_chat_mls_core_fn_func_ping(uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
+    external fun uniffi_chat_mls_core_fn_func_engine_for_nse(`snapshot`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): Long
     external fun ffi_chat_mls_core_rustbuffer_alloc(`size`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     external fun ffi_chat_mls_core_rustbuffer_from_bytes(`bytes`: ForeignBytes.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -832,6 +848,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_chat_mls_core_checksum_func_ping() != 61247.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_chat_mls_core_checksum_func_engine_for_nse() != 7353.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_chat_mls_core_checksum_method_mlsengine_account_id() != 28029.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -863,6 +882,12 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_chat_mls_core_checksum_method_mlsengine_process_message() != 44101.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_chat_mls_core_checksum_method_mlsengine_remove_members_by_accounts() != 56537.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_chat_mls_core_checksum_method_nseengine_process_nse_application() != 59348.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_chat_mls_core_checksum_constructor_mlsengine_new() != 5760.toShort()) {
@@ -1280,6 +1305,16 @@ public interface MlsEngineInterface {
     
     fun `processMessage`(`groupId`: kotlin.ByteArray, `msgBytes`: kotlin.ByteArray): ProcessedKind
     
+    /**
+     * Remove members by accountId. Resolves each accountId to a
+     * LeafNodeIndex by matching BasicCredential identity bytes, then emits
+     * a single Commit. Remove is unidirectional in MLS (no Welcome). Caller
+     * fans the Commit to remaining members via the existing publish path.
+     *
+     * Errors if any requested accountId is not currently a member.
+     */
+    fun `removeMembersByAccounts`(`groupId`: kotlin.ByteArray, `accountIds`: List<kotlin.String>): kotlin.ByteArray
+    
     companion object
 }
 
@@ -1565,6 +1600,28 @@ open class MlsEngine: Disposable, AutoCloseable, MlsEngineInterface
     
 
     
+    /**
+     * Remove members by accountId. Resolves each accountId to a
+     * LeafNodeIndex by matching BasicCredential identity bytes, then emits
+     * a single Commit. Remove is unidirectional in MLS (no Welcome). Caller
+     * fans the Commit to remaining members via the existing publish path.
+     *
+     * Errors if any requested accountId is not currently a member.
+     */
+    @Throws(ChatMlsException::class)override fun `removeMembersByAccounts`(`groupId`: kotlin.ByteArray, `accountIds`: List<kotlin.String>): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    callWithHandle {
+    uniffiRustCallWithError(ChatMlsException) { _status ->
+    UniffiLib.uniffi_chat_mls_core_fn_method_mlsengine_remove_members_by_accounts(
+        it,
+        FfiConverterByteArray.lower(`groupId`),FfiConverterSequenceString.lower(`accountIds`),_status)
+}
+    }
+    )
+    }
+    
+
+    
 
     
 
@@ -1598,6 +1655,295 @@ public object FfiConverterTypeMlsEngine: FfiConverter<MlsEngine, Long> {
     override fun allocationSize(value: MlsEngine) = 8UL
 
     override fun write(value: MlsEngine, buf: ByteBuffer) {
+        buf.putLong(lower(value))
+    }
+}
+
+
+// This template implements a class for working with a Rust struct via a handle
+// to the live Rust struct on the other side of the FFI.
+//
+// There's some subtlety here, because we have to be careful not to operate on a Rust
+// struct after it has been dropped, and because we must expose a public API for freeing
+// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
+//
+//   * Each instance holds an opaque handle to the underlying Rust struct.
+//     Method calls need to read this handle from the object's state and pass it in to
+//     the Rust FFI.
+//
+//   * When an instance is no longer needed, its handle should be passed to a
+//     special destructor function provided by the Rust FFI, which will drop the
+//     underlying Rust struct.
+//
+//   * Given an instance, calling code is expected to call the special
+//     `destroy` method in order to free it after use, either by calling it explicitly
+//     or by using a higher-level helper like the `use` method. Failing to do so risks
+//     leaking the underlying Rust struct.
+//
+//   * We can't assume that calling code will do the right thing, and must be prepared
+//     to handle Kotlin method calls executing concurrently with or even after a call to
+//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
+//
+//   * We must never allow Rust code to operate on the underlying Rust struct after
+//     the destructor has been called, and must never call the destructor more than once.
+//     Doing so may trigger memory unsafety.
+//
+//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
+//     is implemented to call the destructor when the Kotlin object becomes unreachable.
+//     This is done in a background thread. This is not a panacea, and client code should be aware that
+//      1. the thread may starve if some there are objects that have poorly performing
+//     `drop` methods or do significant work in their `drop` methods.
+//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
+//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
+//
+// If we try to implement this with mutual exclusion on access to the handle, there is the
+// possibility of a race between a method call and a concurrent call to `destroy`:
+//
+//    * Thread A starts a method call, reads the value of the handle, but is interrupted
+//      before it can pass the handle over the FFI to Rust.
+//    * Thread B calls `destroy` and frees the underlying Rust struct.
+//    * Thread A resumes, passing the already-read handle value to Rust and triggering
+//      a use-after-free.
+//
+// One possible solution would be to use a `ReadWriteLock`, with each method call taking
+// a read lock (and thus allowed to run concurrently) and the special `destroy` method
+// taking a write lock (and thus blocking on live method calls). However, we aim not to
+// generate methods with any hidden blocking semantics, and a `destroy` method that might
+// block if called incorrectly seems to meet that bar.
+//
+// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
+// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
+// has been called. These are updated according to the following rules:
+//
+//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
+//      The initial value for the flag is false.
+//
+//    * At the start of each method call, we atomically check the counter.
+//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
+//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
+//
+//    * At the end of each method call, we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+//    * When `destroy` is called, we atomically flip the flag from false to true.
+//      If the flag was already true we silently fail.
+//      Otherwise we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
+// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
+//
+// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
+// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
+// of the underlying Rust code.
+//
+// This makes a cleaner a better alternative to _not_ calling `destroy()` as
+// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
+// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
+// thread may be starved, and the app will leak memory.
+//
+// In this case, `destroy`ing manually may be a better solution.
+//
+// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
+// with Rust peers are reclaimed:
+//
+// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
+// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
+// 3. The memory is reclaimed when the process terminates.
+//
+// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
+//
+
+
+public interface NseEngineInterface {
+    
+    /**
+     * Decrypt a single inbound application message and return its plaintext.
+     *
+     * `ciphertext` is the wire payload as the chat-transport push envelope
+     * delivers it: either the bare MLS message bytes, or those bytes with a
+     * one-byte v=2 frame prefix (0x02). We strip the prefix transparently.
+     *
+     * `nonce` is accepted to match the chat-transport v=1 envelope shape
+     * (the wrapper layer passes both `ciphertextB64` and `nonceB64`). For
+     * v=2 the nonce is empty and the field is ignored — MLS is its own
+     * self-describing AEAD frame. We keep the parameter so the Swift /
+     * Kotlin call sites don't have to branch on version before calling.
+     *
+     * REJECTS anything that isn't an application message: KeyPackage,
+     * Welcome, GroupInfo all fail at `try_into_protocol_message`; Commits
+     * and Proposals are caught explicitly so the error surface is a clear
+     * "snapshot stale" signal to the caller rather than a generic
+     * process_message failure.
+     */
+    fun `processNseApplication`(`ciphertext`: kotlin.ByteArray, `nonce`: kotlin.ByteArray): kotlin.ByteArray
+    
+    companion object
+}
+
+open class NseEngine: Disposable, AutoCloseable, NseEngineInterface
+{
+
+    @Suppress("UNUSED_PARAMETER")
+    /**
+     * @suppress
+     */
+    constructor(withHandle: UniffiWithHandle, handle: Long) {
+        this.handle = handle
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(handle))
+    }
+
+    /**
+     * @suppress
+     *
+     * This constructor can be used to instantiate a fake object. Only used for tests. Any
+     * attempt to actually use an object constructed this way will fail as there is no
+     * connected Rust object.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    constructor(noHandle: NoHandle) {
+        this.handle = 0
+        this.cleanable = null
+    }
+
+    protected val handle: Long
+    protected val cleanable: UniffiCleaner.Cleanable?
+
+    private val wasDestroyed = AtomicBoolean(false)
+    private val callCounter = AtomicLong(1)
+
+    override fun destroy() {
+        // Only allow a single call to this method.
+        // TODO: maybe we should log a warning if called more than once?
+        if (this.wasDestroyed.compareAndSet(false, true)) {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    @Synchronized
+    override fun close() {
+        this.destroy()
+    }
+
+    internal inline fun <R> callWithHandle(block: (handle: Long) -> R): R {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        do {
+            val c = this.callCounter.get()
+            if (c == 0L) {
+                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
+            }
+            if (c == Long.MAX_VALUE) {
+                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
+            }
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
+        // Now we can safely do the method call without the handle being freed concurrently.
+        try {
+            return block(this.uniffiCloneHandle())
+        } finally {
+            // This decrement always matches the increment we performed above.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    // Use a static inner class instead of a closure so as not to accidentally
+    // capture `this` as part of the cleanable's action.
+    private class UniffiCleanAction(private val handle: Long) : Runnable {
+        override fun run() {
+            if (handle == 0.toLong()) {
+                // Fake object created with `NoHandle`, don't try to free.
+                return;
+            }
+            uniffiRustCall { status ->
+                UniffiLib.uniffi_chat_mls_core_fn_free_nseengine(handle, status)
+            }
+        }
+    }
+
+    /**
+     * @suppress
+     */
+    fun uniffiCloneHandle(): Long {
+        if (handle == 0.toLong()) {
+            throw InternalException("uniffiCloneHandle() called on NoHandle object");
+        }
+        return uniffiRustCall() { status ->
+            UniffiLib.uniffi_chat_mls_core_fn_clone_nseengine(handle, status)
+        }
+    }
+
+    
+    /**
+     * Decrypt a single inbound application message and return its plaintext.
+     *
+     * `ciphertext` is the wire payload as the chat-transport push envelope
+     * delivers it: either the bare MLS message bytes, or those bytes with a
+     * one-byte v=2 frame prefix (0x02). We strip the prefix transparently.
+     *
+     * `nonce` is accepted to match the chat-transport v=1 envelope shape
+     * (the wrapper layer passes both `ciphertextB64` and `nonceB64`). For
+     * v=2 the nonce is empty and the field is ignored — MLS is its own
+     * self-describing AEAD frame. We keep the parameter so the Swift /
+     * Kotlin call sites don't have to branch on version before calling.
+     *
+     * REJECTS anything that isn't an application message: KeyPackage,
+     * Welcome, GroupInfo all fail at `try_into_protocol_message`; Commits
+     * and Proposals are caught explicitly so the error surface is a clear
+     * "snapshot stale" signal to the caller rather than a generic
+     * process_message failure.
+     */
+    @Throws(ChatMlsException::class)override fun `processNseApplication`(`ciphertext`: kotlin.ByteArray, `nonce`: kotlin.ByteArray): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    callWithHandle {
+    uniffiRustCallWithError(ChatMlsException) { _status ->
+    UniffiLib.uniffi_chat_mls_core_fn_method_nseengine_process_nse_application(
+        it,
+        FfiConverterByteArray.lower(`ciphertext`),FfiConverterByteArray.lower(`nonce`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+
+    
+
+
+    
+    
+    /**
+     * @suppress
+     */
+    companion object
+    
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeNseEngine: FfiConverter<NseEngine, Long> {
+    override fun lower(value: NseEngine): Long {
+        return value.uniffiCloneHandle()
+    }
+
+    override fun lift(value: Long): NseEngine {
+        return NseEngine(UniffiWithHandle, value)
+    }
+
+    override fun read(buf: ByteBuffer): NseEngine {
+        return lift(buf.getLong())
+    }
+
+    override fun allocationSize(value: NseEngine) = 8UL
+
+    override fun write(value: NseEngine, buf: ByteBuffer) {
         buf.putLong(lower(value))
     }
 }
@@ -1802,6 +2148,34 @@ public object FfiConverterTypeProcessedKind : FfiConverterRustBuffer<ProcessedKi
 /**
  * @suppress
  */
+public object FfiConverterSequenceString: FfiConverterRustBuffer<List<kotlin.String>> {
+    override fun read(buf: ByteBuffer): List<kotlin.String> {
+        val len = buf.getInt()
+        return List<kotlin.String>(len) {
+            FfiConverterString.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<kotlin.String>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterString.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<kotlin.String>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterString.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceByteArray: FfiConverterRustBuffer<List<kotlin.ByteArray>> {
     override fun read(buf: ByteBuffer): List<kotlin.ByteArray> {
         val len = buf.getInt()
@@ -1828,6 +2202,22 @@ public object FfiConverterSequenceByteArray: FfiConverterRustBuffer<List<kotlin.
     UniffiLib.uniffi_chat_mls_core_fn_func_ping(
     
         _status)
+}
+    )
+    }
+    
+
+        /**
+         * Constructor + sole UniFFI entry point. The sealed snapshot has already
+         * been unsealed by the caller (Swift / Kotlin libsodium wrapper); we receive
+         * the raw `dump_state` output.
+         */
+    @Throws(ChatMlsException::class) fun `engineForNse`(`snapshot`: kotlin.ByteArray): NseEngine {
+            return FfiConverterTypeNseEngine.lift(
+    uniffiRustCallWithError(ChatMlsException) { _status ->
+    UniffiLib.uniffi_chat_mls_core_fn_func_engine_for_nse(
+    
+        FfiConverterByteArray.lower(`snapshot`),_status)
 }
     )
     }

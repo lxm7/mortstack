@@ -318,10 +318,30 @@ RustBuffer uniffi_chat_mls_core_fn_method_mlsengine_process_message(uint64_t ptr
 RustBuffer uniffi_chat_mls_core_fn_method_mlsengine_remove_members_by_accounts(uint64_t ptr, RustBuffer group_id, RustBuffer account_ids, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_MLS_CORE_FN_CLONE_NSEENGINE
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_MLS_CORE_FN_CLONE_NSEENGINE
+uint64_t uniffi_chat_mls_core_fn_clone_nseengine(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_MLS_CORE_FN_FREE_NSEENGINE
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_MLS_CORE_FN_FREE_NSEENGINE
+void uniffi_chat_mls_core_fn_free_nseengine(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_MLS_CORE_FN_METHOD_NSEENGINE_PROCESS_NSE_APPLICATION
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_MLS_CORE_FN_METHOD_NSEENGINE_PROCESS_NSE_APPLICATION
+RustBuffer uniffi_chat_mls_core_fn_method_nseengine_process_nse_application(uint64_t ptr, RustBuffer ciphertext, RustBuffer _nonce, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_MLS_CORE_FN_FUNC_PING
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_MLS_CORE_FN_FUNC_PING
 RustBuffer uniffi_chat_mls_core_fn_func_ping(RustCallStatus *_Nonnull out_status
     
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_MLS_CORE_FN_FUNC_ENGINE_FOR_NSE
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_MLS_CORE_FN_FUNC_ENGINE_FOR_NSE
+uint64_t uniffi_chat_mls_core_fn_func_engine_for_nse(RustBuffer snapshot, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_FFI_CHAT_MLS_CORE_RUSTBUFFER_ALLOC
@@ -590,6 +610,12 @@ uint16_t uniffi_chat_mls_core_checksum_func_ping(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_MLS_CORE_CHECKSUM_FUNC_ENGINE_FOR_NSE
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_MLS_CORE_CHECKSUM_FUNC_ENGINE_FOR_NSE
+uint16_t uniffi_chat_mls_core_checksum_func_engine_for_nse(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_MLS_CORE_CHECKSUM_METHOD_MLSENGINE_ACCOUNT_ID
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_MLS_CORE_CHECKSUM_METHOD_MLSENGINE_ACCOUNT_ID
 uint16_t uniffi_chat_mls_core_checksum_method_mlsengine_account_id(void
@@ -659,6 +685,12 @@ uint16_t uniffi_chat_mls_core_checksum_method_mlsengine_process_message(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_MLS_CORE_CHECKSUM_METHOD_MLSENGINE_REMOVE_MEMBERS_BY_ACCOUNTS
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_MLS_CORE_CHECKSUM_METHOD_MLSENGINE_REMOVE_MEMBERS_BY_ACCOUNTS
 uint16_t uniffi_chat_mls_core_checksum_method_mlsengine_remove_members_by_accounts(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_MLS_CORE_CHECKSUM_METHOD_NSEENGINE_PROCESS_NSE_APPLICATION
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_MLS_CORE_CHECKSUM_METHOD_NSEENGINE_PROCESS_NSE_APPLICATION
+uint16_t uniffi_chat_mls_core_checksum_method_nseengine_process_nse_application(void
     
 );
 #endif

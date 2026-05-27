@@ -9,10 +9,13 @@
 import { createContext, useContext, useEffect, type ReactNode } from "react";
 
 import type { EncryptedChatTransport } from "./encrypted-transport";
+import type { BoundOutboxApi, OutboxWorker } from "./outbox-worker";
 import { useChatStore } from "./store";
 import type { ChatApi, MessagePersistApi } from "./types";
 
 const ChatTransportContext = createContext<EncryptedChatTransport | null>(null);
+const OutboxContext = createContext<BoundOutboxApi | null>(null);
+const OutboxWorkerContext = createContext<OutboxWorker | null>(null);
 
 export function useChatTransport(): EncryptedChatTransport {
   const t = useContext(ChatTransportContext);
@@ -22,6 +25,17 @@ export function useChatTransport(): EncryptedChatTransport {
   return t;
 }
 
+// May return null in environments without an outbox (tests, debug screen).
+// useSendMessage falls back to direct transport.send in that case so the
+// existing surface keeps working without forcing every test to wire chat-db.
+export function useOutbox(): BoundOutboxApi | null {
+  return useContext(OutboxContext);
+}
+
+export function useOutboxWorker(): OutboxWorker | null {
+  return useContext(OutboxWorkerContext);
+}
+
 export interface ChatStoreProviderProps {
   api: ChatApi;
   transport: EncryptedChatTransport;
@@ -29,6 +43,13 @@ export interface ChatStoreProviderProps {
    *  the store fires-and-forgets writes on every message lifecycle event,
    *  and the provider rehydrates per-chat messages after bootstrap. */
   messagePersist?: MessagePersistApi;
+  /** Optional outbox + worker pair. Both are required to activate the
+   *  retry path — supplying only one is a programmer error and is treated
+   *  as "no outbox" (useSendMessage falls back to direct transport.send).
+   *  The provider owns the worker's lifecycle: started on auth + on tick
+   *  triggers, stopped on sign-out and unmount. */
+  outbox?: BoundOutboxApi;
+  outboxWorker?: OutboxWorker;
   /** True once the user is signed in. Bootstrap waits for this so we don't
    *  fire chatList before auth lands. */
   authenticated: boolean;
@@ -39,9 +60,13 @@ export function ChatStoreProvider({
   api,
   transport,
   messagePersist,
+  outbox,
+  outboxWorker,
   authenticated,
   children,
 }: ChatStoreProviderProps) {
+  const outboxApi = outbox && outboxWorker ? outbox : null;
+  const workerApi = outbox && outboxWorker ? outboxWorker : null;
   const bootstrap = useChatStore((s) => s.bootstrap);
   const refresh = useChatStore((s) => s.refresh);
   const reset = useChatStore((s) => s.reset);
@@ -85,13 +110,25 @@ export function ChatStoreProvider({
   }, [authenticated, api, bootstrap, hydrateMessages, messagePersist, reset]);
 
   // Refresh on (re)connect — picks up chats created while offline + any
-  // changes another device made.
+  // changes another device made. Also kick the outbox worker so any queued
+  // sends dispatch immediately rather than waiting for the periodic tick.
   useEffect(() => {
     if (!authenticated) return;
     return transport.onState((state) => {
-      if (state === "open") void refresh(api);
+      if (state === "open") {
+        void refresh(api);
+        workerApi?.kick();
+      }
     });
-  }, [authenticated, api, refresh, transport]);
+  }, [authenticated, api, refresh, transport, workerApi]);
+
+  // Worker lifecycle — tied to auth, not to mount, so sign-out halts
+  // background dispatch even if the provider stays mounted across users.
+  useEffect(() => {
+    if (!authenticated || !workerApi) return;
+    workerApi.start();
+    return () => workerApi.stop();
+  }, [authenticated, workerApi]);
 
   // Server-pushed wake-up: a new chat (or a member-add) landed for us. The
   // MLS auto-publish loop already polls the Welcome; we additionally
@@ -120,7 +157,11 @@ export function ChatStoreProvider({
 
   return (
     <ChatTransportContext.Provider value={transport}>
-      {children}
+      <OutboxContext.Provider value={outboxApi}>
+        <OutboxWorkerContext.Provider value={workerApi}>
+          {children}
+        </OutboxWorkerContext.Provider>
+      </OutboxContext.Provider>
     </ChatTransportContext.Provider>
   );
 }

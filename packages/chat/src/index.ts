@@ -33,16 +33,33 @@ export {
 // ── Store + hooks (M4-3) ───────────────────────────────────────────────────
 export { useChatStore, type ChatStore, type ChatStoreState } from "./store";
 export {
+  createOutboxWorker,
+  type BoundOutboxApi,
+  type OutboxWorker,
+  type OutboxWorkerDeps,
+  type OutboxWorkerStoreApi,
+} from "./outbox-worker";
+export {
   useChats,
   useChat,
   useMessages,
   useSendMessage,
+  useRetryMessage,
+  useDeleteMessage,
   type UseChatsResult,
   type UseChatResult,
   type UseMessagesResult,
   type UseSendMessageResult,
+  type UseRetryMessageResult,
+  type UseDeleteMessageResult,
 } from "./hooks";
-export { ChatStoreProvider, type ChatStoreProviderProps } from "./provider";
+export {
+  ChatStoreProvider,
+  useChatTransport,
+  useOutbox,
+  useOutboxWorker,
+  type ChatStoreProviderProps,
+} from "./provider";
 export type {
   ChatApi,
   ChatRecord,
