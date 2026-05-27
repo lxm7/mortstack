@@ -31,6 +31,7 @@
     "@repo/chat-mls-core": "workspace:*",
     "@repo/chat-transport": "workspace:*",
     "@repo/schemas": "workspace:*",
+    "@shopify/flash-list": "^2.3.1",
     "@tamagui/animations-react-native": "^2.0.0-rc.41",
     "@tamagui/config": "^2.0.0-rc.41",
     "@tamagui/metro-plugin": "2.0.0-rc.41",
