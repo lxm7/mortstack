@@ -64,6 +64,9 @@ export function ChatTransportProvider({ children }: { children: ReactNode }) {
     const underlying = createChatTransport({
       url: process.env.EXPO_PUBLIC_CHAT_WS_URL ?? "ws://localhost:8787",
       getToken: loadSessionToken,
+      // M6 presence hint — UserInbox attaches deviceId per socket; Chat DO
+      // skips push for any recipient device currently attached over WS.
+      getDeviceId: async () => (await getOrCreateChatIdentity()).deviceId,
     });
     return createEncryptedTransport({
       underlying,

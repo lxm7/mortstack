@@ -11,13 +11,19 @@
 // catch missed pushes.
 
 import { AwsClient } from "aws4fetch";
+import { Resource } from "sst";
 
 export interface ChatDeliveredEvent {
   // Routing
   chatId: string;
   serverMsgId: string; // stringified serverSerial
   senderId: string;
-  recipientIds: string[]; // members minus sender; subset may already be online
+  recipientIds: string[]; // chat members minus sender (Better Auth userIds)
+  // M6 (D2) — deviceIds with an open WS at publish time. chat-push Lambda
+  // joins each recipient's PushToken rows and skips dispatch for tokens
+  // bound to a UserDevice whose deviceId is in this set. Empty array =
+  // "no presence info" (treated as everyone offline).
+  attachedDeviceIds: string[];
   // Opaque encrypted payload — base64 for SNS message body (JSON only).
   ciphertextB64: string;
   nonceB64: string;
@@ -30,16 +36,13 @@ function getClient(env: Env): AwsClient {
   if (cachedClient && cachedClient.region === env.AWS_REGION) {
     return cachedClient.client;
   }
-  // TODO(M6): linked SST secrets on CF Workers come via Resource.X.value, not
-  // env. Currently `env.CHAT_WS_AWS_ACCESS_KEY_ID` / `..._SECRET_ACCESS_KEY`
-  // resolve to the literal "undefined" string, so SigV4 publish will 401. Swap
-  // to `Resource.ChatWsAwsAccessKeyId.value` + drop the env decls from
-  // worker-configuration.d.ts when push fanout (ADR-013) goes live.
+  // SST linked secrets on CF Workers expose values via Resource.X.value
+  // (not env). See memory `sst_link_cf_worker_secrets`.
   cachedClient = {
     region: env.AWS_REGION,
     client: new AwsClient({
-      accessKeyId: env.CHAT_WS_AWS_ACCESS_KEY_ID,
-      secretAccessKey: env.CHAT_WS_AWS_SECRET_ACCESS_KEY,
+      accessKeyId: Resource.ChatWsAwsAccessKeyId.value,
+      secretAccessKey: Resource.ChatWsAwsSecretAccessKey.value,
       region: env.AWS_REGION,
       service: "sns",
     }),

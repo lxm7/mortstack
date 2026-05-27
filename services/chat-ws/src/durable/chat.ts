@@ -31,6 +31,11 @@ const ATTACHED_KEY = "attached";
 const BUFFER_KEY = "buffer";
 const NEXT_SERIAL_KEY = "nextSerial";
 const BATCH_FLUSH_MS = 100;
+// Cap for the per-recipient UserInbox attachedDeviceIds() fan-out before
+// publishing chat.msg.delivered. Above this size the cost of the parallel
+// stub calls outweighs the dedupe benefit; APNs collapse_id covers
+// recipient-side duplicate suppression instead.
+const PRESENCE_HINT_MAX = 50;
 
 export class Chat extends DurableObject<Env> {
   // In-memory mirrors of ctx.storage. Loaded lazily on first use after a hot
@@ -190,21 +195,47 @@ export class Chat extends DurableObject<Env> {
     await Promise.all([...acks, ...fanout]);
 
     // ── Push fanout (ADR-013) ─────────────────────────────────────────────
-    // SNS publish per persisted message. The chat-push Lambda (deferred to
-    // M6) decides which recipients are actually offline and dispatches
-    // APNs/FCM. Publish failures are non-fatal — message is already
-    // persisted; a reconciliation Worker will catch any drops.
+    // SNS publish per persisted message. The chat-push Lambda (M6) consumes
+    // chatPushQueue and dispatches APNs/FCM. Publish failures are non-fatal
+    // — message is already persisted; a reconciliation Worker (deferred)
+    // catches any drops.
+    //
+    // Presence hint (D2): collect the deviceIds currently attached over WS
+    // for each recipient and attach to the event. Lambda skips push for
+    // these. Cap PRESENCE_HINT_MAX recipients — for groups above the cap
+    // we skip the hint entirely and let APNs collapse_id de-dupe at the
+    // device. The 50-stub Promise.all is ~5-10ms; larger groups would
+    // contend with the persist budget.
     const allMembers = await db.memberIds(chatId);
+    const recipientUserIds = allMembers.filter(
+      (u) => u !== assigned[0]?.entry.senderId,
+    );
+
+    let attachedDeviceIds: string[] = [];
+    if (
+      recipientUserIds.length > 0 &&
+      recipientUserIds.length <= PRESENCE_HINT_MAX
+    ) {
+      const stubs = recipientUserIds.map((uid) =>
+        this.env.USER_INBOX.get(this.env.USER_INBOX.idFromName(uid)),
+      );
+      const results = await Promise.all(
+        stubs.map((s) => s.attachedDeviceIds().catch(() => [] as string[])),
+      );
+      const flat = new Set<string>();
+      for (const list of results) for (const id of list) flat.add(id);
+      attachedDeviceIds = [...flat];
+    }
+
     for (const a of assigned) {
       const recipients = allMembers.filter((u) => u !== a.entry.senderId);
       if (recipients.length === 0) continue;
-      // Fire-and-forget. Awaited inside Promise.all so DO doesn't yield
-      // before the queued requests start; we don't block ack on the result.
       void publishChatDelivered(this.env, {
         chatId,
         serverMsgId: a.serverSerial.toString(),
         senderId: a.entry.senderId,
         recipientIds: recipients,
+        attachedDeviceIds,
         ciphertextB64: bytesToBase64(a.entry.ciphertext),
         nonceB64: bytesToBase64(a.entry.nonce),
         ts: a.ts.getTime(),

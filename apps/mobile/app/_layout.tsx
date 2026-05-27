@@ -30,6 +30,9 @@ import "@/lib/chat/auto-publish";
 // Side-effect import — MLS engine bootstrap + KeyPackage top-up + commit/welcome
 // polling (Chunk 5). Replaced by DO-pushed signals in Chunk 6.
 import "@/lib/chat/mls-auto-publish";
+// Side-effect import — M6 APNs/FCM token register on auth ready. Idempotent
+// per signed-in user; depends on auto-publish creating the UserDevice row.
+import "@/lib/chat/push-auto-register";
 
 SplashScreen.preventAutoHideAsync();
 

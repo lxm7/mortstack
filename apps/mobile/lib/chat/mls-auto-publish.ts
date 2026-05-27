@@ -14,6 +14,7 @@ import { useAuthStore } from "@/store/auth";
 import { getOrCreateChatIdentity } from "./identity";
 import { getCurrentChatTransport } from "./transport";
 import { clearChatGroupCache } from "./group-resolver";
+import { writeNseSnapshot } from "./nse-snapshot";
 
 // Mobile crypto adapter — three primitives MlsClient needs out of band of
 // the MLS engine itself. Built once and reused across MlsClient instances
@@ -103,6 +104,15 @@ async function bootstrap(authUserId: string): Promise<MlsClient | null> {
     engine: ChatMlsCore,
     crypto: mobileMlsCrypto,
     mlsStore: createBoundMlsStore(dbHandle),
+    // M6 — every successful in-app persistSnapshot mirrors a sealed copy to
+    // the iOS NSE / Android FMS shared container so push payloads can be
+    // decrypted in the extension before the app is foregrounded.
+    onAfterPersistSnapshot: (snapshot) =>
+      writeNseSnapshot({
+        accountId: me.accountId,
+        identitySeed: identity.seed,
+        snapshot,
+      }),
   });
 
   const { source } = await c.bootstrap();

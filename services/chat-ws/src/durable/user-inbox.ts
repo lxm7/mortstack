@@ -24,6 +24,10 @@ import { validateSendFrame } from "../validators";
 
 interface SocketAttachment {
   userId: string;
+  // M6 — populated from the `?did=…` query param at WS upgrade. Used by the
+  // attachedDeviceIds() RPC so Chat DO can skip push fanout for devices that
+  // are currently online. Empty string when the client didn't send one.
+  deviceId: string;
   // Random per-connection ID for debugging / future presence reporting.
   connId: string;
 }
@@ -52,6 +56,7 @@ export class UserInbox extends DurableObject<Env> {
 
     const userId = request.headers.get("x-user-id");
     if (!userId) return new Response("missing user", { status: 400 });
+    const deviceId = request.headers.get("x-device-id") ?? "";
 
     const pair = new WebSocketPair();
     const client = pair[0];
@@ -59,6 +64,7 @@ export class UserInbox extends DurableObject<Env> {
 
     const attachment: SocketAttachment = {
       userId,
+      deviceId,
       connId: crypto.randomUUID(),
     };
     server.serializeAttachment(attachment);
@@ -181,6 +187,24 @@ export class UserInbox extends DurableObject<Env> {
     } catch {
       this.sendErr(ws, "PERSIST_FAILED", "send rejected");
     }
+  }
+
+  // ── Presence RPC (called by Chat DO before push fanout) ──────────────────
+  // Returns the set of deviceIds with an open WS attached to this user. The
+  // empty string is filtered out — pre-M6 clients connect without a `did`
+  // query param and we treat those as "presence unknown" rather than
+  // "device empty-string is online". Cheap: walks in-memory socket list.
+  async attachedDeviceIds(): Promise<string[]> {
+    const sockets = this.ctx.getWebSockets();
+    if (sockets.length === 0) return [];
+    const out = new Set<string>();
+    for (const ws of sockets) {
+      if (ws.readyState !== WebSocket.READY_STATE_OPEN) continue;
+      const att = ws.deserializeAttachment() as SocketAttachment | null;
+      if (!att || !att.deviceId) continue;
+      out.add(att.deviceId);
+    }
+    return [...out];
   }
 
   // ── RPC entrypoints (called by Chat DO) ───────────────────────────────────

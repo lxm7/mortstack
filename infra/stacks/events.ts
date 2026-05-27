@@ -1,4 +1,5 @@
-// import { secrets } from './secrets';
+import { databaseUrl } from "./secrets";
+import { chatPushSecrets } from "./chat-push-secrets";
 
 // ── Event Bus (SNS + SQS) ───────────────────────────────────────────────────
 // Fan-out pattern: SNS topics broadcast events → SQS queues decouple consumers.
@@ -109,18 +110,24 @@ chatDeliveredTopic.subscribeQueue("ChatPushConsumer", chatPushQueue.arn);
 //   link: [...secrets],
 // });
 
-// chat-push Lambda — APNs/FCM dispatch for offline chat recipients.
-// Activates when M6 (push notifications) ships; the handler decrypts nothing,
-// only routes ciphertext to device tokens for users not currently attached.
-//
-// chatPushQueue.subscribe({
-//   handler: 'services/chat-push/src/lambda.handler',
-//   runtime: 'nodejs22.x',
-//   architecture: 'arm64',
-//   memory: '256 MB',
-//   timeout: '30 seconds',
-//   link: [...secrets],
-// });
+// chat-push Lambda — APNs/FCM dispatch for offline chat recipients (M6).
+// Reads the SNS-wrapped chat.msg.delivered envelope, resolves PushToken rows
+// for recipientIds, skips devices listed in attachedDeviceIds (D2 presence
+// hint), and dispatches to APNs HTTP/2 + FCM HTTP v1 in parallel.
+chatPushQueue.subscribe({
+  handler: "services/chat-push/src/lambda.handler",
+  runtime: "nodejs22.x",
+  architecture: "arm64",
+  memory: "512 MB",
+  timeout: "30 seconds",
+  // D5 — Phase 1 sizing. Bump to provisioned concurrency when p95 push
+  // latency telemetry exceeds 3 s.
+  reservedConcurrency: 1000,
+  link: [databaseUrl, ...chatPushSecrets],
+  // PartialBatchResponse — the Lambda returns batchItemFailures and SQS
+  // redrives only the failed records (avoids re-pushing successful ones).
+  batch: { size: 10, window: "500 ms", partialResponses: true },
+});
 
 export const events = {
   mediaUploadedTopic,
