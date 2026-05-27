@@ -59,6 +59,10 @@ export interface ChatStoreActions {
     serverMsgId: string;
     ts: number;
   }): void;
+  /** Flip an optimistic message to "failed" status. Used when transport.send
+   *  rejects or the encrypt step throws. Caller may retry by sending the
+   *  same text again — a fresh clientMsgId will be generated. */
+  failOptimisticMessage(input: { chatId: string; clientMsgId: string }): void;
   /** Wipe everything. Used on sign-out and from tests. */
   reset(): void;
 }
@@ -201,6 +205,20 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     };
     const next = [...list];
     next[idx] = updated;
+    messages.set(input.chatId, next);
+    set({ messages });
+  },
+
+  failOptimisticMessage(input) {
+    const messages = new Map(get().messages);
+    const list = messages.get(input.chatId);
+    if (!list) return;
+    const idx = list.findIndex((m) => m.clientMsgId === input.clientMsgId);
+    if (idx < 0) return;
+    const existing = list[idx]!;
+    if (existing.status === "sent") return; // already confirmed elsewhere
+    const next = [...list];
+    next[idx] = { ...existing, status: "failed" };
     messages.set(input.chatId, next);
     set({ messages });
   },

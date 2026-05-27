@@ -4,22 +4,10 @@
 // M4-6 plugs in the actual MLS encrypt + transport.send + ACK reconciliation.
 
 import { useCallback, useMemo, useState } from "react";
-import {
-  KeyboardAvoidingView,
-  Platform,
-  StyleSheet,
-} from "react-native";
+import { KeyboardAvoidingView, Platform, StyleSheet } from "react-native";
 import { FlashList } from "@shopify/flash-list";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import {
-  Button,
-  Input,
-  Spinner,
-  Text,
-  View,
-  XStack,
-  YStack,
-} from "tamagui";
+import { Button, Input, Spinner, Text, View, XStack, YStack } from "tamagui";
 
 import {
   useChat,
@@ -127,12 +115,24 @@ export default function ChatThreadScreen() {
               </Text>
             )}
           </YStack>
-          <View width={60} />
+          <Button
+            size="$2"
+            chromeless
+            disabled={!chat}
+            onPress={() => router.push(`/chat/${chatId}/info` as never)}
+          >
+            Info
+          </Button>
         </XStack>
 
         <View flex={1}>
           {reversed.length === 0 ? (
-            <YStack flex={1} alignItems="center" justifyContent="center" gap="$2">
+            <YStack
+              flex={1}
+              alignItems="center"
+              justifyContent="center"
+              gap="$2"
+            >
               {chat ? (
                 <>
                   <Text fontSize="$5" fontWeight="600">
@@ -203,11 +203,7 @@ function MessageBubble({
   sender: Member | null;
 }) {
   return (
-    <XStack
-      px="$3"
-      py="$1"
-      justifyContent={isMine ? "flex-end" : "flex-start"}
-    >
+    <XStack px="$3" py="$1" justifyContent={isMine ? "flex-end" : "flex-start"}>
       <YStack
         maxWidth="80%"
         backgroundColor={isMine ? "$brand" : "$backgroundHover"}
