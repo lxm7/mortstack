@@ -47,6 +47,16 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="chats"
+        options={{
+          title: "Chats",
+          tabBarIcon: ({ focused }) => (
+            <TabIcon label="Chats" focused={focused} />
+          ),
+          tabBarShowLabel: false,
+        }}
+      />
+      <Tabs.Screen
         name="create"
         options={{
           title: "Post",
