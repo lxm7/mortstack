@@ -157,6 +157,76 @@ const keysRouter = router({
     }),
 });
 
+// ── user.search ─────────────────────────────────────────────────────────────
+// Handle-prefix lookup for the M4 "New Chat" picker. Resolves to the
+// Profile's primary OWNER Account so the caller can issue chat.create with
+// the returned accountId.
+//
+// Excludes the caller's own accounts; min query length 2 to avoid full-
+// table scans on empty / 1-char queries.
+
+const USER_SEARCH_QUERY_MIN = 2;
+const USER_SEARCH_QUERY_MAX = 32;
+const USER_SEARCH_LIMIT_MAX = 50;
+
+const SearchInput = z.object({
+  query: z.string().min(USER_SEARCH_QUERY_MIN).max(USER_SEARCH_QUERY_MAX),
+  limit: z.number().int().min(1).max(USER_SEARCH_LIMIT_MAX).default(20),
+});
+
 export const userRouter = router({
   keys: keysRouter,
+
+  search: protectedProcedure
+    .input(SearchInput)
+    .output(
+      z.object({
+        users: z.array(
+          z.object({
+            accountId: z.string(),
+            handle: z.string(),
+            displayName: z.string(),
+          }),
+        ),
+      }),
+    )
+    .query(async ({ input, ctx }) => {
+      // Handle prefix match — backed by the unique index on Profile.handle.
+      // Postgres B-tree on text supports prefix LIKE without a separate
+      // index. Returns the oldest OWNER ProfileMember's account per
+      // matching Profile (primary persona disambiguation for Phase 1).
+      const profiles = await ctx.prisma.profile.findMany({
+        where: {
+          handle: { startsWith: input.query.toLowerCase() },
+          isBanned: false,
+        },
+        orderBy: { handle: "asc" },
+        take: input.limit,
+        select: {
+          handle: true,
+          displayName: true,
+          members: {
+            where: { role: "OWNER", account: { isBanned: false } },
+            orderBy: { createdAt: "asc" },
+            take: 1,
+            select: { accountId: true },
+          },
+        },
+      });
+
+      const users = profiles
+        .map((p) => {
+          const accountId = p.members[0]?.accountId;
+          if (!accountId) return null;
+          if (accountId === ctx.account.id) return null;
+          return {
+            accountId,
+            handle: p.handle,
+            displayName: p.displayName,
+          };
+        })
+        .filter((u): u is NonNullable<typeof u> => u !== null);
+
+      return { users };
+    }),
 });
