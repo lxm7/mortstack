@@ -94,3 +94,25 @@ export interface ChatApi {
   }): Promise<{ removed: string[] }>;
   userSearch(input: UserSearchInput): Promise<UserSearchOutput>;
 }
+
+// ── Injected local message store ────────────────────────────────────────
+// Persistence layer for cold-start rehydration. Implementation lives in
+// chat-db (createBoundMessageStore); the store calls these methods after
+// every message-lifecycle action so the next launch can replay the thread
+// without depending on MLS ratchet state (which is one-shot per decrypt).
+
+export interface PersistMessageInput {
+  id: string;
+  chatId: string;
+  senderAuthUserId: string;
+  text: string;
+  status: MessageStatus;
+  clientMsgId: string;
+  serverSerial: string | null;
+  createdAt: number;
+}
+
+export interface MessagePersistApi {
+  persist(input: PersistMessageInput): Promise<void>;
+  load(chatId: string, limit?: number): Promise<Message[]>;
+}

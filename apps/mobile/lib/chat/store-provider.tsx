@@ -3,9 +3,18 @@
 // store + pulls the EncryptedChatTransport from its existing provider.
 // Sits inside ChatTransportProvider so the transport is available.
 
-import { useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
-import { ChatStoreProvider, type ChatApi } from "@repo/chat";
+import {
+  ChatStoreProvider,
+  type ChatApi,
+  type MessagePersistApi,
+} from "@repo/chat";
+import {
+  getChatDb,
+  createBoundMessageStore,
+  type ChatDbHandle,
+} from "@repo/chat-db";
 
 import { trpc } from "@/lib/trpc/client";
 import { useAuthStore } from "@/store/auth";
@@ -33,10 +42,32 @@ export function MobileChatStoreProvider({ children }: { children: ReactNode }) {
   const transport = useChatTransport();
   const api = useMemo(createTrpcChatApi, []);
 
+  // chat-db opens async (SQLCipher passphrase derivation + migrations).
+  // Resolve the handle once at mount; persistApi stays undefined until the
+  // first open finishes, after which the provider attaches it to the store.
+  const [persistApi, setPersistApi] = useState<MessagePersistApi | undefined>(
+    undefined,
+  );
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const handle: ChatDbHandle = await getChatDb();
+        if (active) setPersistApi(createBoundMessageStore(handle));
+      } catch (err) {
+        console.warn("[chat] chat-db open failed — persistence disabled", err);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
   return (
     <ChatStoreProvider
       api={api}
       transport={transport}
+      messagePersist={persistApi}
       authenticated={authenticated}
     >
       {children}

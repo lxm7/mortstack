@@ -10,7 +10,7 @@ import { createContext, useContext, useEffect, type ReactNode } from "react";
 
 import type { EncryptedChatTransport } from "./encrypted-transport";
 import { useChatStore } from "./store";
-import type { ChatApi } from "./types";
+import type { ChatApi, MessagePersistApi } from "./types";
 
 const ChatTransportContext = createContext<EncryptedChatTransport | null>(null);
 
@@ -25,6 +25,10 @@ export function useChatTransport(): EncryptedChatTransport {
 export interface ChatStoreProviderProps {
   api: ChatApi;
   transport: EncryptedChatTransport;
+  /** Optional local message persistence (M4-followup #25). When supplied,
+   *  the store fires-and-forgets writes on every message lifecycle event,
+   *  and the provider rehydrates per-chat messages after bootstrap. */
+  messagePersist?: MessagePersistApi;
   /** True once the user is signed in. Bootstrap waits for this so we don't
    *  fire chatList before auth lands. */
   authenticated: boolean;
@@ -34,6 +38,7 @@ export interface ChatStoreProviderProps {
 export function ChatStoreProvider({
   api,
   transport,
+  messagePersist,
   authenticated,
   children,
 }: ChatStoreProviderProps) {
@@ -41,15 +46,43 @@ export function ChatStoreProvider({
   const refresh = useChatStore((s) => s.refresh);
   const reset = useChatStore((s) => s.reset);
   const addIncomingMessage = useChatStore((s) => s.addIncomingMessage);
+  const setPersistApi = useChatStore((s) => s.setPersistApi);
+  const hydrateMessages = useChatStore((s) => s.hydrateMessages);
 
-  // Initial bootstrap + sign-out reset.
+  // Plug local persistence into the store while the provider is mounted.
+  // Decoupled from `authenticated` because reset() preserves the persistApi
+  // by design — we want sign-out to clear in-memory state without
+  // detaching the storage backend.
+  useEffect(() => {
+    setPersistApi(messagePersist ?? null);
+    return () => setPersistApi(null);
+  }, [messagePersist, setPersistApi]);
+
+  // Initial bootstrap + sign-out reset. After chat.list returns, hydrate
+  // each chat's plaintext history from the local store so cold launches
+  // render prior messages without depending on the MLS ratchet (one-shot
+  // decrypt per ciphertext — see M4-followup #25).
   useEffect(() => {
     if (!authenticated) {
       reset();
       return;
     }
-    void bootstrap(api);
-  }, [authenticated, api, bootstrap, reset]);
+    void (async () => {
+      await bootstrap(api);
+      if (!messagePersist) return;
+      const chatIds = Array.from(useChatStore.getState().chats.keys());
+      await Promise.all(
+        chatIds.map(async (chatId) => {
+          try {
+            const persisted = await messagePersist.load(chatId);
+            if (persisted.length > 0) hydrateMessages(chatId, persisted);
+          } catch (err) {
+            console.warn("[chat] hydrate failed for", chatId, err);
+          }
+        }),
+      );
+    })();
+  }, [authenticated, api, bootstrap, hydrateMessages, messagePersist, reset]);
 
   // Refresh on (re)connect — picks up chats created while offline + any
   // changes another device made.

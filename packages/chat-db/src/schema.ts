@@ -19,6 +19,14 @@ export interface MessageRow {
   sent_at: number;
   received_at: number | null;
   status: "pending" | "sent" | "delivered" | "failed";
+  /** Decrypted text, persisted after first successful MLS decrypt. SQLCipher
+   *  protects at rest. Null on pre-M4 rows + on transient pending sends
+   *  whose plaintext hasn't been written yet. */
+  plaintext: string | null;
+  /** Sender's locally-generated id — matches the optimistic-send entry's
+   *  clientMsgId so confirm can update the right row. Null for pure
+   *  incoming messages where we never had a local optimistic entry. */
+  client_msg_id: string | null;
 }
 
 export interface MemberRow {

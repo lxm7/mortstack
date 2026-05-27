@@ -17,3 +17,11 @@ export type {
 export * as mls from "./mls-store";
 export { createBoundMlsStore } from "./mls-store";
 export type { MlsGroupUpsert, MlsGroupListItem } from "./mls-store";
+export {
+  createBoundMessageStore,
+  persistMessage,
+  loadMessagesForChat,
+  type MessagePersistApi,
+  type PersistedMessage,
+  type PersistedMessageInput,
+} from "./messages-store";
