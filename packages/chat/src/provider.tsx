@@ -1,12 +1,26 @@
 // ChatStoreProvider — wires the store to the API + transport at app root.
 // Sits inside ChatTransportProvider so it can subscribe to incoming
 // messages and the mls-welcome wake-up to refresh the chat list.
+//
+// Also exposes the transport to descendants via internal context so hooks
+// like useSendMessage can issue sends without the consumer threading the
+// transport through every call site.
 
-import { useEffect, type ReactNode } from "react";
+import { createContext, useContext, useEffect, type ReactNode } from "react";
 
 import type { EncryptedChatTransport } from "./encrypted-transport";
 import { useChatStore } from "./store";
 import type { ChatApi } from "./types";
+
+const ChatTransportContext = createContext<EncryptedChatTransport | null>(null);
+
+export function useChatTransport(): EncryptedChatTransport {
+  const t = useContext(ChatTransportContext);
+  if (!t) {
+    throw new Error("useChatTransport must be used inside <ChatStoreProvider>");
+  }
+  return t;
+}
 
 export interface ChatStoreProviderProps {
   api: ChatApi;
@@ -71,5 +85,9 @@ export function ChatStoreProvider({
     });
   }, [authenticated, addIncomingMessage, transport]);
 
-  return <>{children}</>;
+  return (
+    <ChatTransportContext.Provider value={transport}>
+      {children}
+    </ChatTransportContext.Provider>
+  );
 }
