@@ -1,4 +1,8 @@
-import type { IdentityProvider, IdentityCheckInit, IdentityCheckResult } from '../types';
+import type {
+  IdentityProvider,
+  IdentityCheckInit,
+  IdentityCheckResult,
+} from "../types";
 
 /**
  * World ID provider (Web3 - Worldcoin)
@@ -16,8 +20,8 @@ import type { IdentityProvider, IdentityCheckInit, IdentityCheckResult } from '.
  * Grants: CREATOR tier (can upload audio/video)
  */
 export class WorldIdProvider implements IdentityProvider {
-  readonly name = 'world_id';
-  readonly tier = 'CREATOR' as const;
+  readonly name = "world_id";
+  readonly tier = "CREATOR" as const;
 
   async initiate(userId: string): Promise<IdentityCheckInit> {
     // TODO: Generate World ID verification request
@@ -25,7 +29,7 @@ export class WorldIdProvider implements IdentityProvider {
     // const action = 'verify-creator';
     // Return the app_id + action for the client to pass to World ID widget
 
-    console.warn('[WorldIdProvider] STUB - not implemented');
+    console.warn("[WorldIdProvider] STUB - not implemented");
     const externalId = `worldid_${userId}_${Date.now()}`;
 
     return {
@@ -35,25 +39,28 @@ export class WorldIdProvider implements IdentityProvider {
     };
   }
 
-  async verify(externalId: string, proof: unknown): Promise<IdentityCheckResult> {
+  async verify(
+    externalId: string,
+    // proof: unknown,
+  ): Promise<IdentityCheckResult> {
     // TODO: Verify ZK proof via Worldcoin Developer Portal API
     // POST https://developer.worldcoin.org/api/v2/verify/{app_id}
     // Body: { nullifier_hash, merkle_root, proof, verification_level, action, signal }
 
-    console.warn('[WorldIdProvider] STUB - always approves in development');
+    console.warn("[WorldIdProvider] STUB - always approves in development");
 
     return {
       externalId,
-      status: 'approved',
-      tier: 'CREATOR',
+      status: "approved",
+      tier: "CREATOR",
     };
   }
 
   async getStatus(externalId: string): Promise<IdentityCheckResult> {
     return {
       externalId,
-      status: 'pending',
-      tier: 'CREATOR',
+      status: "pending",
+      tier: "CREATOR",
     };
   }
 }

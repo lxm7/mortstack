@@ -67,7 +67,7 @@ export function BubbleActionSheet({
               Message failed to send
             </Text>
             <Text fontSize="$2" color="$placeholderColor">
-              The server didn't accept this message after several attempts.
+              The server didn’t accept this message after several attempts.
             </Text>
             <YStack gap="$2" pt="$2">
               <Button

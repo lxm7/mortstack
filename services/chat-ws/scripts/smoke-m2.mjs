@@ -1,3 +1,4 @@
+/* global process, console, WebSocket, setTimeout, clearTimeout, TextEncoder, crypto */
 // M2 smoke test — full path: WS auth → sub → send → ack from Neon-direct path.
 //
 // Validates the ADR-010 (Worker → Neon direct) + ADR-012 (DO-assigned serial)
