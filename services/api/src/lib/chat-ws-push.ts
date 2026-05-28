@@ -9,6 +9,19 @@
 
 import { Resource } from "sst";
 
+declare module "sst" {
+  interface Resource {
+    ChatWsHmacSecret: {
+      type: "sst.sst.Secret";
+      value: string;
+    };
+    ChatWsInternalUrl: {
+      type: "sst.sst.Secret";
+      value: string;
+    };
+  }
+}
+
 const SECRET_HEADER = "x-chat-ws-secret";
 
 // chat-ws Worker URL — sourced from the ChatWsInternalUrl SST secret. The
