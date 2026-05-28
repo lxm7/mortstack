@@ -1,4 +1,8 @@
-import type { IdentityProvider, IdentityCheckInit, IdentityCheckResult } from '../types';
+import type {
+  IdentityProvider,
+  IdentityCheckInit,
+  IdentityCheckResult,
+} from "../types";
 
 /**
  * Phone OTP provider (Web2)
@@ -9,12 +13,15 @@ import type { IdentityProvider, IdentityCheckInit, IdentityCheckResult } from '.
  * Grants: BASIC tier (can post images)
  */
 export class PhoneProvider implements IdentityProvider {
-  readonly name = 'phone';
-  readonly tier = 'BASIC' as const;
+  readonly name = "phone";
+  readonly tier = "BASIC" as const;
 
-  async initiate(userId: string, metadata?: { phoneNumber: string }): Promise<IdentityCheckInit> {
+  async initiate(
+    userId: string,
+    metadata?: { phoneNumber: string },
+  ): Promise<IdentityCheckInit> {
     if (!metadata?.phoneNumber) {
-      throw new Error('phoneNumber required');
+      throw new Error("phoneNumber required");
     }
 
     // TODO: Replace with Twilio Verify
@@ -22,7 +29,7 @@ export class PhoneProvider implements IdentityProvider {
     //   .services(process.env.TWILIO_VERIFY_SID!)
     //   .verifications.create({ to: metadata.phoneNumber, channel: 'sms' });
 
-    console.warn('[PhoneProvider] STUB - replace with Twilio in production');
+    console.warn("[PhoneProvider] STUB - replace with Twilio in production");
     const externalId = `phone_${userId}_${Date.now()}`;
 
     return {
@@ -31,28 +38,31 @@ export class PhoneProvider implements IdentityProvider {
     };
   }
 
-  async verify(externalId: string, proof: unknown): Promise<IdentityCheckResult> {
-    const { code } = proof as { code: string };
+  async verify(
+    externalId: string,
+    // proof: unknown,
+  ): Promise<IdentityCheckResult> {
+    // const { code } = proof as { code: string };
 
     // TODO: Replace with Twilio Verify check
     // const check = await twilioClient.verify.v2
     //   .services(process.env.TWILIO_VERIFY_SID!)
     //   .verificationChecks.create({ to: phoneNumber, code });
 
-    console.warn('[PhoneProvider] STUB - always approves in development');
+    console.warn("[PhoneProvider] STUB - always approves in development");
 
     return {
       externalId,
-      status: 'approved',
-      tier: 'BASIC',
+      status: "approved",
+      tier: "BASIC",
     };
   }
 
   async getStatus(externalId: string): Promise<IdentityCheckResult> {
     return {
       externalId,
-      status: 'approved',
-      tier: 'BASIC',
+      status: "approved",
+      tier: "BASIC",
     };
   }
 }

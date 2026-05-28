@@ -1,3 +1,4 @@
+/* global process, console, WebSocket, setTimeout, clearTimeout */
 // M1 smoke test — proves Worker auth + UserInbox routing + bidirectional path.
 //
 // Connects to chat-ws with a Better Auth bearer, asserts:

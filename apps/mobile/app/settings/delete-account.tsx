@@ -105,8 +105,8 @@ export default function DeleteAccountScreen() {
           </Text>
           <Text fontSize="$3" color="$placeholderColor">
             • Messages you sent in group chats — they remain encrypted on
-            recipients' devices; the server cannot read them and they will
-            appear as "Unknown sender" once your account is gone.
+            recipients’ devices; the server cannot read them and they will
+            appear as “Unknown sender” once your account is gone.
           </Text>
         </YStack>
 
