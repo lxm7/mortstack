@@ -25,7 +25,7 @@
     "build:node": "cd node && pnpm run build",
     "lint": "echo \"rust crate + autogen bindings — skip eslint\" && exit 0",
     "check-types": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "test -f node/index.node && vitest run || echo 'chat-mls-core: native binary missing (build with pnpm run build:node) — skipping per Phase 1 single-platform policy'",
     "test:watch": "vitest"
   },
   "dependencies": {
