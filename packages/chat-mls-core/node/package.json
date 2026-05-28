@@ -1,0 +1,17 @@
+{
+  "name": "@repo/chat-mls-core-node",
+  "version": "0.0.1",
+  "private": true,
+  "description": "napi-rs binding for chat_mls_core — Node test harness only. Not shipped in mobile.",
+  "main": "./index.js",
+  "types": "./index.d.ts",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "index.node"
+  ],
+  "scripts": {
+    "build": "cargo build --release && cp target/release/libchat_mls_core_node.dylib index.node",
+    "clean": "cargo clean && rm -f index.node"
+  }
+}

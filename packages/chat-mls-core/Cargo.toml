@@ -1,0 +1,72 @@
+[package]
+name = "chat_mls_core"
+version = "0.0.1"
+edition = "2021"
+publish = false
+license = "MIT"
+description = "OpenMLS engine for Sessions chat (Rust core, UniFFI bindings)"
+
+# rlib      → consumed by node/ napi-rs crate (test harness)
+# cdylib    → required by UniFFI bindgen at dev time (dlopen the lib for symbol scan)
+# staticlib → linked into iOS XCFramework and Android jniLibs
+[lib]
+name = "chat_mls_core"
+crate-type = ["rlib", "cdylib", "staticlib"]
+
+[dependencies]
+# Pinned per ADR-015. Bump policy: bump openmls + traits + rust_crypto +
+# basic_credential together (they're released as a set) and rerun the full
+# smoke harness on both platforms before committing the new vendored artifacts.
+openmls = "0.8.1"
+openmls_traits = "0.5.0"
+openmls_rust_crypto = "0.5.1"
+openmls_basic_credential = "0.5.0"
+
+# Wire (de)serialization for MLS messages — the openmls crate re-exports
+# tls_codec types, but pinning here lets us call TlsSerialize::tls_serialize
+# from our own helpers without dragging openmls internals into scope.
+tls_codec = { version = "0.4", features = ["derive"] }
+
+# Deterministic signer derivation from the M3 identity seed. blake2 is the
+# KDF (sub-seed under context "sessions/mls-signer/v1"); ed25519-dalek turns
+# the sub-seed into a SignatureKeyPair-compatible (private, public) pair.
+# Same construction strategy the deleted libsignal store used to derive its
+# identity key — different domain-separation tag for crypto isolation.
+blake2 = "0.10"
+ed25519-dalek = { version = "2", default-features = false, features = ["std"] }
+
+# Persistence (rusqlite + bundled-sqlcipher) intentionally NOT pulled in here.
+# Chunk 2 uses openmls_rust_crypto's in-memory MemoryStorage. The SQLCipher-
+# backed StorageProvider lands in Chunk 2.5 and will re-add the dep with the
+# `bundled-sqlcipher-vendored-openssl` feature so the Android NDK
+# cross-compile can build OpenSSL from source (the plain
+# `bundled-sqlcipher` feature expects system OpenSSL headers, which the NDK
+# doesn't ship).
+
+# Idiomatic error enum that UniFFI can lower to Swift/Kotlin error types.
+thiserror = "2.0"
+
+# FFI bindings generator + runtime. Same version pinned at runtime and at
+# bindgen-time (build-dependencies below). A version skew here produces silent
+# ABI mismatches at the Swift/Kotlin → Rust boundary.
+uniffi = { version = "0.31.1", features = ["cli"] }
+
+[build-dependencies]
+uniffi = { version = "0.31.1", features = ["build"] }
+
+# UniFFI bindgen runs as a separate cargo binary so the same crate produces
+# both the cdylib (consumed at runtime) and a bindgen CLI (used at build time
+# by scripts/build-mls.sh to emit Swift + Kotlin).
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+
+# Dev profile retains symbols for debugger backtraces in unit tests.
+[profile.dev]
+opt-level = 0

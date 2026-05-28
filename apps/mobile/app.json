@@ -10,7 +10,18 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "io.sessions.app"
+      "bundleIdentifier": "io.sessions.app",
+      "entitlements": {
+        "keychain-access-groups": [
+          "$(AppIdentifierPrefix)io.sessions.app",
+          "$(AppIdentifierPrefix)io.sessions.chat"
+        ],
+        "aps-environment": "development",
+        "com.apple.security.application-groups": ["group.io.sessions.shared"]
+      },
+      "infoPlist": {
+        "UIBackgroundModes": ["remote-notification"]
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -24,6 +35,12 @@
       "expo-font",
       "expo-secure-store",
       [
+        "expo-notifications",
+        {
+          "mode": "production"
+        }
+      ],
+      [
         "expo-build-properties",
         {
           "android": {
@@ -33,7 +50,14 @@
       ]
     ],
     "experiments": {
-      "typedRoutes": true
+      "typedRoutes": true,
+      "autolinkingModuleResolution": true
+    },
+    "extra": {
+      "_complianceTodos": [
+        "Before first App Store / Play public submission:",
+        "1. iOS: set ios.config.usesNonExemptEncryption = true. SQLCipher + libsodium → ECCN 5D002 (mass-market via License Exception ENC). US entity → file annual BIS self-classification (CSV to crypt-supp8@bis.doc.gov by Feb 1). Non-US entity → check national regime (UK ECJU / EU dual-use), usually no filing."
+      ]
     }
   }
 }

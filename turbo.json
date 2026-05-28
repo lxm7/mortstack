@@ -1,5 +1,12 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalEnv": [
+    "ANDROID_HOME",
+    "ANDROID_SDK_ROOT",
+    "ANDROID_NDK_HOME",
+    "ANDROID_NDK_ROOT",
+    "JAVA_HOME"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
@@ -44,7 +51,7 @@
     },
     "test": {
       "dependsOn": ["^test"],
-      "outputs": ["coverage/**"]
+      "outputs": []
     }
   }
 }

@@ -28,6 +28,10 @@ export default $config({
     };
   },
 
+  // The object returned at the bottom is what SST prints after every
+  // `sst deploy` / `sst dev` and writes to `.sst/outputs.json`. SST v3 has no
+  // `sst output <name>` subcommand — read the JSON or re-run deploy.
+  // At runtime, linked code reads via `Resource.<Name>` from the sst SDK.
   async run() {
     // VPC deferred — nothing currently runs inside it. Reactivate when the
     // SUI indexer (ECS Fargate) ships. A provisioned VPC with NAT costs
@@ -36,6 +40,9 @@ export default $config({
 
     // Secrets (Neon, Cloudflare, Better Auth)
     await import("./infra/stacks/secrets");
+
+    // chat push secrets (APNs + FCM credentials for the M6 push fanout Lambda). These
+    await import("./infra/stacks/chat-push-secrets");
 
     // Storage (Cloudflare R2 buckets + CDN)
     const { storage } = await import("./infra/stacks/storage");
@@ -52,8 +59,10 @@ export default $config({
     // Content moderation (Rekognition — stub, subscribes via events.ts)
     // await import("./infra/stacks/moderation");
 
-    // Real-time (deferred — using push notifications + polling)
-    // await import("./infra/stacks/realtime");
+    // Chat WebSocket transport (Cloudflare Worker + Durable Objects)
+    // M1 of the chat MVP. Per-user inbox DO + per-chat DO; await-then-ack
+    // persistence with 100ms batching.
+    const { chatWs } = await import("./infra/stacks/chat-ws");
 
     // Push notifications (stub, subscribes via events.ts)
     // await import("./infra/stacks/notifications");
@@ -61,6 +70,7 @@ export default $config({
     return {
       api: api.url,
       uploadUrl: api.uploadUrl,
+      chatWs: chatWs.url,
       mediaBucket: storage.mediaBucket.name,
       cdnUrl: storage.cdnUrl,
     };

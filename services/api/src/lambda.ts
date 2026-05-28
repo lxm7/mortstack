@@ -2,6 +2,7 @@ import { awsLambdaRequestHandler } from "@trpc/server/adapters/aws-lambda";
 import { appRouter } from "./router";
 import { createContext } from "./trpc";
 import { auth } from "./lib/auth";
+import { handleChatInternal } from "./lib/chat-internal";
 import type {
   APIGatewayProxyEventV2,
   APIGatewayProxyResultV2,
@@ -46,7 +47,10 @@ async function responseToLambdaResult(
   };
 }
 
-// Route: /auth/* → Better Auth, everything else → tRPC
+// Routes:
+//   /auth/*           → Better Auth
+//   /internal/chat/*  → chat-ws Worker callbacks (HMAC-gated, never client-callable)
+//   everything else   → tRPC
 export async function handler(
   event: APIGatewayProxyEventV2,
   context: unknown,
@@ -59,9 +63,23 @@ export async function handler(
     return responseToLambdaResult(response);
   }
 
-  // tRPC handles everything else
+  if (path.startsWith("/internal/chat/")) {
+    const request = lambdaEventToRequest(event);
+    const response = await handleChatInternal(request, path);
+    if (response) return responseToLambdaResult(response);
+  }
+
+  // tRPC handles everything else. Strip the /trpc mount prefix so the Lambda
+  // adapter sees procedure paths at the root.
+  let trpcEvent = event;
+  if (path.startsWith("/trpc/")) {
+    trpcEvent = { ...event, rawPath: path.slice("/trpc".length) };
+  } else if (path === "/trpc") {
+    trpcEvent = { ...event, rawPath: "/" };
+  }
+
   return trpcHandler(
-    event,
+    trpcEvent,
     context as never,
   ) as Promise<APIGatewayProxyResultV2>;
 }

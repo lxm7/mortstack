@@ -160,3 +160,21 @@ sst deploy --stage production
 | Neon PostgreSQL       | 0.5GB compute    | Free                     |
 | Expo Push             | Unlimited        | Free                     |
 | **Total**             |                  | **~$8/mo**               |
+
+### Rotation later
+
+#### Same user, new key, decommission old:
+
+aws iam create-access-key --user-name chat-ws-publisher #
+new  
+ sst secret set ChatWsAwsAccessKeyId "AKIA..." --stage production #
+rotate in SST  
+ sst secret set ChatWsAwsSecretAccessKey "..." --stage production
+sst deploy --stage production #
+Worker picks up
+aws iam update-access-key --user-name chat-ws-publisher --access-key-id <OLD>  
+ --status Inactive  
+ aws iam delete-access-key --user-name chat-ws-publisher --access-key-id <OLD>
+
+Don't skip the Inactive step — keeps the old key reversible for ~24h while you  
+ confirm the new one is live in CloudWatch / Worker logs.

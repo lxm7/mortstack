@@ -13,6 +13,7 @@ export interface Context {
   // The authenticated real-world person
   account: {
     id: string;
+    authUserId: string;
     identityTier: IdentityTier;
     isBanned: boolean;
   } | null;
@@ -38,7 +39,12 @@ export async function resolveContext(headers: Headers): Promise<Context> {
     // Resolve domain Account from the Better Auth user
     const dbAccount = await prisma.account.findUnique({
       where: { authUserId: session.user.id },
-      select: { id: true, identityTier: true, isBanned: true },
+      select: {
+        id: true,
+        authUserId: true,
+        identityTier: true,
+        isBanned: true,
+      },
     });
 
     if (dbAccount) {

@@ -1,0 +1,4 @@
+framework module chat_mls_coreFFI {
+  umbrella header "chat_mls_coreFFI.h"
+  export *
+}

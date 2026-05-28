@@ -1,2 +1,2 @@
 npx lint-staged
-npx turbo check-types --filter='...[HEAD]'
+npx turbo check-types lint --filter='...[HEAD]'
