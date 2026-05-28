@@ -1,9 +1,9 @@
-# Sessions
+# Mortstack
 
 For templating multiple on same machine:
 
-1. sst.config.ts — name: 'sessions' needs to change per project
-2. Bundle IDs — io.sessions.app in app.json + native files needs to change per
+1. sst.config.ts — name: 'mortstack' needs to change per project
+2. Bundle IDs — io.mortstack.app in app.json + native files needs to change per
    project
 
 ## Tech Stack
@@ -13,13 +13,12 @@ For templating multiple on same machine:
 - **Backend**: tRPC + Better Auth + Prisma (Neon HTTP driver adapter)
 - **Database**: Neon (serverless PostgreSQL, accessed over HTTP — no VPC required)
 - **Events**: AWS SNS + SQS (fan-out pattern)
-- **Media**: Cloudflare R2 + CDN (zero egress)
-- **Blockchain**: SUI — client-signed transactions live; on-chain indexer deferred until first NFT/escrow ships
+- **Media**: Cloudflare R2 & DO's + CDN (zero egress)
 - **Infrastructure**: SST v3 (Pulumi) → AWS Lambda + Cloudflare
 
 ## Run
 
-### RN/Expo - (stdout doesnt work running from root with pnpm)
+Note: RN/Expo's stdout doesnt work running from root with pnpm, ensure nested scripts are ultimately ran for expected Expo menu shortcuts
 
 cd apps/mobile
 pnpm prebuild-clean && npx expo run:android
@@ -75,13 +74,13 @@ pnpm install
 `packages/database/.env`:
 
 ```bash
-DATABASE_URL="postgresql://user:pass@ep-xxx.eu-west-1.aws.neon.tech/sessions?sslmode=require"
+DATABASE_URL="postgresql://user:pass@ep-xxx.eu-west-1.aws.neon.tech/mortstack?sslmode=require"
 ```
 
 `services/api/.env`:
 
 ```bash
-DATABASE_URL="postgresql://user:pass@ep-xxx.eu-west-1.aws.neon.tech/sessions?sslmode=require"
+DATABASE_URL="postgresql://user:pass@ep-xxx.eu-west-1.aws.neon.tech/mortstack?sslmode=require"
 BETTER_AUTH_SECRET="generate-a-random-32-char-string-here"
 BETTER_AUTH_URL="http://localhost:3001"
 TRUSTED_ORIGINS="http://localhost:3000,http://localhost:8081"
@@ -123,7 +122,7 @@ To create an account locally, use the sign-up screen in the app or POST directly
 ```bash
 curl -X POST http://localhost:3001/auth/sign-up/email \
   -H 'Content-Type: application/json' \
-  -d '{"email":"you@example.com","password":"password123","name":"Dev"}'
+  -d '{"email":"you@example.com","password":"password","name":"Dev"}'
 ```
 
 ## Seed Data
@@ -216,7 +215,7 @@ Activate components individually when their trigger fires. Each is independent.
 RN App ─► CF (DNS/WAF) ──────► │
                               └─► Lambda (write API)  ─► Neon (HTTP, +read replicas)
                                           │
-                                          ├─► Upstash Redis (sessions, rate limit, feed cache)
+                                          ├─► Upstash Redis (mortstack, rate limit, feed cache)
                                           ├─► SNS / SQS  (event bus, unchanged)
                                           ├─► Search (Typesense / Meilisearch on Fargate)
                                           └─► OpenTelemetry → Axiom / Sentry
@@ -232,7 +231,6 @@ Timeline service (fan-out-on-write) ─► Redis lists per follower ─► hydra
 | Phase 2 component                     | Trigger to add                             | Approx cost at 100k DAU                           |
 | ------------------------------------- | ------------------------------------------ | ------------------------------------------------- |
 | Upstash Redis                         | session p50 >50ms or DAU >5k               | $5-30/mo                                          |
-| SUI indexer (Fargate Spot)            | first NFT/escrow feature ships             | $3-5/mo                                           |
 | Search (Typesense / Meilisearch)      | Postgres trigram exhausted                 | $19/mo (Cloud) or $5/mo (self-host)               |
 | Observability (OTel + Sentry/Axiom)   | first paid user                            | free tier → $26/mo                                |
 | Timeline fan-out                      | feed query p95 >300ms                      | Redis already paid                                |
@@ -303,7 +301,7 @@ For 0 → 100k DAU window (next 18-24 months realistic), DO is right.
 
 ### Authentication
 
-- **Better Auth** with DB-backed sessions (fully revocable)
+- **Better Auth** with DB-backed mortstack (fully revocable)
 - **Email/password**: sign up → creates AuthUser + domain Account (active)
 - **SUI wallet (SIWS)**: challenge/response — implemented, deferred
 - **zkLogin (Google/Apple → SUI address)**: planned — keyless on-chain identity for users without a wallet
@@ -433,7 +431,7 @@ Integration:
 - `@repo/chat-crypto` native module wrapping libsodium via **Swift-Sodium (iOS)** + **lazysodium-android (Android)**.
 - Surface: `generateIdentity()`, `box(plain, theirPub, mySecret)`, `boxOpen(...)`, `randomNonce()`, `signKeyBundle(...)`. All sync, `Uint8Array` in/out.
 - Single 32-byte seed per device → derive Ed25519 (identity/sign) + X25519 (encrypt). Forward-compat with M3.5 MLS BasicCredential (same Ed25519 key signs the credential).
-- Seed persisted in shared Keychain group `io.sessions.chat` set up in M2 (alias `chat-identity-seed-v1`, `AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY`).
+- Seed persisted in shared Keychain group `io.mortstack.chat` set up in M2 (alias `chat-identity-seed-v1`, `AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY`).
 - **Multi-device per user**: Postgres table `UserDevice(userId, deviceId, ed25519Pub, x25519Pub, addedAt)`. Outbound send = fanout-encrypt to every device of every recipient. Cheap at our scale (Postgres column read), Signal-shaped.
 - Pubkey directory = tRPC routes `user.keys.publish` / `user.keys.byUserIds(batch)`. Better Auth bearer–authed. Client caches peer pubkeys in `chat-db.peer_keys` table (TTL 24h).
 - Per-message random 24-byte XSalsa20 nonce. Plaintext frame `{v: 1, text, ts}` msgpack-encoded then boxed.
@@ -546,7 +544,7 @@ Group-native end-to-end encryption replacing the M3 libsodium box. See ADR-015 f
 **Forward secrecy + recovery**
 
 - MLS provides forward secrecy + post-compromise security via tree-ratcheted epochs. Member-add re-key cost is O(log N) (vs Sender Keys O(N)).
-- KeyPackage pool: 100 per device, top-up at threshold 20. Last-resort KeyPackage (replayable) skipped in Phase 1 — revisit when telemetry shows > 1% sessions hitting empty pool.
+- KeyPackage pool: 100 per device, top-up at threshold 20. Last-resort KeyPackage (replayable) skipped in Phase 1 — revisit when telemetry shows > 1% mortstack hitting empty pool.
 - Commit retention: keep all per group; MLS Resync at 500-commit threshold (Phase 2). Phase 1 ceiling ≈ 1 MB per group.
 - Recovery threat model unchanged from M3: lose phone / uninstall = lose identity. PIN-based recovery + key escrow remain out of scope.
 
@@ -580,7 +578,7 @@ Group-native end-to-end encryption replacing the M3 libsodium box. See ADR-015 f
 #### M6 — Push notifications with E2E decryption (2 weeks)
 
 - `expo-notifications` for token registration; tokens stored on the API and tied to the device session.
-- iOS Notification Service Extension in `apps/mobile/native-targets/notification-service/` (Swift). Runs outside the JS runtime; reads the identity seed written in M3 from the shared Keychain group `io.sessions.chat` (set up in M2, populated in M3) — no re-prompt, no JS bridge. Decrypts the payload and presents the plaintext notification.
+- iOS Notification Service Extension in `apps/mobile/native-targets/notification-service/` (Swift). Runs outside the JS runtime; reads the identity seed written in M3 from the shared Keychain group `io.mortstack.chat` (set up in M2, populated in M3) — no re-prompt, no JS bridge. Decrypts the payload and presents the plaintext notification.
 - Android: data-only FCM messages handled in a foreground/background Kotlin service; same decrypt-then-display flow.
 - **MLS group-state for NSE.** v=2 messages ride MLS application messages keyed by current group epoch. The main app writes a sealed read-only snapshot of `(groupId → epoch, secrets)` to the shared keychain group on every Commit it processes; the NSE reads but never mutates this snapshot (mutating would race the main app's commit processing). Stale-snapshot fallback: a push arriving on an epoch the snapshot doesn't have falls through to a generic "New message — open app" notification (no plaintext, no race). Acceptable miss rate at Phase 1; revisit with a coordinated commit-applier if it becomes user-visible.
 - Server (`services/api`): on a new message, looks up registered devices for offline members and dispatches ciphertext + minimal metadata via FCM/APNs (no plaintext).
@@ -608,7 +606,7 @@ Build a small AI feature into it — even a basic LLM-powered search or recommen
 - Message edits (with edit history surfaced) and deletes (soft delete; tombstone fanout via DO).
 - Typing indicators and read receipts (over the existing DO channel; respect privacy toggle).
 - Full-text search via SQLite FTS5, indexed on insert.
-- Multi-device session list UI (Better Auth already tracks sessions; build the management screen).
+- Multi-device session list UI (Better Auth already tracks mortstack; build the management screen).
 
 ### Total realistic timeline
 
@@ -630,24 +628,24 @@ First, log in:
 
 Then tail:  
  pnpm --filter @repo/chat-ws exec wrangler tail  
- sessions-dev-chatwsscript-wwtawvxu --format pretty
+ mortstack-dev-chatwsscript-wwtawvxu --format pretty
 
 Run smoke in another terminal, watch logs.
 
 ### Deep-link from Android emulator
 
-App scheme is sessions (from app.json:scheme),  
- bundle io.sessions.app.
+App scheme is mortstack (from app.json:scheme),  
+ bundle io.mortstack.app.
 
 adb shell am start -W -a android.intent.action.VIEW
 \
- -d "sessions://chat-db-debug" io.sessions.app
+ -d "mortstack://chat-db-debug" io.mortstack.app
 
 ### iOS sim equivalent:
 
-xcrun simctl terminate booted io.sessions.app
+xcrun simctl terminate booted io.mortstack.app
 xcrun simctl openurl booted
-sessions://chat-db-debug
+mortstack://chat-db-debug
 
 ### Native Rust libs for native wiring and corresponding toolchains
 
