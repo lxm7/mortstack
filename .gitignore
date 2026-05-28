@@ -66,3 +66,21 @@ apps/mobile/ios/
 
 # Metro
 .metro-health-check*
+
+ # Cloudflare Wrangler
+.dev.vars
+.dev.vars.*
+.wrangler/
+
+# libsignal build artifacts (M3.5 chunk 1A vendoring)
+# Build outputs of packages/chat-crypto/scripts/build-libsignal.sh — too
+# large for git (~337MB iOS xcframework + ~159MB Android AAR). Contributors
+# run the script after clone; future CI fetches prebuilt release assets.
+# Binary checksums skipped too — non-reproducible across build machines
+# (embedded timestamps + paths). The SOURCE-tree manifest LibSignalClient.sha256
+# is committed because it is reproducible.
+packages/chat-crypto/ios/SignalFfi.xcframework/
+packages/chat-crypto/ios/SignalFfi.xcframework.sha256
+packages/chat-crypto/android/libs/*.aar
+packages/chat-crypto/android/libs/*.aar.sha256
+packages/chat-mls-core/ios/chat_mls_coreFFI.xcframework/**/chat_mls_coreFFI

@@ -1,3 +1,10 @@
+// MUST be the first import — installs globalThis.crypto.getRandomValues
+// before any other module reads it. nanoid (used by chat-transport) and
+// any noble/* lib pulled in later all depend on it. RN/Hermes doesn't ship
+// the Web Crypto API; this polyfill bridges to the system CSPRNG via a
+// tiny native module (iOS SecRandomCopyBytes / Android SecureRandom).
+import "react-native-get-random-values";
+
 import { useEffect } from "react";
 import { Stack } from "expo-router";
 import { useFonts } from "expo-font";
@@ -14,8 +21,45 @@ import {
   IBMPlexSans_700Bold_Italic,
 } from "@expo-google-fonts/ibm-plex-sans";
 import { Providers } from "@/providers";
+import { getChatDb } from "@repo/chat-db";
+import { ChatCalls } from "@repo/chat-calls";
+import { getOrCreateChatIdentity } from "@/lib/chat/identity";
+// Side-effect import — wires publishMyChatDevice() to fire on every
+// auth-state transition (boot + sign-in + user-switch), idempotent per user.
+import "@/lib/chat/auto-publish";
+// Side-effect import — MLS engine bootstrap + KeyPackage top-up + commit/welcome
+// polling (Chunk 5). Replaced by DO-pushed signals in Chunk 6.
+import "@/lib/chat/mls-auto-publish";
+// Side-effect import — M6 APNs/FCM token register on auth ready. Idempotent
+// per signed-in user; depends on auto-publish creating the UserDevice row.
+import "@/lib/chat/push-auto-register";
 
 SplashScreen.preventAutoHideAsync();
+
+getOrCreateChatIdentity()
+  .then((id) => {
+    console.log("[chat-mvp/M3] chat-identity ready", {
+      source: id.source,
+      deviceId: id.deviceId,
+      ed25519PubBytes: id.ed25519Pub.length,
+      x25519PubBytes: id.x25519Pub.length,
+      calls: ChatCalls.hello(),
+    });
+  })
+  .catch((err: unknown) => {
+    console.error("[chat-mvp/M3] chat-identity init failed", err);
+  });
+
+getChatDb()
+  .then((handle) => {
+    console.log("[chat-mvp/M2] chat-db ready", {
+      schemaVersion: handle.version,
+      keySource: handle.keySource,
+    });
+  })
+  .catch((err: unknown) => {
+    console.error("[chat-mvp/M2] chat-db init failed", err);
+  });
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({

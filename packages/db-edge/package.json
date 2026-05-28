@@ -1,0 +1,28 @@
+{
+  "name": "@repo/db-edge",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Worker-runtime Neon HTTP SQL client for chat persist hot path (ADR-010). No Prisma. Schema authority remains in @repo/database.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "check-types": "tsc --noEmit",
+    "test": "echo \"no tests yet\" && exit 0"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "0.10.4"
+  },
+  "devDependencies": {
+    "@repo/eslint-config": "workspace:*",
+    "@repo/typescript-config": "workspace:*",
+    "eslint": "^9.39.1",
+    "typescript": "5.9.2"
+  }
+}

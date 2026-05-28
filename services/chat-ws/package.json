@@ -1,0 +1,31 @@
+{
+  "name": "@repo/chat-ws",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Cloudflare Worker + Durable Objects for Sessions chat transport (M1)",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev --local --persist-to .wrangler/state",
+    "lint": "eslint . --ignore-pattern .wrangler",
+    "check-types": "tsc --noEmit",
+    "test": "echo \"no tests yet\" && exit 0",
+    "smoke:m1": "node scripts/smoke-m1.mjs",
+    "smoke:m2": "node scripts/smoke-m2.mjs"
+  },
+  "dependencies": {
+    "@repo/chat-transport": "workspace:*",
+    "@repo/db-edge": "workspace:*",
+    "aws4fetch": "^1.0.20",
+    "ulid": "^2.3.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20251101.0",
+    "@msgpack/msgpack": "^3.1.2",
+    "@repo/eslint-config": "workspace:*",
+    "@repo/typescript-config": "workspace:*",
+    "eslint": "^9.39.1",
+    "typescript": "5.9.2",
+    "wrangler": "^4.90.0"
+  }
+}

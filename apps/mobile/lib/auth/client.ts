@@ -1,7 +1,6 @@
 import { createAuthClient } from "better-auth/client";
+import { API_URL } from "@/lib/api/url";
 import { loadSessionToken, saveSessionToken } from "./session";
-
-const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3001";
 // Better Auth client configured for React Native:
 // - No cookies (RN has no cookie jar)
 // - Session token stored in expo-secure-store

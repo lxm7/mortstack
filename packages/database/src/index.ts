@@ -1,2 +1,2 @@
-export { prisma } from './client';
-export * from './generated';
+export { prisma } from "./client";
+export * from "@prisma/client";

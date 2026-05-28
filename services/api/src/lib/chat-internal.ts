@@ -1,0 +1,83 @@
+// Internal endpoints called by the Cloudflare chat-ws Worker.
+//
+//   POST /internal/chat/verify-session
+//     body: { token }
+//     200:  { userId }
+//     401:  unauthenticated bearer
+//
+// The /internal/chat/persist endpoint was removed in M2 per ADR-010 — the
+// chat-ws Worker now writes directly to Neon via @repo/db-edge, skipping this
+// Lambda hop. Verify-session remains because Better Auth's session validation
+// owns the bearer-token contract.
+
+import { Resource } from "sst";
+
+import { auth } from "./auth";
+
+const SECRET_HEADER = "x-chat-ws-secret";
+
+interface VerifySessionRequest {
+  token: string;
+}
+
+interface VerifySessionResponse {
+  userId: string;
+}
+
+function verifyHmac(request: Request): boolean {
+  const got = request.headers.get(SECRET_HEADER);
+  if (!got) return false;
+  const expected = Resource.ChatWsHmacSecret.value;
+  // Constant-time compare — short strings, but still avoid early exit.
+  if (got.length !== expected.length) return false;
+  let acc = 0;
+  for (let i = 0; i < got.length; i++) {
+    acc |= got.charCodeAt(i) ^ expected.charCodeAt(i);
+  }
+  return acc === 0;
+}
+
+export async function handleChatInternal(
+  request: Request,
+  path: string,
+): Promise<Response | null> {
+  if (!path.startsWith("/internal/chat/")) return null;
+  if (request.method !== "POST") {
+    return new Response("method not allowed", { status: 405 });
+  }
+  if (!verifyHmac(request)) {
+    return new Response("unauthorized", { status: 401 });
+  }
+
+  const sub = path.slice("/internal/chat/".length);
+  switch (sub) {
+    case "verify-session":
+      return handleVerifySession(request);
+    default:
+      return new Response("not found", { status: 404 });
+  }
+}
+
+async function handleVerifySession(request: Request): Promise<Response> {
+  let body: VerifySessionRequest;
+  try {
+    body = (await request.json()) as VerifySessionRequest;
+  } catch {
+    return new Response("bad json", { status: 400 });
+  }
+  if (!body?.token) return new Response("missing token", { status: 400 });
+
+  // Better Auth's bearer plugin reads from Authorization header.
+  const headers = new Headers();
+  headers.set("Authorization", `Bearer ${body.token}`);
+  const session = await auth.api.getSession({ headers });
+  if (!session?.user?.id) {
+    return new Response("invalid session", { status: 401 });
+  }
+
+  const out: VerifySessionResponse = { userId: session.user.id };
+  return new Response(JSON.stringify(out), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+}

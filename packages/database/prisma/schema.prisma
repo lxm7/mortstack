@@ -1,11 +1,16 @@
+// Legacy `prisma-client-js` generator. Default output (`node_modules/.prisma/
+// client` + `@prisma/client` re-export). Engine binary is bundled per
+// `binaryTargets`; the Neon HTTP adapter handles queries at runtime so the
+// engine is loaded but unused. See ADR-009 for the engine-less follow-up plan.
 generator client {
-  provider = "prisma-client-js"
-  output   = "../src/generated"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-arm64-openssl-3.0.x"]
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // ── Better Auth models ────────────────────────────────────────────────────────
@@ -112,10 +117,156 @@ model Account {
   // Relations
   profiles       ProfileMember[]
   identityChecks IdentityCheck[]
+  devices        UserDevice[]
+  groupWelcomes  GroupWelcome[] // MLS Welcomes addressed to this account; consumed on poll
+  blocksGiven    Blocklist[]    @relation("BlocksGiven")
+  blocksReceived Blocklist[]    @relation("BlocksReceived")
+  reportsMade    Report[]       @relation("ReportsMade")
 
   @@index([authUserId])
   @@index([walletAddress])
   @@index([email])
+}
+
+// ── UserDevice ────────────────────────────────────────────────────────────────
+// One row per physical device an Account has signed in on. Stores the device's
+// long-term Ed25519 (identity/sign) + X25519 (encrypt) public keys, plus a
+// self-signed bundle signature the server verifies at publish time.
+//
+// Outbound chat send fans-out to every device of every recipient — see
+// README §M3 Multi-device. Private keys never leave the device's secure
+// enclave / Keychain group `io.sessions.chat`; this table holds public material
+// only.
+model UserDevice {
+  id              String   @id @default(cuid())
+  accountId       String
+  deviceId        String   // client-generated UUID; stable across re-installs only if seed survives
+  ed25519Pub      Bytes    // 32 bytes raw — also serves as the MLS BasicCredential signature key per ADR-015 §5
+  x25519Pub       Bytes    // 32 bytes raw
+  bundleSignature Bytes    // 64-byte Ed25519 detached sig over 0x01 ‖ deviceId-utf8 ‖ ed25519Pub ‖ x25519Pub
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // ── MLS directory ──────────────────────────────────────────────────────
+  // The MLS signer reuses ed25519Pub above (BasicCredential whose signature
+  // key == this device's Ed25519 pub). KeyPackages are short-lived,
+  // consume-on-fetch entries pointing back at this device.
+  keyPackages KeyPackage[]
+  pushTokens  PushToken[]
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, deviceId])
+  @@index([accountId])
+}
+
+// ── PushToken ────────────────────────────────────────────────────────────────
+// APNs / FCM token registered per UserDevice for M6 push fanout (ADR-013).
+// One UserDevice may register multiple tokens (e.g. standard + VoIP on iOS
+// once M7 lands). Tokens rotate independently of the device's long-term
+// crypto identity, hence the separate model rather than columns on
+// UserDevice.
+//
+// Lifecycle:
+//   - register on app boot via tRPC user.push.register (idempotent upsert on
+//     token UNIQUE).
+//   - lastSeenAt bumped on every successful re-register.
+//   - chat-push Lambda DELETEs the row on 410-Gone from APNs/FCM (D7).
+//   - disabledAt set when the user toggles push off in-app (kept as
+//     tombstone so re-enabling doesn't re-issue the same token); Lambda
+//     skips rows where disabledAt IS NOT NULL.
+model PushToken {
+  id           String       @id @default(cuid())
+  userDeviceId String
+  platform     PushPlatform
+  token        String       @unique
+  // iOS apns-topic / Android package name. Drives the apns-topic header
+  // and lets one app+ext share a token without ambiguity.
+  appBundleId  String
+  lastSeenAt   DateTime     @default(now())
+  createdAt    DateTime     @default(now())
+  disabledAt   DateTime?
+
+  device UserDevice @relation(fields: [userDeviceId], references: [id], onDelete: Cascade)
+
+  @@index([userDeviceId])
+}
+
+enum PushPlatform {
+  APNS
+  FCM
+}
+
+// ── KeyPackage ────────────────────────────────────────────────────────────────
+// One row per unconsumed KeyPackage published by a UserDevice. TLS-encoded
+// public KeyPackage bytes are opaque to the server — content validated by
+// length only at the tRPC boundary. Hard-deleted on consume inside the
+// fetchKeyPackagesForAccounts transaction (no soft-delete: at 1M DAU the
+// audit value isn't worth the storage; structured logs cover any forensic
+// need).
+//
+// Server-side cap: 200 per device. Enforced in the publishKeyPackages tx
+// (SELECT COUNT FOR UPDATE → reject if existing + new > 200). Phase 1 pool
+// is 100 with top-up at 20, so the cap = 2× normal — absorbs racing top-ups
+// without permitting flood-fill abuse. See ADR-015 design point #3
+// (last-resort skipped) — cap doesn't prevent OTPK exhaustion in pathological
+// patterns; that lands later if telemetry surfaces it.
+model KeyPackage {
+  id           String     @id @default(cuid())
+  userDeviceId String
+  bytes        Bytes      // TLS-encoded public KeyPackage (opaque to server)
+  createdAt    DateTime   @default(now())
+
+  device UserDevice @relation(fields: [userDeviceId], references: [id], onDelete: Cascade)
+
+  @@index([userDeviceId, id]) // hot consume-on-fetch — DELETE … WHERE userDeviceId = ? ORDER BY id LIMIT 1 RETURNING *
+}
+
+// ── GroupCommit ───────────────────────────────────────────────────────────────
+// MLS commit log keyed by groupId. The @@unique([groupId, epoch]) is the
+// ADR-015 §6 server-side ordering gate — concurrent commits at the same
+// epoch race for the UNIQUE write; the loser gets a 23505 violation, fetches
+// pending, applies, and retries with epoch+1.
+//
+// groupId is opaque bytes (32B by convention, but server doesn't enforce
+// length — that's MLS's job). The server never inspects `bytes` content;
+// validators only check the length envelope.
+//
+// Retention: ADR-015 §4 keeps all commits per group; M8 watch-item will add
+// MLS Resync compaction at the 500-commit threshold. Phase 1 ceiling
+// ≈ 1 MB per group, trivial.
+model GroupCommit {
+  id        String   @id @default(cuid())
+  groupId   Bytes
+  epoch     Int      // 0-based; monotonic per groupId; gap-free for non-byzantine clients
+  bytes     Bytes    // TLS-encoded MlsMessageOut (Commit)
+  createdAt DateTime @default(now())
+
+  @@unique([groupId, epoch]) // ADR-015 §6 ordering gate
+  @@index([groupId, epoch])  // covers fetchPendingCommits range scan
+}
+
+// ── GroupWelcome ──────────────────────────────────────────────────────────────
+// MLS Welcome message addressed to a specific recipient account on a specific
+// group. Short-lived: deleted on consume by fetchPendingWelcomes. Each row
+// represents one Welcome blob to deliver to one Account; a multi-add by
+// alice generates one row per new joiner.
+//
+// recipientDeviceId is null when the sender doesn't know which device on the
+// account should receive it — every device under the account polls and the
+// first one to consume wins. In practice we set it from the matching
+// KeyPackage's device id so routing is deterministic.
+model GroupWelcome {
+  id                  String   @id @default(cuid())
+  recipientAccountId  String
+  recipientDeviceId   String?  // populated from the consumed KeyPackage's device when known
+  groupId             Bytes    // for client-side routing — caller's join_from_welcome figures this out anyway
+  bytes               Bytes    // TLS-encoded MlsMessageOut (Welcome)
+  createdAt           DateTime @default(now())
+
+  recipient Account @relation(fields: [recipientAccountId], references: [id], onDelete: Cascade)
+
+  @@index([recipientAccountId, id]) // consume-on-fetch
 }
 
 // ── Profile ───────────────────────────────────────────────────────────────────
@@ -354,4 +505,150 @@ enum NFTType {
   PERFORMANCE
   ART
   COLLECTIBLE
+}
+
+// ── Chat ──────────────────────────────────────────────────────────────────────
+// Direct + small group chats. End-to-end encrypted: server stores only
+// ciphertext + nonce, never plaintext or keys.
+//
+// Membership is at the AuthUser level, not Profile. A person owns the chat,
+// not their persona, so identity-tier badges and persona switches do not
+// fragment chat history.
+
+model Chat {
+  id        String   @id @default(cuid())
+  kind      ChatKind @default(DIRECT)
+  // Group chats may set a name; direct chats render from the other member.
+  name      String?
+  createdAt DateTime @default(now())
+
+  members  ChatMember[]
+  // No `messages ChatMessage[]` back-relation: ChatMessage drops the FK to
+  // simplify partitioning (ADR-014). Messages are queried by chatId via
+  // packages/db-edge, never via Prisma joins.
+
+  @@index([createdAt])
+}
+
+enum ChatKind {
+  DIRECT
+  GROUP
+}
+
+model ChatMember {
+  id     String @id @default(cuid())
+  chatId String
+  chat   Chat   @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  // Member identified by Better Auth user id. Matches the value the chat-ws
+  // Worker derives from the bearer token at WS upgrade time.
+  userId String
+  // For unread counts + read-receipt UX. Updated by the API on read events.
+  lastReadAt DateTime?
+  joinedAt   DateTime  @default(now())
+
+  @@unique([chatId, userId])
+  @@index([userId])
+}
+
+// ChatMessage is range-partitioned by month on `createdAt` (ADR-014).
+// Prisma manages the parent table schema; partition tables are created by raw
+// migration SQL and a scheduled Worker (see `services/chat-ws` future cron).
+//
+// PK is composite per ADR-012:
+//   - chatId      : partition routing key prefix
+//   - serverSerial: DO-assigned monotonic counter per chatId (BIGINT)
+//   - createdAt   : included in PK so Postgres accepts unique constraints on a
+//                   partitioned table (the partition key must be part of every
+//                   unique index).
+//
+// No FK to Chat — Postgres FKs across partitions are per-partition objects and
+// fight Prisma's migration model. Membership integrity is enforced at the
+// application layer (Worker validates chat exists before insert).
+model ChatMessage {
+  chatId       String
+  serverSerial BigInt
+  // Sender is an AuthUser id (matches Session.userId from Better Auth).
+  senderId     String
+  // Client-generated dedup key (nanoid). Replays after reconnect must not
+  // produce duplicate rows — uniqueness is per (chatId, clientMsgId).
+  clientMsgId  String
+  // Opaque ciphertext + nonce. Server cannot decrypt.
+  ciphertext   Bytes
+  nonce        Bytes
+  createdAt    DateTime @default(now()) @db.Timestamptz()
+
+  @@id([chatId, serverSerial, createdAt])
+  @@unique([chatId, clientMsgId, createdAt])
+  @@index([chatId, serverSerial])
+}
+
+// ── Blocklist ─────────────────────────────────────────────────────────────────
+// Account-level block: blocker can no longer be discovered, started a new
+// direct chat with, or (client-side) see messages from the blocked party.
+// Existing group chats are left as-is — Phase 1 doesn't enforce server-side
+// fanout filtering; the client hides incoming messages from blocked senders
+// (defense-in-depth on the rare server-side leak).
+//
+// App Store Guideline 1.2 (User-Generated Content) — required for review.
+model Blocklist {
+  id               String   @id @default(cuid())
+  blockerAccountId String
+  blockedAccountId String
+  createdAt        DateTime @default(now())
+
+  blocker Account @relation("BlocksGiven",    fields: [blockerAccountId], references: [id], onDelete: Cascade)
+  blocked Account @relation("BlocksReceived", fields: [blockedAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerAccountId, blockedAccountId])
+  @@index([blockerAccountId])
+  @@index([blockedAccountId])
+}
+
+// ── Report ────────────────────────────────────────────────────────────────────
+// Trust & Safety reporting surface. Target is polymorphic by (targetType,
+// targetId) — keeps the schema simple at MVP scale. Moderation pipeline is
+// log-only in Phase 1; a future Slack/email subscriber tails the table.
+//
+// App Store Guideline 1.2 + Play Store UGC policy — required for review.
+model Report {
+  id          String           @id @default(cuid())
+  reporterId  String
+  targetType  ReportTargetType
+  targetId    String           // serverMsgId / accountId / profileId / postId
+  reason      ReportReason
+  notes       String?
+  status      ReportStatus     @default(PENDING)
+  createdAt   DateTime         @default(now())
+  reviewedAt  DateTime?
+  reviewerId  String?
+
+  reporter Account @relation("ReportsMade", fields: [reporterId], references: [id], onDelete: Cascade)
+
+  @@unique([reporterId, targetType, targetId, reason]) // de-dupe identical reports
+  @@index([status, createdAt])
+  @@index([targetType, targetId])
+}
+
+enum ReportTargetType {
+  USER
+  MESSAGE
+  PROFILE
+  POST
+}
+
+enum ReportReason {
+  SPAM
+  HARASSMENT
+  ILLEGAL
+  VIOLENCE
+  SEXUAL_CONTENT
+  IMPERSONATION
+  OTHER
+}
+
+enum ReportStatus {
+  PENDING
+  REVIEWED
+  ACTIONED
+  DISMISSED
 }

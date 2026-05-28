@@ -1,0 +1,4 @@
+f50e3b5378d78660d2a2462a8623b0b3c6c46146fefb1ff5b50c1a3a48e2854f  ./arm64-v8a/libchat_mls_core.so
+446089ffc3cac1364df103dd55900cf5b5e20a0f752a0291a94fa48528e188fa  ./armeabi-v7a/libchat_mls_core.so
+242df9d079d5e8f8c48bc58908ee809662816275fec043d49523d1fe17dddcde  ./x86/libchat_mls_core.so
+df91759146f54815da173748a3b3f93805c70d84d1d5905c2835601c59fd5d5b  ./x86_64/libchat_mls_core.so

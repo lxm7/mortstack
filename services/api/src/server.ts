@@ -47,6 +47,14 @@ const server = http.createServer(async (req, res) => {
     return authHandler(req, res);
   }
 
+  // Strip the /trpc mount prefix so the standalone handler sees procedure
+  // paths at the root (e.g. "/trpc/user.keys.publish" → "/user.keys.publish").
+  if (url.startsWith("/trpc/")) {
+    req.url = url.slice("/trpc".length);
+  } else if (url === "/trpc") {
+    req.url = "/";
+  }
+
   return trpcHandler(req, res);
 });
 

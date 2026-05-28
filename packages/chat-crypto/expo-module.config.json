@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["ChatCryptoModule"]
+  },
+  "android": {
+    "modules": ["io.sessions.chatcrypto.ChatCryptoModule"]
+  }
+}
