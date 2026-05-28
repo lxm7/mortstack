@@ -11,6 +11,6 @@ export default defineConfig({
   // PgBouncer in transaction mode which breaks DDL + prepared statements.
   // Runtime queries still go through DATABASE_URL (pooler) via Prisma Client.
   datasource: {
-    url: env("DIRECT_URL"),
+    url: env("DIRECT_URL") ?? "",
   },
 });

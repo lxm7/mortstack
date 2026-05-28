@@ -44,10 +44,12 @@ export function MessageBubble({
   sender,
   onLongPress,
 }: MessageBubbleProps) {
+  // Long-press is enabled for both own and other bubbles. Own bubbles
+  // surface retry/delete (failed only); other bubbles surface Report. The
+  // sheet caller routes by `isMine`, the bubble just forwards the press.
   const handleLongPress = useCallback(() => {
-    if (!isMine) return;
     onLongPress?.(message);
-  }, [isMine, message, onLongPress]);
+  }, [message, onLongPress]);
 
   const isPending = message.status === "sending";
   const isFailed = message.status === "failed";

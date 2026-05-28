@@ -300,7 +300,7 @@ export const userRouter = router({
         },
       });
 
-      const users = profiles
+      const candidates = profiles
         .map((p) => {
           const accountId = p.members[0]?.accountId;
           if (!accountId) return null;
@@ -313,6 +313,36 @@ export const userRouter = router({
         })
         .filter((u): u is NonNullable<typeof u> => u !== null);
 
+      if (candidates.length === 0) return { users: [] };
+
+      // Block filter — App Store Guideline 1.2. Hide accounts that either
+      // direction of block touches; users shouldn't see, nor be findable
+      // by, anyone they've blocked or who has blocked them.
+      const candidateIds = candidates.map((u) => u.accountId);
+      const blocks = await ctx.prisma.blocklist.findMany({
+        where: {
+          OR: [
+            {
+              blockerAccountId: ctx.account.id,
+              blockedAccountId: { in: candidateIds },
+            },
+            {
+              blockerAccountId: { in: candidateIds },
+              blockedAccountId: ctx.account.id,
+            },
+          ],
+        },
+        select: { blockerAccountId: true, blockedAccountId: true },
+      });
+      const hidden = new Set<string>();
+      for (const b of blocks) {
+        hidden.add(
+          b.blockerAccountId === ctx.account.id
+            ? b.blockedAccountId
+            : b.blockerAccountId,
+        );
+      }
+      const users = candidates.filter((u) => !hidden.has(u.accountId));
       return { users };
     }),
 });

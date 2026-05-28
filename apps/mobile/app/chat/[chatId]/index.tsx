@@ -22,6 +22,7 @@ import {
 import { useAuthStore } from "@/store/auth";
 import { BubbleActionSheet } from "@/lib/chat/components/BubbleActionSheet";
 import { MessageBubble } from "@/lib/chat/components/MessageBubble";
+import { trpc } from "@/lib/trpc/client";
 
 export default function ChatThreadScreen() {
   const router = useRouter();
@@ -55,12 +56,17 @@ export default function ChatThreadScreen() {
   // oldest-first store array so the first rendered row is the newest.
   const reversed = useMemo(() => [...messages].reverse(), [messages]);
 
-  const handleLongPress = useCallback((m: Message) => {
-    // Only failed bubbles have actionable options right now; the sheet
-    // itself ignores other statuses, but we also gate here to avoid the
-    // brief animation flash for sending/sent rows.
-    if (m.status === "failed") setSheetTarget(m);
-  }, []);
+  const handleLongPress = useCallback(
+    (m: Message) => {
+      const isMine = m.senderAuthUserId === myAuthUserId;
+      // Own bubbles only open the sheet when failed (retry/delete). Other
+      // users' bubbles always open it (report). Avoids a no-op animation
+      // for sent/sending own rows that have no actions yet.
+      if (isMine && m.status !== "failed") return;
+      setSheetTarget(m);
+    },
+    [myAuthUserId],
+  );
 
   const renderItem = useCallback(
     ({ item }: { item: Message }) => (
@@ -190,6 +196,9 @@ export default function ChatThreadScreen() {
       </YStack>
       <BubbleActionSheet
         message={sheetTarget}
+        isMine={
+          sheetTarget !== null && sheetTarget.senderAuthUserId === myAuthUserId
+        }
         onClose={() => setSheetTarget(null)}
         onRetry={(m) =>
           void retry({ chatId: m.chatId, clientMsgId: m.clientMsgId })
@@ -197,6 +206,20 @@ export default function ChatThreadScreen() {
         onDelete={(m) =>
           void deleteMessage({ chatId: m.chatId, clientMsgId: m.clientMsgId })
         }
+        onReport={(m, reason) => {
+          // Fire-and-forget — UI returns to the thread immediately. The
+          // backend already de-dupes identical (reporter, target, reason)
+          // so accidental double-fires are safe.
+          void trpc.reports.create
+            .mutate({
+              targetType: "MESSAGE",
+              // serverSerial is the authoritative server id; clientMsgId
+              // works for pending rows but those shouldn't be reportable.
+              targetId: m.serverSerial ?? m.clientMsgId,
+              reason,
+            })
+            .catch((err) => console.warn("[chat] report message failed", err));
+        }}
       />
     </KeyboardAvoidingView>
   );

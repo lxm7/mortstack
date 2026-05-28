@@ -20,6 +20,9 @@ export default function Profile() {
       <Text color="$colorHover" fontSize="$4">
         {session?.user?.email ?? ""}
       </Text>
+      <Button onPress={() => router.push("/settings" as never)}>
+        Settings
+      </Button>
       <Button variant="outlined" onPress={handleSignOut}>
         Sign out
       </Button>

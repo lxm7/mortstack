@@ -15,6 +15,31 @@ import http2 from "node:http2";
 import { SignJWT, importPKCS8, type KeyLike } from "jose";
 import { Resource } from "sst";
 
+declare module "sst" {
+  interface Resource {
+    ApnsEnvironment: {
+      type: "sst.sst.Secret";
+      value: string;
+    };
+    ApnsAuthKey: {
+      type: "sst.sst.Secret";
+      value: string;
+    };
+    ApnsKeyId: {
+      type: "sst.sst.Secret";
+      value: string;
+    };
+    ApnsTeamId: {
+      type: "sst.sst.Secret";
+      value: string;
+    };
+    FcmServiceAccount: {
+      type: "sst.sst.Secret";
+      value: string;
+    };
+  }
+}
+
 const APNS_HOST = "https://api.push.apple.com";
 const APNS_HOST_DEV = "https://api.sandbox.push.apple.com";
 const JWT_CACHE_MS = 10 * 60 * 1000;
