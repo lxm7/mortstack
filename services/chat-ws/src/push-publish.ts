@@ -13,6 +13,23 @@
 import { AwsClient } from "aws4fetch";
 import { Resource } from "sst";
 
+declare module "sst" {
+  interface Resource {
+    ChatWsHmacSecret: {
+      type: "sst.sst.Secret";
+      value: string;
+    };
+    ChatWsAwsAccessKeyId: {
+      type: "sst.sst.Secret";
+      value: string;
+    };
+    ChatWsAwsSecretAccessKey: {
+      type: "sst.sst.Secret";
+      value: string;
+    };
+  }
+}
+
 export interface ChatDeliveredEvent {
   // Routing
   chatId: string;
