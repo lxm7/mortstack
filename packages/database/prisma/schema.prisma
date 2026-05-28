@@ -119,6 +119,9 @@ model Account {
   identityChecks IdentityCheck[]
   devices        UserDevice[]
   groupWelcomes  GroupWelcome[] // MLS Welcomes addressed to this account; consumed on poll
+  blocksGiven    Blocklist[]    @relation("BlocksGiven")
+  blocksReceived Blocklist[]    @relation("BlocksReceived")
+  reportsMade    Report[]       @relation("ReportsMade")
 
   @@index([authUserId])
   @@index([walletAddress])
@@ -577,4 +580,75 @@ model ChatMessage {
   @@id([chatId, serverSerial, createdAt])
   @@unique([chatId, clientMsgId, createdAt])
   @@index([chatId, serverSerial])
+}
+
+// ── Blocklist ─────────────────────────────────────────────────────────────────
+// Account-level block: blocker can no longer be discovered, started a new
+// direct chat with, or (client-side) see messages from the blocked party.
+// Existing group chats are left as-is — Phase 1 doesn't enforce server-side
+// fanout filtering; the client hides incoming messages from blocked senders
+// (defense-in-depth on the rare server-side leak).
+//
+// App Store Guideline 1.2 (User-Generated Content) — required for review.
+model Blocklist {
+  id               String   @id @default(cuid())
+  blockerAccountId String
+  blockedAccountId String
+  createdAt        DateTime @default(now())
+
+  blocker Account @relation("BlocksGiven",    fields: [blockerAccountId], references: [id], onDelete: Cascade)
+  blocked Account @relation("BlocksReceived", fields: [blockedAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerAccountId, blockedAccountId])
+  @@index([blockerAccountId])
+  @@index([blockedAccountId])
+}
+
+// ── Report ────────────────────────────────────────────────────────────────────
+// Trust & Safety reporting surface. Target is polymorphic by (targetType,
+// targetId) — keeps the schema simple at MVP scale. Moderation pipeline is
+// log-only in Phase 1; a future Slack/email subscriber tails the table.
+//
+// App Store Guideline 1.2 + Play Store UGC policy — required for review.
+model Report {
+  id          String           @id @default(cuid())
+  reporterId  String
+  targetType  ReportTargetType
+  targetId    String           // serverMsgId / accountId / profileId / postId
+  reason      ReportReason
+  notes       String?
+  status      ReportStatus     @default(PENDING)
+  createdAt   DateTime         @default(now())
+  reviewedAt  DateTime?
+  reviewerId  String?
+
+  reporter Account @relation("ReportsMade", fields: [reporterId], references: [id], onDelete: Cascade)
+
+  @@unique([reporterId, targetType, targetId, reason]) // de-dupe identical reports
+  @@index([status, createdAt])
+  @@index([targetType, targetId])
+}
+
+enum ReportTargetType {
+  USER
+  MESSAGE
+  PROFILE
+  POST
+}
+
+enum ReportReason {
+  SPAM
+  HARASSMENT
+  ILLEGAL
+  VIOLENCE
+  SEXUAL_CONTENT
+  IMPERSONATION
+  OTHER
+}
+
+enum ReportStatus {
+  PENDING
+  REVIEWED
+  ACTIONED
+  DISMISSED
 }

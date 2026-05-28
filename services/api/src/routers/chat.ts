@@ -156,6 +156,36 @@ export const chatRouter = router({
 
       const resolved = await resolveAccounts(ctx.prisma, others);
 
+      // Block guard — App Store Guideline 1.2. Reject creation of any chat
+      // (direct or group) that includes a counterparty either party has
+      // blocked. Symmetric check covers both "I blocked them" and "they
+      // blocked me" — either prevents the chat from existing.
+      const counterpartyAccountIds = resolved.map((r) => r.id);
+      if (counterpartyAccountIds.length > 0) {
+        const blockHit = await ctx.prisma.blocklist.findFirst({
+          where: {
+            OR: [
+              {
+                blockerAccountId: ctx.account.id,
+                blockedAccountId: { in: counterpartyAccountIds },
+              },
+              {
+                blockerAccountId: { in: counterpartyAccountIds },
+                blockedAccountId: ctx.account.id,
+              },
+            ],
+          },
+          select: { blockerAccountId: true },
+        });
+        if (blockHit) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message:
+              "Cannot start chat — one of the parties has blocked the other",
+          });
+        }
+      }
+
       // Direct-chat idempotency: caller + 1 other → find existing.
       if (input.kind === "direct") {
         const peerAuthUserId = resolved[0]!.authUserId;

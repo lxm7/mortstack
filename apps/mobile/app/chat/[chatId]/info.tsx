@@ -325,6 +325,16 @@ export default function ChatInfoScreen() {
               </YStack>
             )}
 
+            {/* Direct-chat-only T&S actions for the peer. App Store
+                Guideline 1.2 — block + report must be one tap from the
+                conversation view. */}
+            {chat.kind === "direct" && otherMembers[0] && (
+              <DirectChatTrustActions
+                peer={otherMembers[0]}
+                onBlocked={() => router.replace("/chats" as never)}
+              />
+            )}
+
             <Button
               size="$3"
               disabled={pending === "leave"}
@@ -350,6 +360,114 @@ export default function ChatInfoScreen() {
         contentContainerStyle={styles.listContent}
       />
     </YStack>
+  );
+}
+
+function DirectChatTrustActions({
+  peer,
+  onBlocked,
+}: {
+  peer: Member;
+  onBlocked: () => void;
+}) {
+  const [busy, setBusy] = useState<"block" | "report" | null>(null);
+
+  const onBlock = useCallback(() => {
+    Alert.alert(
+      `Block ${peer.displayName ?? peer.handle ?? "this user"}?`,
+      "They won't be able to message you or find you in search. You'll need to unblock from Settings to reverse this.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Block",
+          style: "destructive",
+          onPress: async () => {
+            setBusy("block");
+            try {
+              await trpc.blocks.add.mutate({ accountId: peer.accountId });
+              onBlocked();
+            } catch (err) {
+              console.warn("[chat-info] block failed", err);
+            } finally {
+              setBusy(null);
+            }
+          },
+        },
+      ],
+    );
+  }, [onBlocked, peer]);
+
+  const onReport = useCallback(() => {
+    // Simple reason prompt — single tap to file. The action sheet UX with
+    // reason selection lives in BubbleActionSheet for message reports; for
+    // a user-level report a default of HARASSMENT covers the common case
+    // and the operator-side queue still gets the row.
+    Alert.alert(
+      `Report ${peer.displayName ?? peer.handle ?? "this user"}?`,
+      "We'll review within 24 hours. Choose a reason:",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Spam",
+          onPress: () => void submitReport("SPAM"),
+        },
+        {
+          text: "Harassment",
+          onPress: () => void submitReport("HARASSMENT"),
+        },
+        {
+          text: "Other",
+          onPress: () => void submitReport("OTHER"),
+        },
+      ],
+    );
+
+    async function submitReport(reason: "SPAM" | "HARASSMENT" | "OTHER") {
+      setBusy("report");
+      try {
+        await trpc.reports.create.mutate({
+          targetType: "USER",
+          targetId: peer.accountId,
+          reason,
+        });
+        Alert.alert("Report received", "We'll review within 24 hours.");
+      } catch (err) {
+        console.warn("[chat-info] report failed", err);
+      } finally {
+        setBusy(null);
+      }
+    }
+  }, [peer]);
+
+  return (
+    <XStack gap="$2">
+      <Button
+        flex={1}
+        size="$3"
+        chromeless
+        disabled={busy !== null}
+        onPress={onReport}
+      >
+        {busy === "report" ? (
+          <Spinner size="small" />
+        ) : (
+          <Text>Report user</Text>
+        )}
+      </Button>
+      <Button
+        flex={1}
+        size="$3"
+        chromeless
+        disabled={busy !== null}
+        onPress={onBlock}
+      >
+        {busy === "block" ? (
+          <Spinner size="small" />
+        ) : (
+          <Text color={ERROR_COLOR}>Block user</Text>
+        )}
+      </Button>
+    </XStack>
   );
 }
 
