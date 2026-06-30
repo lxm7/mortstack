@@ -16,7 +16,7 @@ jobs:
   lint-check-types-test:
     name: Lint · Check-types · Test
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -35,6 +35,23 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # The OpenMLS Rust core (ADR-0015) is the crypto engine. Build its napi
+      # binding and run the acceptance suite unconditionally — these tests are
+      # the credibility signal for the E2EE claim, so they gate every push
+      # rather than only when turbo marks the package as affected.
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: packages/chat-mls-core/node
+
+      - name: Build & test MLS native core
+        run: |
+          pnpm --filter @repo/chat-mls-core build:node
+          pnpm --filter @repo/chat-mls-core test
 
       - name: Cache turbo
         uses: actions/cache@v4

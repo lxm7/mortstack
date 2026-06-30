@@ -11,7 +11,7 @@
     "index.node"
   ],
   "scripts": {
-    "build": "cargo build --release && cp target/release/libchat_mls_core_node.dylib index.node",
+    "build": "cargo build --release && cp \"$(ls target/release/libchat_mls_core_node.dylib target/release/libchat_mls_core_node.so target/release/chat_mls_core_node.dll 2>/dev/null | head -n1)\" index.node",
     "clean": "cargo clean && rm -f index.node"
   }
 }

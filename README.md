@@ -1,5 +1,7 @@
 # Mortstack
 
+[![CI](https://github.com/lxm7/mortstack/actions/workflows/ci.yml/badge.svg)](https://github.com/lxm7/mortstack/actions/workflows/ci.yml)
+
 For templating multiple on same machine:
 
 1. sst.config.ts — name: 'mortstack' needs to change per project
