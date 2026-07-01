@@ -196,14 +196,21 @@ export function createChatTransport(opts: ChatTransportOptions): ChatTransport {
     }
 
     try {
-      // Bearer token rides in Sec-WebSocket-Protocol. RN's WebSocket accepts
-      // a string or array as second arg; the server picks `bearer` and uses
-      // the rest as the token.
+      // Bearer token rides in the WS subprotocol — NOT the URL. A bearer in
+      // the query string leaks into access logs, proxies, and the CF request
+      // log. Better Auth tokens carry `=` padding, which is not a valid
+      // Sec-WebSocket-Protocol tchar, so we base64url-encode (padding dropped)
+      // to a valid token value; the Worker base64url-decodes it. Keep in sync
+      // with services/chat-ws/src/index.ts.
       const deviceId = opts.getDeviceId ? await opts.getDeviceId() : null;
       const url = deviceId
         ? `${opts.url}${opts.url.includes("?") ? "&" : "?"}did=${encodeURIComponent(deviceId)}`
         : opts.url;
-      ws = new WebSocket(url, ["bearer", token]);
+      const encodedToken = btoa(token)
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=+$/, "");
+      ws = new WebSocket(url, ["bearer", encodedToken]);
       ws.binaryType = "arraybuffer";
     } catch {
       scheduleReconnect();

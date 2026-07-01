@@ -4,7 +4,7 @@
 
 import { webcrypto } from "node:crypto";
 import * as ed25519 from "@noble/ed25519";
-import { sha512 } from "@noble/hashes/sha512";
+import { sha512 } from "@noble/hashes/sha2.js";
 
 // @noble/ed25519 v2 doesn't bundle sha512 — install a sync provider via
 // `etc.sha512Sync` so `sign()` works without going async.

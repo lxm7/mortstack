@@ -12,6 +12,7 @@ import { trpc } from "@/lib/trpc/client";
 import { loadSessionToken } from "@/lib/auth/session";
 import { useAuthStore } from "@/store/auth";
 import { getOrCreateChatIdentity } from "./identity";
+import { publishMyChatDevice } from "./publish";
 import { getCurrentChatTransport } from "./transport";
 import { clearChatGroupCache } from "./group-resolver";
 import { writeNseSnapshot } from "./nse-snapshot";
@@ -90,6 +91,13 @@ async function bootstrap(authUserId: string): Promise<MlsClient | null> {
   const token = await loadSessionToken();
   if (!token) return null;
   const identity = await getOrCreateChatIdentity();
+
+  // Guarantee the UserDevice row exists before any mls.keys.* call. The M3
+  // publisher (auto-publish.ts) also does this on auth-change, but the two
+  // auth-store subscribers race — and after a DB seed/wipe the row is gone
+  // until M3 republishes. Awaiting here makes the first tick's
+  // topUpKeyPackagesIfBelow find the device. Idempotent upsert server-side.
+  await publishMyChatDevice();
 
   // Resolve canonical Account.id — Better Auth user id is NOT the same as
   // the domain Account.id; the engine and snapshot key off Account.id.

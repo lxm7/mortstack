@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "Sessions",
-    "slug": "sessions-rn",
+    "name": "Mortstack Chat",
+    "slug": "mortstack-chatapp",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "scheme": "sessions",
+    "scheme": "mortstack-chatapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {

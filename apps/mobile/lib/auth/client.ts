@@ -5,8 +5,6 @@ import { loadSessionToken, saveSessionToken } from "./session";
 // - No cookies (RN has no cookie jar)
 // - Session token stored in expo-secure-store
 // - Bearer token sent via Authorization header
-//
-// SUI wallet plugin deferred — see docs/proposals/sui-auth-plugin.md
 export const authClient = createAuthClient({
   baseURL: `${API_URL}/auth`,
   fetchOptions: {

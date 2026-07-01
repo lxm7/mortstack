@@ -2,7 +2,7 @@
   "name": "@repo/chat-ws",
   "version": "0.0.0",
   "private": true,
-  "description": "Cloudflare Worker + Durable Objects for Sessions chat transport (M1)",
+  "description": "Cloudflare Worker + Durable Objects for Mortstack Chat transport (M1)",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "scripts": {

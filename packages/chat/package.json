@@ -2,7 +2,7 @@
   "name": "@repo/chat",
   "version": "0.0.0",
   "private": true,
-  "description": "Chat UI components, hooks, screens and store for Sessions",
+  "description": "Chat UI components, hooks, screens and store for Mortstack Chat",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "scripts": {

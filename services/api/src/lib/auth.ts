@@ -14,12 +14,27 @@ import { prisma } from "@repo/database";
 //
 // The domain `Account` model (with Profiles, identityTier, etc.) links to
 // AuthUser via authUserId. Auth identity is separate from domain identity.
-//
-// SUI wallet plugin: see docs/proposals/sui-auth-plugin.md
-// Activate by importing suiWalletPlugin from ./sui-auth-plugin and adding to plugins[]
+
+// Production must pin the auth origin explicitly. A static baseURL means Better
+// Auth never infers the origin from the request Host — closing the CSRF
+// origin-check bypass that Host/domainName spoofing would open if the Lambda is
+// ever fronted by a proxy/CDN that derives domainName from the client Host.
+// Non-prod (incl. the deployed dev/demo stage, which runs NODE_ENV=development)
+// keeps request-inferred baseURL so there's no per-deploy URL to manage.
+if (process.env.NODE_ENV === "production" && !process.env.BETTER_AUTH_URL) {
+  throw new Error("BETTER_AUTH_URL must be set in production");
+}
 
 export const auth = betterAuth({
-  baseURL: process.env.BETTER_AUTH_URL || "http://localhost:3001",
+  // Not forced to a localhost fallback: when BETTER_AUTH_URL is unset (the
+  // deployed Lambda case), Better Auth infers the base URL from the incoming
+  // request — and the adapter builds request.url from the Function URL domain
+  // (lambda.ts), so the inferred origin is the Lambda URL the mobile client
+  // stamps as its Origin. That inferred origin is auto-trusted by the CSRF
+  // origin check, so no per-deploy URL needs managing. Locally, inference
+  // resolves to http://localhost:3001 the same way. Set BETTER_AUTH_URL
+  // explicitly only for production hardening (pin the origin vs Host-spoofing).
+  baseURL: process.env.BETTER_AUTH_URL,
   basePath: "/auth",
 
   database: prismaAdapter(prisma, {

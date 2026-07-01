@@ -70,24 +70,32 @@ export const chatWsWorker = new sst.cloudflare.Worker("ChatWs", {
 
       // Migration shape — Pulumi cloudflare provider takes a single object
       // (the latest desired migration), not the wrangler-style array of
-      // tagged migrations. Use `newTag` to mark the version, and `oldTag`
-      // when a future migration needs to advance from a prior tag.
+      // tagged migrations.
       //
-      // Subsequent class changes (rename, delete, transition non-SQLite →
-      // SQLite) require setting oldTag = current tag, newTag = next tag,
-      // and the appropriate fields (renamedClasses, deletedClasses, etc.).
-      // Tag-only bumps — each deploy that changes no DO classes still has to
-      // advance the tag because Pulumi diffs the migrations object. Chat +
-      // UserInbox already exist as SQLite-backed DO classes; do NOT re-declare
-      // them in newSqliteClasses (CF error 10074: "already depended on by
-      // existing Durable Objects"). On error 10079 ("got tag X expected Y"),
-      // align oldTag with the current deployed tag and bump newTag.
+      // CREATE-SHAPE (current): the orphaned CF script (tag v7) is being
+      // deleted out-of-band + `sst refresh` so Pulumi tracks this as a fresh
+      // create. On a create the provider omits `old_tag`, so we must NOT send
+      // one (CF error 10079: "got tag 'v7' when expected no tags" was Pulumi
+      // create-path uploading with no old_tag against a still-existing v7
+      // script). On a clean create the DO classes MUST be declared in
+      // newSqliteClasses — they don't exist yet, so no 10074 ("already
+      // depended on by existing Durable Objects").
+      //
+      // UPDATE-SHAPE (later DO changes — rename/delete/transition): once the
+      // script exists, switch to oldTag = current deployed tag, newTag = next,
+      // drop classes from newSqliteClasses, and use renamedClasses /
+      // deletedClasses as needed. Do NOT re-declare existing classes in
+      // newSqliteClasses on an update (triggers 10074).
+      // UPDATE-SHAPE: the script already exists at migration tag v1 with the
+      // Chat + UserInbox SQLite DO classes created. This deploy changes only
+      // Worker code (no DO class add/rename/delete), so bump the tag with an
+      // empty migration and send oldTag so CF's precondition matches the
+      // deployed v1 (error 10079 "got tag '' when expected v1" = oldTag was
+      // omitted by the create-shape). Do NOT re-declare existing classes in
+      // newSqliteClasses (triggers 10074).
       args.migrations = {
-        oldTag: "v6",
-        newTag: "v7",
-        newSqliteClasses: [],
-        renamedClasses: [],
-        deletedClasses: [],
+        oldTag: "v1",
+        newTag: "v2",
       };
 
       // Compatibility date with WebSocket auto-reply-to-close behaviour

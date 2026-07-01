@@ -9,7 +9,6 @@ import { chatPushSecrets } from "./chat-push-secrets";
 // Publishers:
 //   - API Lambda          → mediaUploaded, userActivity
 //   - Upload Lambda       → mediaUploaded
-//   - SUI Indexer (ECS)   → chainEvent
 //   - Moderation Lambda   → moderationResult (after processing)
 //
 // Cost: SNS first 1M publishes/mo free, SQS first 1M requests/mo free.
@@ -23,7 +22,8 @@ export const mediaUploadedTopic = new sst.aws.SnsTopic("MediaUploaded");
 /** Fired on user engagement actions (like, follow, comment, share). */
 export const userActivityTopic = new sst.aws.SnsTopic("UserActivity");
 
-/** Fired by SUI indexer on blockchain events (NFT minted, listed, transferred). */
+/** Chain-event topic. Orphaned — retained until a deliberate infra deploy
+ *  removes it; nothing publishes to it now. */
 export const chainEventTopic = new sst.aws.SnsTopic("ChainEvent");
 
 /** Fired after moderation Lambda processes media (flagged/approved). */
@@ -71,7 +71,7 @@ userActivityTopic.subscribeQueue(
   notificationQueue.arn,
 );
 
-// chain.event → notification queue (NFT sold, minted)
+// chain.event → notification queue
 chainEventTopic.subscribeQueue("ChainNotifyConsumer", notificationQueue.arn);
 
 // chat.msg.delivered → chat push queue (ADR-013)
