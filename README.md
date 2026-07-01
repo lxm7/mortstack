@@ -118,7 +118,7 @@ npx expo start --dev-client
 
 ## Auth
 
-Authentication is handled by **Better Auth** (email/password live). SUI wallet auth (SIWS) and zkLogin (Google/Apple → SUI address) are planned — implementation deferred until identity tier flows require an on-chain handle.
+Authentication is handled by **Better Auth** (email/password).
 
 There is no external auth page. The mobile app has built-in sign-in/sign-up screens (`apps/mobile/app/(auth)/`) that call Better Auth's API directly.
 
@@ -132,7 +132,7 @@ curl -X POST http://localhost:3001/auth/sign-up/email \
 
 ## Seed Data
 
-The seed creates test accounts, profiles, posts, follows, comments, likes, and NFTs. Seed accounts have placeholder password hashes and **cannot be used to log in via Better Auth** — sign up fresh instead. The seed data is useful for testing feed rendering, profile views, and data relationships.
+The seed creates test accounts, profiles, posts, follows, comments, and likes. Seed accounts have placeholder password hashes and **cannot be used to log in via Better Auth** — sign up fresh instead. The seed data is useful for testing feed rendering, profile views, and data relationships.
 
 | Email             | Tier    | Profiles                               |
 | ----------------- | ------- | -------------------------------------- |
@@ -192,14 +192,11 @@ RN App ──► Lambda (API, public)            ──► Neon Postgres (HTTP d
        │                                          ├─► SQS ModerationQueue   (consumer stub)
        │                                          └─► SQS NotificationQueue (consumer stub)
        │
-       ├──► Lambda (Upload, public)        ──► Cloudflare R2 ──► Cloudflare CDN
-       │
-       └──► SUI RPC (direct, client-signed transactions)
+       └──► Lambda (Upload, public)        ──► Cloudflare R2 ──► Cloudflare CDN
 
 Real-time:   Expo Push + client polling
 WebSocket:   deferred (see infra/stacks/realtime.ts)
-SUI indexer: deferred (see infra/stacks/sui-indexer.ts)
-VPC:         deferred — provisioned only when ECS Fargate (indexer) ships
+VPC:         deferred — provisioned only when an ECS Fargate workload ships
 ```
 
 **Why no VPC.** Lambda reaches Neon over public HTTPS via the `@prisma/adapter-neon`
@@ -225,10 +222,7 @@ RN App ─► CF (DNS/WAF) ──────► │
                                           ├─► Search (Typesense / Meilisearch on Fargate)
                                           └─► OpenTelemetry → Axiom / Sentry
 
-Cloudflare Durable Objects ──► WebSocket / chat / live auctions
-
-ECS Fargate Spot (SUI Indexer) ─► SUI checkpoint stream ─► SNS chainEvent ─► DB
-SUI Move contracts            ─► escrow / reputation / DAO governance
+Cloudflare Durable Objects ──► WebSocket / chat / live presence
 
 Timeline service (fan-out-on-write) ─► Redis lists per follower ─► hydrate from Postgres
 ```
@@ -308,15 +302,13 @@ For 0 → 100k DAU window (next 18-24 months realistic), DO is right.
 
 - **Better Auth** with DB-backed mortstack (fully revocable)
 - **Email/password**: sign up → creates AuthUser + domain Account (active)
-- **SUI wallet (SIWS)**: challenge/response — implemented, deferred
-- **zkLogin (Google/Apple → SUI address)**: planned — keyless on-chain identity for users without a wallet
 - **Bearer tokens** for React Native (no cookies, stored in SecureStore)
 - Session validated in tRPC context via `auth.api.getSession({ headers })`
 
 ### Key Design Decisions
 
 - **Account ≠ Profile**: one account can own multiple profiles (musician, band, venue)
-- **Identity tiers**: NONE → BASIC → CREATOR → ARTIST (gates features like NFT minting)
+- **Identity tiers**: NONE → BASIC → CREATOR → ARTIST (gates media features by verification level)
 - **Event-driven**: SNS + SQS fan-out decouples services (moderation, notifications, indexing)
 - **Media upload**: presigned URLs → client uploads direct to R2 → no Lambda in the read path
 - **Neon over HTTP**: Prisma uses `@prisma/adapter-neon` with `poolQueryViaFetch`, so
