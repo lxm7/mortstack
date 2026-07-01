@@ -13,6 +13,15 @@ export { Chat, UserInbox };
 
 const INTERNAL_SECRET_HEADER = "x-chat-ws-secret";
 
+// Decode a base64url string (no padding) — the client encodes the bearer this
+// way so it survives as a Sec-WebSocket-Protocol tchar. Mirror of the encoder
+// in packages/chat-transport/src/client.ts.
+function base64UrlDecode(s: string): string {
+  const b64 =
+    s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4);
+  return atob(b64);
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -28,13 +37,22 @@ export default {
       return new Response("chat-ws expects WebSocket upgrade", { status: 426 });
     }
 
-    // Bearer token rides in `?token=<urlencoded>` query param. WS subprotocol
-    // header (RFC 6455 tchar) can't carry Better Auth tokens that include `=`
-    // padding. Client sends:
-    //   new WebSocket(`${url}?token=${encodeURIComponent(token)}`)
-    const token = url.searchParams.get("token") ?? "";
-    if (!token) {
-      return new Response("missing token query param", { status: 401 });
+    // Bearer token rides in the WS subprotocol as `bearer, <base64url-token>`
+    // — NOT the URL, so it never lands in access/request logs. Better Auth
+    // tokens carry `=` padding (invalid as a Sec-WebSocket-Protocol tchar), so
+    // the client base64url-encodes and we decode here. Keep in sync with
+    // packages/chat-transport/src/client.ts.
+    const proto = request.headers.get("Sec-WebSocket-Protocol") ?? "";
+    const parts = proto.split(",").map((p) => p.trim());
+    const encoded = parts[0] === "bearer" ? (parts[1] ?? "") : "";
+    if (!encoded) {
+      return new Response("missing token subprotocol", { status: 401 });
+    }
+    let token: string;
+    try {
+      token = base64UrlDecode(encoded);
+    } catch {
+      return new Response("bad token encoding", { status: 401 });
     }
 
     const session = await verifySession(env, token);
