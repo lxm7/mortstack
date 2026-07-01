@@ -2,7 +2,7 @@
   "name": "@repo/chat-mls-core",
   "version": "0.0.1",
   "private": true,
-  "description": "OpenMLS engine for Sessions chat — Rust core + UniFFI bindings (see ADR-015)",
+  "description": "OpenMLS engine for Mortstack Chat — Rust core + UniFFI bindings (see ADR-015)",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {

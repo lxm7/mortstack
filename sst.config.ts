@@ -15,7 +15,7 @@
 export default $config({
   app(input) {
     return {
-      name: "sessions",
+      name: "mortstack-chatapp",
       removal: input?.stage === "production" ? "retain" : "remove",
       protect: ["production"].includes(input?.stage),
       home: "aws",

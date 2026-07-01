@@ -37,13 +37,16 @@ cd apps
 
 Terminal 1: pnpm --filter @repo/api-server dev
 Terminal 2: pnpm --filter @repo/chat-ws dev  
-Terminal 3: pnpm --filter mobile expo start # Metro — keep open
-Terminal 4: xcrun simctl spawn <UDID-1> log
+Terminal 3: pnpm --filter mobile exec expo start --clear
+Terminal 4: xcrun simctl list devices available
+Terminal 4: xcrun simctl terminate <UDID> io.sessions.app
+Terminal 4: sleep 1
+Terminal 4: xcrun simctl boot <UDID-1> log
 stream ... # sim 1 logs  
-Terminal 5: xcrun simctl spawn <UDID-2> log  
- stream ... # sim 2 logs  
-Terminal 6: scratchpad for `expo run:ios      
-  --device <name>` when needed
+Terminal 5: xcrun simctl boot <UDID-2> log  
+ stream ... # sim 2 logs
+Terminal 5: open -a Simulator
+Terminal 5: pnpm expo run:ios --device
 
 ### General running:
 
@@ -677,3 +680,41 @@ pnpm --filter @repo/chat-mls-core exec ./scripts/build-mls.sh android
 pnpm --filter @repo/chat-mls-core exec ./scripts/build-mls.sh ios
 pnpm rn:rebuild-ios   # from repo root — runs prebuild-clean + run:ios
 ```
+
+## Builds in cloud, gives shareable install link/QR.
+
+Recommended.
+
+One-time setup:
+npm i -g eas-cli
+eas login
+
+### register your iOS test devices (UDIDs) for ad-hoc
+
+provisioning
+eas device:create
+device:create gives a QR/link → open on each iPhone →
+installs a profile registering its UDID. Apple dev
+license covers ad-hoc (up to 100 devices/type/year).
+
+Build + share:
+
+### from apps/mobile
+
+### Android APK — installs directly, no device
+
+registration
+eas build --profile preview --platform android
+
+### iOS ad-hoc — only installs on registered UDIDs
+
+eas build --profile preview --platform ios
+Each finishes with a URL/QR. Android: open link on
+phone → download APK → install (enable "unknown
+sources"). iOS: open link on a registered device →
+installs over the air.
+
+⚠️ Your preview profile builds a standalone app (no
+Metro). For a build you can hot-reload against your dev
+machine, use --profile development instead (that's
+your dev-client profile) then run pnpm dev and scan.

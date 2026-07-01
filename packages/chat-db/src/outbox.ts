@@ -11,12 +11,18 @@ export interface EnqueueArgs {
 
 export async function enqueue(db: DB, args: EnqueueArgs): Promise<void> {
   const now = args.now ?? Date.now();
+  // op-sqlite persists the payload's entire backing ArrayBuffer, ignoring
+  // byteOffset/byteLength. msgpack `encode()` returns a Uint8Array that is a
+  // *view* over a larger (2048B default) scratch buffer, so binding it
+  // directly would store ~2KB of trailing bytes → `decode()` later throws
+  // "Extra N of 2048 byte(s) found". Copy into an exactly-sized buffer first.
+  const payload = new Uint8Array(args.payload);
   await db.execute(
     `INSERT INTO pending_outbox
        (id, chat_id, payload, idempotency_key, attempts, next_attempt_at, created_at, last_error)
      VALUES (?, ?, ?, ?, 0, ?, ?, NULL)
      ON CONFLICT(idempotency_key) DO NOTHING`,
-    [args.id, args.chatId, args.payload, args.idempotencyKey, now, now],
+    [args.id, args.chatId, payload, args.idempotencyKey, now, now],
   );
 }
 

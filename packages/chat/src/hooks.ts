@@ -15,16 +15,28 @@ export interface UseChatsResult {
   error: string | null;
 }
 
+// A stable empty array so selectors that fall back to "no items" return the
+// same reference every call — a fresh `[]` (or `.map()` result) would make
+// useSyncExternalStore see a new snapshot each render → infinite update loop.
+const EMPTY_CHATS: ChatRecord[] = [];
+
 export function useChats(): UseChatsResult {
-  return useChatStore(
-    useShallow((s) => ({
-      chats: s.chatOrder
+  // Select the derived array DIRECTLY under useShallow so it shallow-compares
+  // the elements (stable while chat records + order are unchanged). Wrapping
+  // it in an object instead would make useShallow compare the array by
+  // reference — always "changed" → re-render loop. Scalars are selected
+  // separately; primitives are Object.is-stable without useShallow.
+  const chats = useChatStore(
+    useShallow((s) => {
+      if (s.chatOrder.length === 0) return EMPTY_CHATS;
+      return s.chatOrder
         .map((id) => s.chats.get(id))
-        .filter((c): c is ChatRecord => !!c),
-      isLoading: s.bootstrapStatus === "loading",
-      error: s.bootstrapError,
-    })),
+        .filter((c): c is ChatRecord => !!c);
+    }),
   );
+  const isLoading = useChatStore((s) => s.bootstrapStatus === "loading");
+  const error = useChatStore((s) => s.bootstrapError);
+  return { chats, isLoading, error };
 }
 
 export interface UseChatResult {
@@ -42,8 +54,14 @@ export interface UseMessagesResult {
   messages: Message[];
 }
 
+const EMPTY_MESSAGES: Message[] = [];
+
 export function useMessages(chatId: string): UseMessagesResult {
-  const messages = useChatStore((s) => s.messages.get(chatId) ?? []);
+  // Stable EMPTY_MESSAGES fallback (not `?? []`) — a fresh array on every call
+  // yields an unstable snapshot → "Maximum update depth exceeded".
+  const messages = useChatStore(
+    (s) => s.messages.get(chatId) ?? EMPTY_MESSAGES,
+  );
   return { messages };
 }
 
