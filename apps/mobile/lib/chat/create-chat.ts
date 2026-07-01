@@ -49,14 +49,25 @@ export async function createNewChat(
     existing: created.existing,
   });
 
-  // Direct-chat idempotency (M4-1 Q1a): the chat + MLS group already exist
-  // — skip the provisioning steps and just navigate.
+  // Direct-chat idempotency (M4-1 Q1a): a direct chat between the same two
+  // accounts is deduped server-side, so `existing: true` can come back for a
+  // chat whose MLS group was never provisioned (or was lost). Trust the
+  // server's mls_group_id — NOT `existing` — to decide whether provisioning
+  // still needs to run; otherwise an unlinked ghost chat can never be repaired
+  // through this flow and every send dead-ends on the v=1 path.
   if (created.existing) {
-    return {
-      chatId: created.chatId,
-      existing: true,
-      mlsProvisioned: true,
-    };
+    const chat = await trpc.chat.get.query({ chatId: created.chatId });
+    if (chat.mlsGroupIdB64) {
+      return {
+        chatId: created.chatId,
+        existing: true,
+        mlsProvisioned: true,
+      };
+    }
+    console.log(
+      "[create-chat] existing chat has no MLS group — provisioning now",
+      { chatId: created.chatId },
+    );
   }
 
   const client = getMlsClient();
@@ -106,7 +117,7 @@ export async function createNewChat(
 
   return {
     chatId: created.chatId,
-    existing: false,
+    existing: created.existing,
     mlsProvisioned,
   };
 }

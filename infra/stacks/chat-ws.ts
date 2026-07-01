@@ -86,9 +86,16 @@ export const chatWsWorker = new sst.cloudflare.Worker("ChatWs", {
       // drop classes from newSqliteClasses, and use renamedClasses /
       // deletedClasses as needed. Do NOT re-declare existing classes in
       // newSqliteClasses on an update (triggers 10074).
+      // UPDATE-SHAPE: the script already exists at migration tag v1 with the
+      // Chat + UserInbox SQLite DO classes created. This deploy changes only
+      // Worker code (no DO class add/rename/delete), so bump the tag with an
+      // empty migration and send oldTag so CF's precondition matches the
+      // deployed v1 (error 10079 "got tag '' when expected v1" = oldTag was
+      // omitted by the create-shape). Do NOT re-declare existing classes in
+      // newSqliteClasses (triggers 10074).
       args.migrations = {
-        newTag: "v1",
-        newSqliteClasses: ["Chat", "UserInbox"],
+        oldTag: "v1",
+        newTag: "v2",
       };
 
       // Compatibility date with WebSocket auto-reply-to-close behaviour
