@@ -14,9 +14,6 @@ import { prisma } from "@repo/database";
 //
 // The domain `Account` model (with Profiles, identityTier, etc.) links to
 // AuthUser via authUserId. Auth identity is separate from domain identity.
-//
-// SUI wallet plugin: see docs/proposals/sui-auth-plugin.md
-// Activate by importing suiWalletPlugin from ./sui-auth-plugin and adding to plugins[]
 
 // Production must pin the auth origin explicitly. A static baseURL means Better
 // Auth never infers the origin from the request Host — closing the CSRF

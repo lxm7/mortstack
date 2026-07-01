@@ -21,6 +21,7 @@ import {
   IBMPlexSans_700Bold_Italic,
 } from "@expo-google-fonts/ibm-plex-sans";
 import { Providers } from "@/providers";
+import { logChatEndpoints } from "@/lib/api/url";
 import { getChatDb } from "@repo/chat-db";
 import { ChatCalls } from "@repo/chat-calls";
 import { getOrCreateChatIdentity } from "@/lib/chat/identity";
@@ -35,6 +36,10 @@ import "@/lib/chat/mls-auto-publish";
 import "@/lib/chat/push-auto-register";
 
 SplashScreen.preventAutoHideAsync();
+
+// Boot diagnostic — logs resolved API + WS URLs and warns on env-inline
+// failures or a local/remote backend split (the usual "send goes nowhere").
+logChatEndpoints();
 
 getOrCreateChatIdentity()
   .then((id) => {

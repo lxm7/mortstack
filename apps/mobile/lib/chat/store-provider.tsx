@@ -19,6 +19,7 @@ import {
 import {
   getChatDb,
   createBoundMessageStore,
+  mls as mlsStore,
   outbox as outboxDb,
   type ChatDbHandle,
 } from "@repo/chat-db";
@@ -26,10 +27,50 @@ import {
 import { trpc } from "@/lib/trpc/client";
 import { useAuthStore } from "@/store/auth";
 import { useChatTransport } from "./transport";
+import { clearChatGroupCache } from "./group-resolver";
+
+// base64 (mlsGroupIdB64 from chat.list) → GroupId bytes. Hermes provides atob.
+function b64ToBytes(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+// Mirror the server chat list into the local SQLite `chats` table (ADR-016) so
+// resolveChatGroupId(realChatId) works on BOTH devices, and heal any group
+// that joined under the interim harness chatId. Best-effort — a mirror failure
+// must not break the in-memory chat list the UI renders.
+async function mirrorChatsToLocalDb(
+  chats: Awaited<ReturnType<typeof trpc.chat.list.query>>["chats"],
+): Promise<void> {
+  try {
+    const { db } = await getChatDb();
+    for (const c of chats) {
+      const groupId = c.mlsGroupIdB64 ? b64ToBytes(c.mlsGroupIdB64) : null;
+      await mlsStore.upsertChat(db, {
+        id: c.id,
+        kind: c.kind,
+        name: c.name,
+        mlsGroupId: groupId,
+      });
+      if (groupId) {
+        await mlsStore.relinkGroupChatId(db, groupId, c.id);
+        clearChatGroupCache(c.id);
+      }
+    }
+  } catch (err) {
+    console.warn("[chat] local chats mirror failed", err);
+  }
+}
 
 function createTrpcChatApi(): ChatApi {
   return {
-    chatList: (input) => trpc.chat.list.query(input),
+    chatList: async (input) => {
+      const res = await trpc.chat.list.query(input);
+      await mirrorChatsToLocalDb(res.chats);
+      return res;
+    },
     chatGet: (input) => trpc.chat.get.query(input),
     chatCreate: (input) =>
       trpc.chat.create.mutate({

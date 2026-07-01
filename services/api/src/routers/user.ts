@@ -4,8 +4,8 @@ import * as ed25519 from "@noble/ed25519";
 import { router, protectedProcedure } from "../trpc";
 
 // Wire format: pubkeys + signature travel as standard base64 strings. Picked
-// for ~30% smaller payload vs hex and parity with SUI's convention. Raw bytes
-// land in Postgres `bytea`; encoding lives only at the HTTP boundary.
+// for ~30% smaller payload vs hex. Raw bytes land in Postgres `bytea`;
+// encoding lives only at the HTTP boundary.
 const ED25519_PUB_BYTES = 32;
 const X25519_PUB_BYTES = 32;
 const ED25519_SIG_BYTES = 64;

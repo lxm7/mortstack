@@ -105,5 +105,24 @@ export function createInMemoryMlsStore(): MlsStoreApi {
       chats.set(chatId, { id: chatId, kind, mlsGroupId: null });
       return { created: true };
     },
+    async upsertChat(input) {
+      const existing = chats.get(input.id);
+      if (existing) {
+        if (input.mlsGroupId != null) existing.mlsGroupId = input.mlsGroupId;
+        return;
+      }
+      chats.set(input.id, {
+        id: input.id,
+        kind: input.kind,
+        mlsGroupId: input.mlsGroupId ?? null,
+      });
+    },
+    async chatIdByGroupId(groupId) {
+      const target = hex(groupId);
+      for (const row of chats.values()) {
+        if (row.mlsGroupId && hex(row.mlsGroupId) === target) return row.id;
+      }
+      return null;
+    },
   };
 }

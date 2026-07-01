@@ -100,9 +100,6 @@ model Account {
   // Web2 — email mirrored from AuthUser for domain queries
   email String? @unique
 
-  // Web3 — SUI wallet address (optional until connected)
-  walletAddress String? @unique
-
   // Trust & Safety (banning an Account bans all their Profiles)
   isBanned Boolean @default(false)
 
@@ -124,7 +121,6 @@ model Account {
   reportsMade    Report[]       @relation("ReportsMade")
 
   @@index([authUserId])
-  @@index([walletAddress])
   @@index([email])
 }
 
@@ -300,7 +296,6 @@ model Profile {
   posts     Post[]
   comments  Comment[]
   likes     Like[]
-  nfts      NFT[]
   follows   Follow[] @relation("ProfileFollows")   // profiles this profile follows
   followers Follow[] @relation("ProfileFollowers") // profiles following this profile
 
@@ -406,7 +401,6 @@ model Post {
   // Relations
   comments Comment[]
   likes    Like[]
-  nft      NFT?
 
   @@index([profileId])
   @@index([createdAt])
@@ -468,45 +462,6 @@ model Follow {
   @@index([followingId])
 }
 
-// ── NFT ───────────────────────────────────────────────────────────────────────
-// Minted content on SUI. Belongs to a Profile (the artist/venue persona).
-// The Account's walletAddress is the on-chain owner — linked via Profile membership.
-model NFT {
-  id        String  @id @default(cuid())
-  profileId String
-  profile   Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  postId    String? @unique
-  post      Post?   @relation(fields: [postId], references: [id], onDelete: SetNull)
-
-  // SUI on-chain identifiers
-  objectId  String @unique // SUI object ID
-  packageId String          // Smart contract package
-  moduleId  String          // Module within package
-  type      NFTType
-
-  // Metadata
-  name        String
-  description String?
-  imageUrl    String
-  metadataUri String
-
-  // Marketplace
-  isListed Boolean @default(false)
-  price    String? // SUI tokens as string (avoids float precision loss)
-
-  createdAt DateTime @default(now())
-
-  @@index([profileId])
-  @@index([objectId])
-}
-
-enum NFTType {
-  MUSIC
-  PERFORMANCE
-  ART
-  COLLECTIBLE
-}
-
 // ── Chat ──────────────────────────────────────────────────────────────────────
 // Direct + small group chats. End-to-end encrypted: server stores only
 // ciphertext + nonce, never plaintext or keys.
@@ -521,6 +476,12 @@ model Chat {
   // Group chats may set a name; direct chats render from the other member.
   name      String?
   createdAt DateTime @default(now())
+
+  // Opaque MLS GroupId (32B, ADR-015 §3) linking this chat to its E2E group.
+  // Nullable: legacy v=1 chats have none, and it's set once by the creator via
+  // chat.linkMlsGroup after MlsClient.createGroup. @unique lets both devices
+  // reverse-map a joined group → its chat row on chat.list sync (ADR-016).
+  mlsGroupId Bytes? @unique
 
   members  ChatMember[]
   // No `messages ChatMessage[]` back-relation: ChatMessage drops the FK to
