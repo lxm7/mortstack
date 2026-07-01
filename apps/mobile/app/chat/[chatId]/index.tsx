@@ -3,9 +3,9 @@
 // timestamp + sender display (groups only). Long-press on a failed own
 // bubble opens BubbleActionSheet (retry / delete).
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { KeyboardAvoidingView, Platform, StyleSheet } from "react-native";
-import { FlashList } from "@shopify/flash-list";
+import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Button, Input, Spinner, Text, View, XStack, YStack } from "tamagui";
 
@@ -36,6 +36,7 @@ export default function ChatThreadScreen() {
   const myAuthUserId = useAuthStore((s) => s.session?.user.id ?? null);
   const [text, setText] = useState("");
   const [sheetTarget, setSheetTarget] = useState<Message | null>(null);
+  const listRef = useRef<FlashListRef<Message>>(null);
 
   // Members lookup table for sender display in group chats.
   const memberByAuthUserId = useMemo(() => {
@@ -50,11 +51,12 @@ export default function ChatThreadScreen() {
     if (trimmed.length === 0) return;
     send({ chatId, text: trimmed, senderAuthUserId: myAuthUserId });
     setText("");
+    // Jump to the newest bubble once the optimistic row is laid out — your
+    // own sends always scroll to the bottom regardless of prior scroll pos.
+    requestAnimationFrame(() =>
+      listRef.current?.scrollToEnd({ animated: true }),
+    );
   }, [text, send, chatId, myAuthUserId]);
-
-  // FlashList renders inverted — newest at the visual bottom. Reverse the
-  // oldest-first store array so the first rendered row is the newest.
-  const reversed = useMemo(() => [...messages].reverse(), [messages]);
 
   const handleLongPress = useCallback(
     (m: Message) => {
@@ -133,7 +135,7 @@ export default function ChatThreadScreen() {
         </XStack>
 
         <View flex={1}>
-          {reversed.length === 0 ? (
+          {messages.length === 0 ? (
             <YStack
               flex={1}
               alignItems="center"
@@ -155,10 +157,19 @@ export default function ChatThreadScreen() {
             </YStack>
           ) : (
             <FlashList
-              data={reversed}
+              ref={listRef}
+              data={messages}
               keyExtractor={(m) => m.id}
               renderItem={renderItem}
-              inverted
+              // v2 chat pattern: render from the bottom and auto-stick to the
+              // newest message when the user is near the bottom. Replaces the
+              // v1 `inverted` transform, which fought v2's default
+              // maintainVisibleContentPosition and left new bubbles off-screen
+              // until an unrelated re-layout (the "press return to see it" bug).
+              maintainVisibleContentPosition={{
+                startRenderingFromBottom: true,
+                autoscrollToBottomThreshold: 0.2,
+              }}
               contentContainerStyle={styles.listContent}
             />
           )}
