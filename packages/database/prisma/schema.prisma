@@ -71,10 +71,10 @@ model AuthAccount {
   @@index([userId])
 }
 
-// Used by Better Auth for nonce storage (SUI wallet), email verification tokens, etc.
+// Used by Better Auth for email verification tokens, nonce storage, etc.
 model Verification {
   id         String   @id
-  identifier String   // e.g. "sui:0xabc..." or "email:user@example.com"
+  identifier String   // e.g. "email:user@example.com"
   value      String   // the nonce or OTP
   expiresAt  DateTime
   createdAt  DateTime @default(now())
@@ -105,9 +105,9 @@ model Account {
 
   // Identity verification tier (per person, not per persona)
   //   NONE:    Unverified — text posts only
-  //   BASIC:   Phone or zkLogin — can post images
-  //   CREATOR: World ID or stake — can upload audio/video
-  //   ARTIST:  Creator + wallet age — can mint NFTs
+  //   BASIC:   Phone-verified — can post images
+  //   CREATOR: World ID verified — can upload audio/video
+  //   ARTIST:  Top tier — full creator privileges
   identityTier       IdentityTier @default(NONE)
   identityVerifiedAt DateTime?
 
@@ -266,7 +266,7 @@ model GroupWelcome {
 }
 
 // ── Profile ───────────────────────────────────────────────────────────────────
-// Public persona. Posts, follows, NFTs, and reputation all live here.
+// Public persona. Posts, follows, and reputation all live here.
 // One Account can own/be a member of multiple Profiles.
 // Examples: a person is both a MUSICIAN and a VENUE owner.
 //           a BAND profile has multiple Account members.
@@ -340,9 +340,9 @@ enum ProfileRole {
 // Lives on Account (the person). Governs all their Profiles.
 enum IdentityTier {
   NONE    // Unverified — text posts only
-  BASIC   // Phone or zkLogin — can post images
-  CREATOR // World ID or stake — can upload audio/video
-  ARTIST  // Creator + wallet age — can mint NFTs
+  BASIC   // Phone-verified — can post images
+  CREATOR // World ID verified — can upload audio/video
+  ARTIST  // Top tier — full creator privileges
 }
 
 // ── IdentityCheck ─────────────────────────────────────────────────────────────
@@ -353,7 +353,7 @@ model IdentityCheck {
   accountId String
   account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
-  // "phone" | "email" | "google_oauth" | "world_id" | "sui_zklogin" | "gitcoin_passport" | "sui_stake"
+  // "phone" | "email" | "google_oauth" | "world_id" | "gitcoin_passport"
   provider   String
   externalId String // Provider's session or reference ID
 

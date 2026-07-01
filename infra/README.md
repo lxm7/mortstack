@@ -13,7 +13,6 @@ Multi-cloud setup using SST Ion (v3).
 | CDN                | Cloudflare          | Global, fast, free egress                       |
 | PostgreSQL         | Neon                | Serverless, branches per PR, scales to zero     |
 | Content moderation | AWS Rekognition     | No viable alternative                           |
-| SUI indexer        | AWS ECS Fargate     | Persistent WebSocket to SUI RPC                 |
 | Real-time          | Expo Push + polling | WebSocket deferred (API GW too costly at scale) |
 | Push notifications | Expo Push API       | Free, wraps APNs + FCM                          |
 
@@ -23,10 +22,9 @@ Multi-cloud setup using SST Ion (v3).
 infra/stacks/
 ├── vpc.ts            Shared VPC for all AWS compute
 ├── secrets.ts        All external credentials (Neon, JWT, Cloudflare)
-├── storage.ts        Cloudflare R2 buckets (media, NFT metadata)
+├── storage.ts        Cloudflare R2 buckets (media)
 ├── events.ts         SNS topics + SQS queues (event bus, fan-out pattern)
 ├── api.ts            AWS Lambda (tRPC API + upload presigner)
-├── sui-indexer.ts    AWS ECS Fargate Spot (SUI blockchain event listener) [STUB]
 ├── moderation.ts     AWS Rekognition content moderation [STUB — subscribes via events.ts]
 ├── realtime.ts       Real-time strategy (push notifs + polling, WebSocket deferred)
 └── notifications.ts  Push notifications via Expo Push API [STUB — subscribes via events.ts]
@@ -140,26 +138,25 @@ sst deploy --stage production
 
 ## Stages
 
-| Stage        | Purpose           | Notes                                   |
-| ------------ | ----------------- | --------------------------------------- |
-| `dev`        | Local development | Neon dev branch, SUI testnet            |
-| `staging`    | Pre-production    | Neon staging branch, SUI testnet        |
-| `production` | Live app          | Neon main branch, SUI mainnet, retained |
+| Stage        | Purpose           | Notes                      |
+| ------------ | ----------------- | -------------------------- |
+| `dev`        | Local development | Neon dev branch            |
+| `staging`    | Pre-production    | Neon staging branch        |
+| `production` | Live app          | Neon main branch, retained |
 
 ## Cost Estimate (monthly, low traffic)
 
-| Service               | Free tier        | ~1k users                |
-| --------------------- | ---------------- | ------------------------ |
-| AWS Lambda            | 1M requests      | < $1                     |
-| AWS ECS (SUI indexer) | —                | ~$6 (Fargate Spot arm64) |
-| AWS Rekognition       | 1000 images      | ~$1                      |
-| AWS SNS               | 1M publishes     | Free                     |
-| AWS SQS               | 1M requests      | Free                     |
-| Cloudflare R2         | 10GB + 1M ops    | Free                     |
-| Cloudflare CDN        | Unlimited egress | Free                     |
-| Neon PostgreSQL       | 0.5GB compute    | Free                     |
-| Expo Push             | Unlimited        | Free                     |
-| **Total**             |                  | **~$8/mo**               |
+| Service         | Free tier        | ~1k users  |
+| --------------- | ---------------- | ---------- |
+| AWS Lambda      | 1M requests      | < $1       |
+| AWS Rekognition | 1000 images      | ~$1        |
+| AWS SNS         | 1M publishes     | Free       |
+| AWS SQS         | 1M requests      | Free       |
+| Cloudflare R2   | 10GB + 1M ops    | Free       |
+| Cloudflare CDN  | Unlimited egress | Free       |
+| Neon PostgreSQL | 0.5GB compute    | Free       |
+| Expo Push       | Unlimited        | Free       |
+| **Total**       |                  | **~$2/mo** |
 
 ### Rotation later
 
