@@ -21,7 +21,6 @@
   },
   "dependencies": {
     "@expo-google-fonts/ibm-plex-sans": "^0.3.0",
-    "@mysten/sui": "^1.15.0",
     "@op-engineering/op-sqlite": "^14.1.0",
     "@repo/api-server": "workspace:*",
     "@repo/chat": "workspace:*",

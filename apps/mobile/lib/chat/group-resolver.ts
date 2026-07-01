@@ -40,6 +40,7 @@ export async function resolveChatGroupId(
   } | null;
   const bytes = row ? toBytes(row.mls_group_id) : null;
   cache.set(chatId, bytes);
+  console.log("[resolve] chatId", chatId, "linked?", !!bytes);
   return bytes;
 }
 

@@ -31,8 +31,8 @@ export const accountRouter = router({
   //      — no FK to Account (chat-ws uses userId = authUserId directly), so
   //      do it explicitly before AuthUser delete.
   //   2. Profile orphan cleanup — find profiles where this account is the
-  //      sole OWNER and delete them (cascades Posts/Comments/Likes/Follows/
-  //      NFTs). Profiles with other OWNERs survive; this account's
+  //      sole OWNER and delete them (cascades Posts/Comments/Likes/
+  //      Follows). Profiles with other OWNERs survive; this account's
   //      ProfileMember row goes away via the Account cascade in step 3.
   //   3. AuthUser delete — cascades Session, AuthAccount, Account, then
   //      Account cascades UserDevice (→ KeyPackage, PushToken),

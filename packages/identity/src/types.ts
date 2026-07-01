@@ -51,7 +51,6 @@ export const TIER_PERMISSIONS: Record<
     canPostImage: boolean;
     canUploadAudio: boolean;
     canUploadVideo: boolean;
-    canMintNFT: boolean;
   }
 > = {
   NONE: {
@@ -59,28 +58,24 @@ export const TIER_PERMISSIONS: Record<
     canPostImage: false,
     canUploadAudio: false,
     canUploadVideo: false,
-    canMintNFT: false,
   },
   BASIC: {
     canPostText: true,
     canPostImage: true,
     canUploadAudio: false,
     canUploadVideo: false,
-    canMintNFT: false,
   },
   CREATOR: {
     canPostText: true,
     canPostImage: true,
     canUploadAudio: true,
     canUploadVideo: true,
-    canMintNFT: false,
   },
   ARTIST: {
     canPostText: true,
     canPostImage: true,
     canUploadAudio: true,
     canUploadVideo: true,
-    canMintNFT: true,
   },
 };
 

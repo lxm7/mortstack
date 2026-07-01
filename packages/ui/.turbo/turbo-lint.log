@@ -1,5 +1,5 @@
 
 
-> @repo/ui@0.0.0 lint /Users/alex/Dev/sessions/packages/ui
+> @repo/ui@0.0.0 lint /Users/alex/Dev/mortstack/packages/ui
 > eslint .
 

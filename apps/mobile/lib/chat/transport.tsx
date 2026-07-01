@@ -20,6 +20,7 @@ import {
 } from "@repo/chat";
 import { ChatMlsCore } from "@repo/chat-mls-core";
 
+import { CHAT_WS_URL } from "@/lib/api/url";
 import { loadSessionToken } from "@/lib/auth/session";
 import { useAuthStore } from "@/store/auth";
 import { getMyAccount } from "@/lib/account/me";
@@ -62,7 +63,7 @@ export function ChatTransportProvider({ children }: { children: ReactNode }) {
   // CHAT_WS_URL at runtime you need a hard reload (acceptable for an env var).
   const transport = useMemo<EncryptedChatTransport>(() => {
     const underlying = createChatTransport({
-      url: process.env.EXPO_PUBLIC_CHAT_WS_URL ?? "ws://localhost:8787",
+      url: CHAT_WS_URL,
       getToken: loadSessionToken,
       // M6 presence hint — UserInbox attaches deviceId per socket; Chat DO
       // skips push for any recipient device currently attached over WS.
