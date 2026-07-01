@@ -7,7 +7,7 @@ import { getOrCreateChatIdentity } from "./identity";
 
 // M6 — APNs / FCM token registration.
 //
-// Returns the native device push token (NOT the Expo Push token) — Sessions
+// Returns the native device push token (NOT the Expo Push token) — Mortstack Chat
 // dispatches directly via APNs HTTP/2 + FCM HTTP v1 from the chat-push
 // Lambda; the Expo Push relay would break E2E payload shape (decision D8).
 //

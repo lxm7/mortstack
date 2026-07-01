@@ -1,5 +1,5 @@
 {
-  "name": "sessions",
+  "name": "mortstack-chatapp",
   "private": true,
   "scripts": {
     "build": "turbo build",

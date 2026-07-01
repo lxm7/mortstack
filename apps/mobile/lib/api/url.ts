@@ -6,9 +6,8 @@ import { Platform } from "react-native";
 // Set EXPO_PUBLIC_API_URL to override (e.g. staging, or host LAN IP for a
 // physical device on the same WiFi).
 function defaultApiUrl(): string {
-  if (Platform.OS === "android")
-    return process.env.EXPO_PUBLIC_API_URL_ANDROID_EMU!;
-  return process.env.EXPO_PUBLIC_API_URL_IOS_EMU!;
+  if (Platform.OS === "android") return "http://10.0.2.2:3001";
+  return "http://localhost:3001";
 }
 
 export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? defaultApiUrl();

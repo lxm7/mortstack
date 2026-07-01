@@ -36,10 +36,10 @@ export default function SignIn() {
           fontWeight="700"
           color="$color"
         >
-          Sessions
+          Mortstack
         </Text>
         <Text color="$colorHover" fontSize="$5">
-          The gig economy for music
+          Chat app
         </Text>
       </YStack>
 
