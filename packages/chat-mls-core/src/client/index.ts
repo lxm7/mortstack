@@ -98,6 +98,17 @@ export interface MlsStoreApi {
     chatId: string,
     kind?: "direct" | "group",
   ): Promise<{ created: boolean }>;
+  // ADR-016: production chat-row upsert + reverse lookup. upsertChat mirrors a
+  // server chat (with its mls_group_id link); chatIdByGroupId maps a joined
+  // group back to its real chat row so the join path stops deriving a
+  // harness chatId.
+  upsertChat(input: {
+    id: string;
+    kind: "direct" | "group";
+    name?: string | null;
+    mlsGroupId?: Uint8Array | null;
+  }): Promise<void>;
+  chatIdByGroupId(groupId: Uint8Array): Promise<string | null>;
 }
 
 // ── Injected RPC ────────────────────────────────────────────────────────────
@@ -333,20 +344,21 @@ export class MlsClient {
       // from the GroupId so both sides converge on the same row without
       // out-of-band coordination. M4 hashes/IDs flow through Chat.create
       // proper.
-      const harnessChatId = `mls-${hexShort(groupId)}`;
-      await this.mlsStore.ensureChatForDebug(harnessChatId, "group");
-      const linkResult = await this.mlsStore.setChatMlsGroupId(
-        harnessChatId,
-        groupId,
-      );
-      if (linkResult.updates === 0) {
-        console.warn(
-          `[mls] pollPendingWelcomes: setChatMlsGroupId wrote 0 rows for ${harnessChatId} — chats row missing?`,
-        );
-      }
+      // Prefer the real server chatId (ADR-016): the chat.list sync populates
+      // chats.mls_group_id, so we can reverse-map the joined group to its chat
+      // row. Fall back to the interim harness id only when that mapping hasn't
+      // synced yet — a later chat.list sync heals it via relinkGroupChatId, and
+      // resolveChatGroupId keys off the real row regardless.
+      const realChatId = await this.mlsStore.chatIdByGroupId(groupId);
+      const chatId = realChatId ?? `mls-${hexShort(groupId)}`;
+      await this.mlsStore.upsertChat({
+        id: chatId,
+        kind: "group",
+        mlsGroupId: groupId,
+      });
       await this.mlsStore.upsertGroup({
         groupId,
-        chatId: harnessChatId,
+        chatId,
         initialEpoch: this.engine.currentEpoch(groupId),
       });
       joined.push(groupId);

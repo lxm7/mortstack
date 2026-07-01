@@ -207,6 +207,69 @@ export async function ensureChatForDebug(
   return { created: true };
 }
 
+// Production chat-row upsert (ADR-016) — the M4 chat UI's source of truth for
+// the local `chats` mirror. Unlike ensureChatForDebug it carries name +
+// mls_group_id and refreshes them on conflict, so a chat.list sync keeps the
+// row current and links the MLS group. resolveChatGroupId reads mls_group_id
+// off this row. COALESCE preserves an existing link if a later sync omits it.
+export async function upsertChat(
+  db: DB,
+  input: {
+    id: string;
+    kind: "direct" | "group";
+    name?: string | null;
+    mlsGroupId?: Uint8Array | null;
+  },
+  now: number = Date.now(),
+): Promise<void> {
+  await db.execute(
+    `INSERT INTO chats (id, kind, title, created_at, updated_at, last_message_id, mls_group_id)
+     VALUES (?, ?, ?, ?, ?, NULL, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       title        = excluded.title,
+       updated_at   = excluded.updated_at,
+       mls_group_id = COALESCE(excluded.mls_group_id, chats.mls_group_id)`,
+    [
+      input.id,
+      input.kind,
+      input.name ?? null,
+      now,
+      now,
+      input.mlsGroupId ?? null,
+    ],
+  );
+}
+
+// Reverse of chats.mls_group_id: the chatId for a joined GroupId, or null.
+// Lets the join path map a Welcome's group back to its server chat row once
+// chat.list has synced the mapping (ADR-016).
+export async function chatIdByGroupId(
+  db: DB,
+  groupId: Uint8Array,
+): Promise<string | null> {
+  const result = await db.execute(
+    "SELECT id FROM chats WHERE mls_group_id = ? LIMIT 1",
+    [groupId],
+  );
+  const row = (result.rows?.[0] ?? null) as { id: string } | null;
+  return row?.id ?? null;
+}
+
+// Point an already-joined group's row at its real chat. No-op if the group
+// isn't in mls_group yet (won't create a phantom) — used by the chat.list sync
+// to heal a group that joined under the interim harness chatId before the
+// server mapping was known.
+export async function relinkGroupChatId(
+  db: DB,
+  groupId: Uint8Array,
+  chatId: string,
+): Promise<void> {
+  await db.execute("UPDATE mls_group SET chat_id = ? WHERE group_id = ?", [
+    chatId,
+    groupId,
+  ]);
+}
+
 // ── Pre-bound store for MlsClient DI ────────────────────────────────────────
 // Returns an object whose methods are the namespace functions above with the
 // DB handle already curried. Structurally matches @repo/chat-mls-core's
@@ -231,5 +294,14 @@ export function createBoundMlsStore(handle: ChatDbHandle) {
       setChatMlsGroupId(db, chatId, groupId),
     ensureChatForDebug: (chatId: string, kind: "direct" | "group" = "group") =>
       ensureChatForDebug(db, chatId, kind),
+    upsertChat: (input: {
+      id: string;
+      kind: "direct" | "group";
+      name?: string | null;
+      mlsGroupId?: Uint8Array | null;
+    }) => upsertChat(db, input),
+    chatIdByGroupId: (groupId: Uint8Array) => chatIdByGroupId(db, groupId),
+    relinkGroupChatId: (groupId: Uint8Array, chatId: string) =>
+      relinkGroupChatId(db, groupId, chatId),
   };
 }

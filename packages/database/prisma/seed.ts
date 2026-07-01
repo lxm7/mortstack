@@ -10,10 +10,6 @@ const prisma = new PrismaClient();
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function suiAddress(suffix: string) {
-  return `0x${suffix.padEnd(64, "0")}`;
-}
-
 function audioUrl(slug: string) {
   return `https://cdn.example.com/audio/${slug}.mp3`;
 }
@@ -35,7 +31,6 @@ let seedPasswordHash: string;
 async function createSeededUser(opts: {
   email: string;
   name: string;
-  walletAddress?: string;
   identityTier?: "NONE" | "BASIC" | "CREATOR" | "ARTIST";
   identityVerifiedAt?: Date;
 }) {
@@ -72,7 +67,6 @@ async function createSeededUser(opts: {
     data: {
       authUserId,
       email: opts.email,
-      walletAddress: opts.walletAddress,
       identityTier: opts.identityTier ?? "NONE",
       identityVerifiedAt: opts.identityVerifiedAt,
     },
@@ -86,7 +80,6 @@ async function createSeededUser(opts: {
 
 async function wipe() {
   await prisma.$transaction([
-    prisma.nFT.deleteMany(),
     prisma.like.deleteMany(),
     prisma.comment.deleteMany(),
     prisma.follow.deleteMany(),
@@ -112,12 +105,11 @@ async function main() {
 
   // ── Accounts ────────────────────────────────────────────────────────────────
   // Real-world identities. Auth lives on AuthUser/AuthAccount (Better Auth).
-  // Domain Account links to AuthUser and holds wallet, identity tier, etc.
+  // Domain Account links to AuthUser and holds identity tier, etc.
 
   const alice = await createSeededUser({
     email: "alice@example.com",
     name: "Alice",
-    walletAddress: suiAddress("alice"),
     identityTier: "ARTIST",
     identityVerifiedAt: new Date(),
   });
@@ -125,7 +117,6 @@ async function main() {
   const bob = await createSeededUser({
     email: "bob@example.com",
     name: "Bob",
-    walletAddress: suiAddress("bob"),
     identityTier: "CREATOR",
     identityVerifiedAt: new Date(),
   });
@@ -194,7 +185,7 @@ async function main() {
       handle: "bob-beats",
       displayName: "Bob Beats",
       type: "MUSICIAN",
-      bio: "Techno and acid house. Residency at Fabric. SUI maxi.",
+      bio: "Techno and acid house. Residency at Fabric.",
       avatar: imageUrl("avatar-bob-beats"),
       reputation: 980,
       members: { create: { accountId: bob.id, role: "OWNER" } },
@@ -225,7 +216,7 @@ async function main() {
       handle: "carol-creates",
       displayName: "Carol Creates",
       type: "VISUAL_ARTIST",
-      bio: "NFT artist. Abstract forms and colour theory. Former architect.",
+      bio: "Digital artist. Abstract forms and colour theory. Former architect.",
       avatar: imageUrl("avatar-carol-creates"),
       reputation: 2100,
       members: { create: { accountId: carol.id, role: "OWNER" } },
@@ -272,7 +263,7 @@ async function main() {
     bobText: { id: string };
     carolProcess: { id: string };
     carolThought: { id: string };
-    carolNftPreview: { id: string };
+    carolArtPreview: { id: string };
     collectivePerformance: { id: string };
     collectiveAnnounce: { id: string };
     fabricLineup: { id: string };
@@ -375,7 +366,7 @@ async function main() {
     data: {
       profileId: theCollective.id,
       content:
-        'Debut EP "In Stasis" — out 15 March on Bandcamp and SUI. Limited edition NFT bundle for early supporters.',
+        'Debut EP "In Stasis" — out 15 March on Bandcamp. Limited edition vinyl for early supporters.',
       mediaUrls: [imageUrl("collective-ep-artwork")],
       mediaType: "IMAGE",
       likesCount: 188,
@@ -383,12 +374,12 @@ async function main() {
     },
   });
 
-  // carol-creates — visual art + NFT preview
-  posts.carolNftPreview = await prisma.post.create({
+  // carol-creates — visual art preview
+  posts.carolArtPreview = await prisma.post.create({
     data: {
       profileId: carolCreates.id,
       content:
-        'Series 3 — "Dissolution" — 12 pieces. Each one took about two weeks. Going live on SUI next week.',
+        'Series 3 — "Dissolution" — 12 pieces. Each one took about two weeks. Going live next week.',
       mediaUrls: [
         imageUrl("carol-dissolution-1"),
         imageUrl("carol-dissolution-2"),
@@ -584,18 +575,18 @@ async function main() {
       },
 
       {
-        postId: posts.carolNftPreview.id,
+        postId: posts.carolArtPreview.id,
         profileId: aliceStudio.id,
         content: "The colour progression across the series is immaculate.",
       },
       {
-        postId: posts.carolNftPreview.id,
+        postId: posts.carolArtPreview.id,
         profileId: theCollective.id,
         content:
           "We'd love one of these as the backdrop for our next live show.",
       },
       {
-        postId: posts.carolNftPreview.id,
+        postId: posts.carolArtPreview.id,
         profileId: bobBeats.id,
         content: faker.lorem.sentence(),
       },
@@ -653,9 +644,9 @@ async function main() {
       { postId: posts.collectivePerformance.id, profileId: fabricLondon.id },
       { postId: posts.collectivePerformance.id, profileId: warehouseEvents.id },
 
-      { postId: posts.carolNftPreview.id, profileId: aliceStudio.id },
-      { postId: posts.carolNftPreview.id, profileId: theCollective.id },
-      { postId: posts.carolNftPreview.id, profileId: bobBeats.id },
+      { postId: posts.carolArtPreview.id, profileId: aliceStudio.id },
+      { postId: posts.carolArtPreview.id, profileId: theCollective.id },
+      { postId: posts.carolArtPreview.id, profileId: bobBeats.id },
 
       { postId: posts.aliceVisual.id, profileId: carolCreates.id },
       { postId: posts.aliceVisual.id, profileId: theCollective.id },
@@ -677,45 +668,6 @@ async function main() {
 
   console.log("Likes created");
 
-  // ── NFTs ──────────────────────────────────────────────────────────────────────
-  // Only ARTIST tier accounts can mint. Alice = ARTIST.
-
-  await prisma.nFT.create({
-    data: {
-      profileId: aliceMusic.id,
-      postId: posts.aliceTrack.id,
-      objectId: suiAddress("nft-alice-drift"),
-      packageId: suiAddress("pkg-music-nft"),
-      moduleId: "music_nft",
-      type: "MUSIC",
-      name: "Drift — Original Master",
-      description: "Limited edition master recording. 50 editions.",
-      imageUrl: imageUrl("alice-drift-artwork"),
-      metadataUri: "https://cdn.example.com/metadata/alice-drift.json",
-      isListed: true,
-      price: "50000000000", // 50 SUI
-    },
-  });
-
-  await prisma.nFT.create({
-    data: {
-      profileId: carolCreates.id,
-      postId: posts.carolNftPreview.id,
-      objectId: suiAddress("nft-carol-dissolution-1"),
-      packageId: suiAddress("pkg-art-nft"),
-      moduleId: "art_nft",
-      type: "ART",
-      name: "Dissolution #01",
-      description: "First piece in the Dissolution series. 1 of 1.",
-      imageUrl: imageUrl("carol-dissolution-1"),
-      metadataUri: "https://cdn.example.com/metadata/carol-dissolution-01.json",
-      isListed: true,
-      price: "200000000000", // 200 SUI
-    },
-  });
-
-  console.log("NFTs created");
-
   // ── Summary ───────────────────────────────────────────────────────────────────
 
   const counts = await prisma.$transaction([
@@ -725,7 +677,6 @@ async function main() {
     prisma.follow.count(),
     prisma.comment.count(),
     prisma.like.count(),
-    prisma.nFT.count(),
   ]);
 
   console.log(`
@@ -736,7 +687,6 @@ Done.
   follows   ${counts[3]}
   comments  ${counts[4]}
   likes     ${counts[5]}
-  nfts      ${counts[6]}
 
 Test credentials (seed password hash — use Better Auth sign-up in practice):
   alice@example.com   — ARTIST tier, 2 profiles (alice-music, alice-studio)

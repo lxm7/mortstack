@@ -2,23 +2,23 @@ import type { Metadata } from "next";
 import styles from "./page.module.css";
 
 export const metadata: Metadata = {
-  title: "Delete your Sessions account",
+  title: "Delete your Mortstack Chat account",
   description:
-    "How to delete your Sessions account — in-app for installed users, email-based request for users without the app.",
+    "How to delete your Mortstack Chat account — in-app for installed users, email-based request for users without the app.",
 };
 
 const SUPPORT_EMAIL = "support@sessions.app";
 const MAILTO = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(
   "Delete account request",
 )}&body=${encodeURIComponent(
-  "Please delete the Sessions account associated with this email address.\n\nI understand this is permanent and cannot be undone.",
+  "Please delete the Mortstack Chat account associated with this email address.\n\nI understand this is permanent and cannot be undone.",
 )}`;
 
 export default function DeleteAccountPage() {
   return (
     <main className={styles.page}>
       <article className={styles.article}>
-        <h1>Delete your Sessions account</h1>
+        <h1>Delete your Mortstack Chat account</h1>
 
         <section>
           <h2>If you have the app installed</h2>

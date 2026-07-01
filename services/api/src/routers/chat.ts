@@ -25,6 +25,9 @@ const ChatPreview = z.object({
   kind: z.enum(["direct", "group"]),
   name: z.string().nullable(),
   createdAt: z.string(),
+  // Base64 of the opaque MLS GroupId, or null for v=1/unlinked chats. Both
+  // devices use this to link the local MLS group to this chat row (ADR-016).
+  mlsGroupIdB64: z.string().nullable(),
   members: z.array(
     z.object({
       accountId: z.string(),
@@ -230,6 +233,50 @@ export const chatRouter = router({
       };
     }),
 
+  // Link an MLS group to a chat (ADR-016). Called once by the chat creator
+  // right after MlsClient.createGroup, so chat.list can hand the GroupId to
+  // every member and both devices converge the local group↔chat mapping.
+  // Set-once + member-guarded: re-linking the same id is idempotent; a
+  // different id is a conflict (a chat's group is immutable in Phase 1).
+  linkMlsGroup: protectedProcedure
+    .input(
+      z.object({
+        chatId: ChatIdCuid,
+        mlsGroupIdB64: z.string().min(1),
+      }),
+    )
+    .output(z.object({ ok: z.boolean() }))
+    .mutation(async ({ input, ctx }) => {
+      const chat = await ctx.prisma.chat.findFirst({
+        where: {
+          id: input.chatId,
+          members: { some: { userId: ctx.account.authUserId } },
+        },
+        select: { id: true, mlsGroupId: true },
+      });
+      if (!chat) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "chat not found or caller is not a member",
+        });
+      }
+      const incoming = Buffer.from(input.mlsGroupIdB64, "base64");
+      if (chat.mlsGroupId) {
+        if (Buffer.from(chat.mlsGroupId).equals(incoming)) {
+          return { ok: true }; // idempotent re-link
+        }
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "chat already linked to a different MLS group",
+        });
+      }
+      await ctx.prisma.chat.update({
+        where: { id: chat.id },
+        data: { mlsGroupId: incoming },
+      });
+      return { ok: true };
+    }),
+
   // List chats the caller is a member of. Sorted by Chat.createdAt DESC for
   // M4 — proper last-message-at sort needs a cross-partition read into the
   // partitioned ChatMessage table OR a Chat.updatedAt column bumped by the
@@ -259,6 +306,7 @@ export const chatRouter = router({
           kind: true,
           name: true,
           createdAt: true,
+          mlsGroupId: true,
           members: { select: { userId: true } },
         },
       });
@@ -276,6 +324,9 @@ export const chatRouter = router({
           kind: c.kind === "DIRECT" ? ("direct" as const) : ("group" as const),
           name: c.name,
           createdAt: c.createdAt.toISOString(),
+          mlsGroupIdB64: c.mlsGroupId
+            ? Buffer.from(c.mlsGroupId).toString("base64")
+            : null,
           members: c.members.map((m) => {
             const d = display.get(m.userId);
             return {
@@ -304,6 +355,7 @@ export const chatRouter = router({
           kind: true,
           name: true,
           createdAt: true,
+          mlsGroupId: true,
           members: { select: { userId: true } },
         },
       });
@@ -322,6 +374,9 @@ export const chatRouter = router({
         kind: chat.kind === "DIRECT" ? ("direct" as const) : ("group" as const),
         name: chat.name,
         createdAt: chat.createdAt.toISOString(),
+        mlsGroupIdB64: chat.mlsGroupId
+          ? Buffer.from(chat.mlsGroupId).toString("base64")
+          : null,
         members: chat.members.map((m) => {
           const d = display.get(m.userId);
           return {

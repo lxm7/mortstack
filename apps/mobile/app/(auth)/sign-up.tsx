@@ -40,7 +40,7 @@ export default function SignUp() {
           Create account
         </Text>
         <Text color="$colorHover" fontSize="$5">
-          Join the Sessions network
+          Join the Mortstack Chat network
         </Text>
       </YStack>
 

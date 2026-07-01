@@ -33,7 +33,7 @@ const prismaLambdaBundling = {
 //
 // No VPC: Neon HTTP driver adapter reaches Postgres over public internet via
 // fetch. Removing VPC kills NAT gateway cost and 1-3s cold-start penalty.
-// VPC stack still provisioned for future ECS Fargate (SUI indexer).
+// VPC stack still provisioned for future ECS Fargate workloads.
 export const apiFunction = new sst.aws.Function("Api", {
   url: true,
   handler: "services/api/src/lambda.handler",

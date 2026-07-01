@@ -71,10 +71,10 @@ model AuthAccount {
   @@index([userId])
 }
 
-// Used by Better Auth for nonce storage (SUI wallet), email verification tokens, etc.
+// Used by Better Auth for email verification tokens, nonce storage, etc.
 model Verification {
   id         String   @id
-  identifier String   // e.g. "sui:0xabc..." or "email:user@example.com"
+  identifier String   // e.g. "email:user@example.com"
   value      String   // the nonce or OTP
   expiresAt  DateTime
   createdAt  DateTime @default(now())
@@ -100,17 +100,14 @@ model Account {
   // Web2 — email mirrored from AuthUser for domain queries
   email String? @unique
 
-  // Web3 — SUI wallet address (optional until connected)
-  walletAddress String? @unique
-
   // Trust & Safety (banning an Account bans all their Profiles)
   isBanned Boolean @default(false)
 
   // Identity verification tier (per person, not per persona)
   //   NONE:    Unverified — text posts only
-  //   BASIC:   Phone or zkLogin — can post images
-  //   CREATOR: World ID or stake — can upload audio/video
-  //   ARTIST:  Creator + wallet age — can mint NFTs
+  //   BASIC:   Phone-verified — can post images
+  //   CREATOR: World ID verified — can upload audio/video
+  //   ARTIST:  Top tier — full creator privileges
   identityTier       IdentityTier @default(NONE)
   identityVerifiedAt DateTime?
 
@@ -124,7 +121,6 @@ model Account {
   reportsMade    Report[]       @relation("ReportsMade")
 
   @@index([authUserId])
-  @@index([walletAddress])
   @@index([email])
 }
 
@@ -270,7 +266,7 @@ model GroupWelcome {
 }
 
 // ── Profile ───────────────────────────────────────────────────────────────────
-// Public persona. Posts, follows, NFTs, and reputation all live here.
+// Public persona. Posts, follows, and reputation all live here.
 // One Account can own/be a member of multiple Profiles.
 // Examples: a person is both a MUSICIAN and a VENUE owner.
 //           a BAND profile has multiple Account members.
@@ -300,7 +296,6 @@ model Profile {
   posts     Post[]
   comments  Comment[]
   likes     Like[]
-  nfts      NFT[]
   follows   Follow[] @relation("ProfileFollows")   // profiles this profile follows
   followers Follow[] @relation("ProfileFollowers") // profiles following this profile
 
@@ -345,9 +340,9 @@ enum ProfileRole {
 // Lives on Account (the person). Governs all their Profiles.
 enum IdentityTier {
   NONE    // Unverified — text posts only
-  BASIC   // Phone or zkLogin — can post images
-  CREATOR // World ID or stake — can upload audio/video
-  ARTIST  // Creator + wallet age — can mint NFTs
+  BASIC   // Phone-verified — can post images
+  CREATOR // World ID verified — can upload audio/video
+  ARTIST  // Top tier — full creator privileges
 }
 
 // ── IdentityCheck ─────────────────────────────────────────────────────────────
@@ -358,7 +353,7 @@ model IdentityCheck {
   accountId String
   account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
-  // "phone" | "email" | "google_oauth" | "world_id" | "sui_zklogin" | "gitcoin_passport" | "sui_stake"
+  // "phone" | "email" | "google_oauth" | "world_id" | "gitcoin_passport"
   provider   String
   externalId String // Provider's session or reference ID
 
@@ -406,7 +401,6 @@ model Post {
   // Relations
   comments Comment[]
   likes    Like[]
-  nft      NFT?
 
   @@index([profileId])
   @@index([createdAt])
@@ -468,45 +462,6 @@ model Follow {
   @@index([followingId])
 }
 
-// ── NFT ───────────────────────────────────────────────────────────────────────
-// Minted content on SUI. Belongs to a Profile (the artist/venue persona).
-// The Account's walletAddress is the on-chain owner — linked via Profile membership.
-model NFT {
-  id        String  @id @default(cuid())
-  profileId String
-  profile   Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  postId    String? @unique
-  post      Post?   @relation(fields: [postId], references: [id], onDelete: SetNull)
-
-  // SUI on-chain identifiers
-  objectId  String @unique // SUI object ID
-  packageId String          // Smart contract package
-  moduleId  String          // Module within package
-  type      NFTType
-
-  // Metadata
-  name        String
-  description String?
-  imageUrl    String
-  metadataUri String
-
-  // Marketplace
-  isListed Boolean @default(false)
-  price    String? // SUI tokens as string (avoids float precision loss)
-
-  createdAt DateTime @default(now())
-
-  @@index([profileId])
-  @@index([objectId])
-}
-
-enum NFTType {
-  MUSIC
-  PERFORMANCE
-  ART
-  COLLECTIBLE
-}
-
 // ── Chat ──────────────────────────────────────────────────────────────────────
 // Direct + small group chats. End-to-end encrypted: server stores only
 // ciphertext + nonce, never plaintext or keys.
@@ -521,6 +476,12 @@ model Chat {
   // Group chats may set a name; direct chats render from the other member.
   name      String?
   createdAt DateTime @default(now())
+
+  // Opaque MLS GroupId (32B, ADR-015 §3) linking this chat to its E2E group.
+  // Nullable: legacy v=1 chats have none, and it's set once by the creator via
+  // chat.linkMlsGroup after MlsClient.createGroup. @unique lets both devices
+  // reverse-map a joined group → its chat row on chat.list sync (ADR-016).
+  mlsGroupId Bytes? @unique
 
   members  ChatMember[]
   // No `messages ChatMessage[]` back-relation: ChatMessage drops the FK to
