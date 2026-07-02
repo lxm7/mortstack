@@ -16,6 +16,10 @@
       { "name": "USER_INBOX", "class_name": "UserInbox" }
     ]
   },
+  // Edge session cache (ADR-0017). Prod namespace_id is minted by SST
+  // (`sst.cloudflare.Kv` in infra/stacks/chat-ws.ts); this local id is a
+  // placeholder — `wrangler dev` simulates KV in-process and ignores it.
+  "kv_namespaces": [{ "binding": "SESSION_CACHE", "id": "session_cache_local" }],
   "migrations": [
     {
       "tag": "v1",
@@ -24,7 +28,11 @@
   ],
   "vars": {
     // Override locally via .dev.vars for the dev API URL.
-    "API_INTERNAL_URL": "http://localhost:3001"
+    "API_INTERNAL_URL": "http://localhost:3001",
+    // Edge session cache config (mirrors SST env in chat-ws.ts).
+    "SESSION_CACHE_TTL": "120",
+    "SESSION_CACHE_ENABLED": "1",
+    "SESSION_CACHE_METRICS": "0"
   }
   // DATABASE_URL must be set in .dev.vars locally (not committed). SST
   // injects it in deployed stages; see infra/stacks/chat-ws.ts.
