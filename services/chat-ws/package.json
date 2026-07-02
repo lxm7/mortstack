@@ -16,8 +16,7 @@
   "dependencies": {
     "@repo/chat-transport": "workspace:*",
     "@repo/db-edge": "workspace:*",
-    "aws4fetch": "^1.0.20",
-    "ulid": "^2.3.0"
+    "aws4fetch": "^1.0.20"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20251101.0",
