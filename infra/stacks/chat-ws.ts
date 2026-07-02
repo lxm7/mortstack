@@ -70,7 +70,7 @@ export const chatWsWorker = new sst.cloudflare.Worker("ChatWs", {
     // Load-test metrics (B1.7). "1" → per-verify "SCM" log for `wrangler tail`
     // to tally cache hit rate + KV write rate. Keep "0" in prod; flip to "1"
     // (+ redeploy) only for a load-test run, then flip back.
-    SESSION_CACHE_METRICS: "0",
+    SESSION_CACHE_METRICS: "1",
   },
   transform: {
     worker: (args) => {
@@ -142,8 +142,8 @@ export const chatWsWorker = new sst.cloudflare.Worker("ChatWs", {
       // is still v1 — in that case set { oldTag: "v1", newTag: "v2" } here and
       // let the KV binding ride that deploy, rather than jumping to v3.
       args.migrations = {
-        oldTag: "v2",
-        newTag: "v3",
+        oldTag: "v3",
+        newTag: "v4",
       };
 
       // Compatibility date with WebSocket auto-reply-to-close behaviour
