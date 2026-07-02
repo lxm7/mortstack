@@ -1,7 +1,9 @@
+import { createHash } from "node:crypto";
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { bearer } from "better-auth/plugins";
 import { prisma } from "@repo/database";
+import { purgeSessionCache } from "./chat-ws-push";
 // ── Better Auth server instance ───────────────────────────────────────────────
 // Sessions are DB-backed (via Prisma) — fully revocable on logout or ban.
 // The `bearer` plugin enables Authorization: Bearer <token> for API clients
@@ -70,6 +72,26 @@ export const auth = betterAuth({
               email: user.email,
             },
           });
+        },
+      },
+    },
+    // Write-through invalidation of the edge session cache (ADR-0017 §3). Fires
+    // on sign-out and every revoke path, one place. sha256(session.token) is the
+    // KV key the Worker wrote (auth.ts sha256Hex — UTF-8 bytes, lowercase hex),
+    // so the digests match. Fire-and-forget: the row is already deleted here
+    // (authoritative) and the KV TTL backstops a missed purge, so this must
+    // never throw or block the deletion.
+    session: {
+      delete: {
+        after: async (session) => {
+          try {
+            const hash = createHash("sha256")
+              .update(session.token)
+              .digest("hex");
+            await purgeSessionCache(hash);
+          } catch {
+            // best-effort; TTL bounds revocation lag
+          }
         },
       },
     },

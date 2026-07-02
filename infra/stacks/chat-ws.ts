@@ -29,6 +29,16 @@ import { databaseUrl } from "./secrets";
 // shape may shift between SST versions — verify `sst diff` before first deploy
 // and tweak the transform if Cloudflare provider rejects the binding format.
 
+// ── Edge session cache (ADR-0017) ────────────────────────────────────────────
+// Cache-aside KV in front of WS-connect session verification. Neon stays
+// authoritative; KV is a short-TTL read-through cache keyed by sha256(token),
+// value { userId, exp }. Bound raw as `env.SESSION_CACHE` (a namespace binding,
+// like the DO namespaces — NOT a linked secret, so it is wired via
+// transform.worker.bindings below rather than `link`). The cache-aside read
+// path (B1.2+) and the HMAC-gated /internal/session/purge worker (B1.5) are
+// separate steps; B1.1 provisions the namespace + binding only.
+export const sessionCache = new sst.cloudflare.Kv("SessionCache");
+
 export const chatWsWorker = new sst.cloudflare.Worker("ChatWs", {
   handler: "services/chat-ws/src/index.ts",
   url: true,
@@ -48,13 +58,31 @@ export const chatWsWorker = new sst.cloudflare.Worker("ChatWs", {
     // dedicated IAM user with sns:Publish scoped to this topic only.
     // Provisioned out-of-band; secrets are set via `sst secret set`.
     AWS_REGION: $app.providers?.aws?.region ?? "eu-west-1",
+    // Edge session cache (ADR-0017 §3). TTL bounds worst-case revocation lag;
+    // 120s is the tuned starting point (60–300s viable). String because Worker
+    // env vars are strings — the cache layer (B1.2) parses to seconds. Kept
+    // env-tunable so it can be adjusted under B1.7 load testing without a code
+    // change.
+    SESSION_CACHE_TTL: "120",
+    // Kill-switch (ADR-0017 consequences). "0"/"false" → the Worker falls back
+    // to origin-only verification (existing Lambda path) with no redeploy.
+    SESSION_CACHE_ENABLED: "1",
+    // Load-test metrics (B1.7). "1" → per-verify "SCM" log for `wrangler tail`
+    // to tally cache hit rate + KV write rate. Keep "0" in prod; flip to "1"
+    // (+ redeploy) only for a load-test run, then flip back.
+    SESSION_CACHE_METRICS: "1",
   },
   transform: {
     worker: (args) => {
       // Bind the Chat + UserInbox Durable Object namespaces.
       // SQLite-backed DOs are the recommended path on the Workers Paid plan
       // (cheaper, supports point-in-time recovery, modern API).
-      args.bindings = $resolve([args.bindings]).apply(([bindings]) => [
+      // Object form of $resolve so each value keeps its own type — the array
+      // form unifies mixed Output types into a union and widens namespace_id.
+      args.bindings = $resolve({
+        bindings: args.bindings,
+        sessionCacheId: sessionCache.id,
+      }).apply(({ bindings, sessionCacheId }) => [
         ...(bindings ?? []),
         {
           type: "durable_object_namespace",
@@ -65,6 +93,20 @@ export const chatWsWorker = new sst.cloudflare.Worker("ChatWs", {
           type: "durable_object_namespace",
           name: "USER_INBOX",
           className: "UserInbox",
+        },
+        {
+          // Edge session cache (ADR-0017). Raw KV namespace binding →
+          // env.SESSION_CACHE. Not a DO class, so it does NOT touch the
+          // migration shape below — but adding any binding is still a Worker
+          // update, which requires the tag bump (see migrations note).
+          type: "kv_namespace",
+          name: "SESSION_CACHE",
+          // MUST be camelCase `namespaceId` — the Pulumi provider's
+          // WorkersScriptBinding uses camelCase (like `className` above).
+          // snake_case `namespace_id` is silently dropped → CF 10021 "must have
+          // a namespace_id". tsc does NOT catch it (excess-property check is
+          // bypassed through Output.apply). Do not "fix" this back to snake_case.
+          namespaceId: sessionCacheId,
         },
       ]);
 
@@ -86,16 +128,22 @@ export const chatWsWorker = new sst.cloudflare.Worker("ChatWs", {
       // drop classes from newSqliteClasses, and use renamedClasses /
       // deletedClasses as needed. Do NOT re-declare existing classes in
       // newSqliteClasses on an update (triggers 10074).
-      // UPDATE-SHAPE: the script already exists at migration tag v1 with the
-      // Chat + UserInbox SQLite DO classes created. This deploy changes only
-      // Worker code (no DO class add/rename/delete), so bump the tag with an
-      // empty migration and send oldTag so CF's precondition matches the
-      // deployed v1 (error 10079 "got tag '' when expected v1" = oldTag was
-      // omitted by the create-shape). Do NOT re-declare existing classes in
-      // newSqliteClasses (triggers 10074).
+      // UPDATE-SHAPE (B1.1, ADR-0017): this deploy adds the SESSION_CACHE KV
+      // binding. That is a Worker-binding change with NO DO class add/rename/
+      // delete, so it is an empty migration that only bumps the tag. Send
+      // oldTag = the currently deployed tag so CF's precondition matches
+      // (error 10079 "got tag X when expected Y" = oldTag ≠ deployed). Do NOT
+      // re-declare Chat/UserInbox in newSqliteClasses (triggers 10074).
+      //
+      // ⚠ PRECONDITION — deployed tag. This assumes the prior code-only v1→v2
+      // deploy (commit 265a35c) actually shipped, i.e. deployed tag == v2.
+      // VERIFY with `sst diff` before apply. If the v1→v2 deploy never ran
+      // (e.g. alice/bob was tested on local `wrangler dev`), the deployed tag
+      // is still v1 — in that case set { oldTag: "v1", newTag: "v2" } here and
+      // let the KV binding ride that deploy, rather than jumping to v3.
       args.migrations = {
-        oldTag: "v1",
-        newTag: "v2",
+        oldTag: "v3",
+        newTag: "v4",
       };
 
       // Compatibility date with WebSocket auto-reply-to-close behaviour

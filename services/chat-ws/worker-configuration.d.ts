@@ -20,6 +20,17 @@ declare global {
     // the chat-delivered topic; the chat-push Lambda (M6) dispatches APNs/FCM.
     CHAT_DELIVERED_TOPIC_ARN: string;
     AWS_REGION: string;
+    // Edge session cache (ADR-0017). Cache-aside store for WS-connect session
+    // verification, keyed by sha256(token). Raw namespace binding, not a
+    // linked secret. Read/write logic lands in B1.2+.
+    SESSION_CACHE: KVNamespace;
+    // TTL in seconds (string; parsed by the cache layer). Default 120.
+    SESSION_CACHE_TTL: string;
+    // Kill-switch: "0"/"false" → origin-only verification, no cache.
+    SESSION_CACHE_ENABLED: string;
+    // Load-test metrics (B1.7): "1" → emit one "SCM {...}" log per verify for
+    // wrangler-tail tally. Off ("0") in prod to avoid per-connect log volume.
+    SESSION_CACHE_METRICS: string;
     // Note: AWS creds for SigV4 publish come via `Resource.X.value` from
     // the SST `sst` import (linked CF Worker secrets pattern). They are NOT
     // exposed as env bindings; do not add them here.
