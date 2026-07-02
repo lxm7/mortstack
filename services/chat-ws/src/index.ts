@@ -79,7 +79,7 @@ export default {
   },
 } satisfies ExportedHandler<Env>;
 
-// ── Internal push surface ───────────────────────────────────────────────────
+// ── Internal surface ────────────────────────────────────────────────────────
 //
 // POST /internal/notify
 //   header:  x-chat-ws-secret: <ChatWsHmacSecret>
@@ -89,12 +89,29 @@ export default {
 //
 // API Lambda fans wake-up signals here (e.g. on mls.groups.publishWelcomes
 // success) so the recipient's UserInbox DOs can push to all connected
-// sockets without waiting for the 30s background poll. Single trusted
-// caller — the API Lambda — guarded by the same shared HMAC.
+// sockets without waiting for the 30s background poll.
+//
+// POST /internal/session/purge  (ADR-0017 §3 — write-through invalidation)
+//   header:  x-chat-ws-secret: <ChatWsHmacSecret>
+//   body:    { tokenHash: string }   sha256(token) hex, computed API-side
+//   200:     { purged: boolean }     false = delete failed; TTL is the backstop
+//   401:     bad/missing secret
+//
+// The API's Better Auth sign-out / revoke hook (B1.4) computes sha256(token)
+// and calls this so the edge session cache evicts immediately; the KV TTL
+// bounds revocation lag if this call is ever missed. Raw tokens never reach
+// this hop — only the hash — so a purge request can't be replayed as a bearer.
+//
+// Both endpoints share one trusted caller (the API Lambda) behind the same
+// HMAC (verifyInternalAuth); never reachable from a client.
 
 interface InternalNotifyBody {
   userIds?: string[];
   frame?: { kind?: string };
+}
+
+interface InternalPurgeBody {
+  tokenHash?: string;
 }
 
 function verifyInternalAuth(request: Request): boolean {
@@ -119,6 +136,10 @@ async function handleInternal(
   }
   if (!verifyInternalAuth(request)) {
     return new Response("unauthorized", { status: 401 });
+  }
+
+  if (pathname === "/internal/session/purge") {
+    return handleSessionPurge(request, env);
   }
   if (pathname !== "/internal/notify") {
     return new Response("not found", { status: 404 });
@@ -158,6 +179,42 @@ async function handleInternal(
   );
 
   return new Response(JSON.stringify({ delivered }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+// Evict a session from the edge cache (ADR-0017 §3). Body carries the hex
+// sha256(token) — the same key auth.ts writes — so the raw token never reaches
+// this hop. Best-effort: a failed delete returns { purged: false } (never 5xx),
+// because the KV TTL is the revocation backstop and a caller must not fail its
+// sign-out just because a cache eviction missed.
+async function handleSessionPurge(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  let body: InternalPurgeBody;
+  try {
+    body = (await request.json()) as InternalPurgeBody;
+  } catch {
+    return new Response("bad json", { status: 400 });
+  }
+
+  const hash = body.tokenHash;
+  // sha256 hex is exactly 64 lowercase hex chars — reject anything else so a
+  // malformed caller can't spray junk keys at KV.
+  if (typeof hash !== "string" || !/^[0-9a-f]{64}$/.test(hash)) {
+    return new Response("bad tokenHash", { status: 400 });
+  }
+
+  let purged = true;
+  try {
+    await env.SESSION_CACHE.delete(hash);
+  } catch {
+    purged = false; // TTL backstops the missed eviction
+  }
+
+  return new Response(JSON.stringify({ purged }), {
     status: 200,
     headers: { "content-type": "application/json" },
   });
