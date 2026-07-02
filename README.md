@@ -20,17 +20,14 @@ the scale primitives are documented with the concrete signal that triggers each.
 
 - **Group-native E2EE** — OpenMLS / RFC 9420 TreeKEM, a Rust core (`engine.rs`,
   ~1.1k lines) exposed to React Native through UniFFI. 1:1 and group chats share
-  one crypto path. See [ADR-0015](docs/adr/0015-openmls-rfc9420-group-e2ee.md).
+  one crypto path. 
 - **Realtime transport** — a Cloudflare Worker fronting two Durable Object
   classes: `UserInbox` (one per user, holds device sockets) and `Chat` (one per
   chat, owns fanout + ordering). WebSocket Hibernation → idle sockets cost ~\$0.
 - **Direct persist** — the `Chat` DO writes message batches straight to Neon over
-  HTTP, no Lambda hop ([ADR-0010](docs/adr/0010-chat-do-neon-http-direct-persist.md)),
-  with a DO-assigned monotonic `serverSerial` for total ordering
-  ([ADR-0012](docs/adr/0012-do-assigned-monotonic-server-serial.md)).
+  HTTP, no Lambda hop, with a DO-assigned monotonic `serverSerial` for total ordering
 - **Content-blind push** — offline recipients get APNs/FCM via SNS → SQS →
-  `chat-push` Lambda; only ciphertext crosses the bus, the device NSE decrypts
-  ([ADR-0013](docs/adr/0013-content-blind-e2e-push-pipeline.md)).
+  `chat-push` Lambda; only ciphertext crosses the bus, the device NSE decrypts.
 - **Encrypted local store** — op-sqlite + SQLCipher on device; keys in the secure
   enclave via `expo-secure-store`.
 
@@ -41,13 +38,6 @@ the scale primitives are documented with the concrete signal that triggers each.
 - Media uploads to Cloudflare R2 (zero egress) via presigned URLs + CDN read path.
 - Event bus (SNS + SQS fan-out) for media/activity; moderation + social-push
   consumers are wired as stubs, activated per trigger.
-
-**Not yet implemented / deferred**
-
-- Voice + video calls (`@repo/chat-calls`, placeholder for M7).
-- Moderation + social-notification Lambdas (queues exist, handlers are stubs).
-- Multi-device per account (single-device dedupe today — Phase C).
-- VPC / Redis / edge read tier (deferred until a trigger fires).
 
 ---
 
