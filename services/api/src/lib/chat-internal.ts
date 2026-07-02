@@ -2,7 +2,7 @@
 //
 //   POST /internal/chat/verify-session
 //     body: { token }
-//     200:  { userId }
+//     200:  { userId, exp }   exp = session expiry, unix seconds
 //     401:  unauthenticated bearer
 //
 // The /internal/chat/persist endpoint was removed in M2 per ADR-010 — the
@@ -22,6 +22,10 @@ interface VerifySessionRequest {
 
 interface VerifySessionResponse {
   userId: string;
+  // Session expiry, unix seconds. Lets the edge cache (ADR-0017) avoid serving
+  // a session past its real end within the KV TTL window. Additive field —
+  // older Workers that ignore it are unaffected.
+  exp: number;
 }
 
 function verifyHmac(request: Request): boolean {
@@ -75,7 +79,9 @@ async function handleVerifySession(request: Request): Promise<Response> {
     return new Response("invalid session", { status: 401 });
   }
 
-  const out: VerifySessionResponse = { userId: session.user.id };
+  // expiresAt is a Date on the DB-backed session record; to unix seconds.
+  const exp = Math.floor(new Date(session.session.expiresAt).getTime() / 1000);
+  const out: VerifySessionResponse = { userId: session.user.id, exp };
   return new Response(JSON.stringify(out), {
     status: 200,
     headers: { "content-type": "application/json" },
