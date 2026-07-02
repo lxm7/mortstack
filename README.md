@@ -20,7 +20,7 @@ the scale primitives are documented with the concrete signal that triggers each.
 
 - **Group-native E2EE** — OpenMLS / RFC 9420 TreeKEM, a Rust core (`engine.rs`,
   ~1.1k lines) exposed to React Native through UniFFI. 1:1 and group chats share
-  one crypto path. 
+  one crypto path.
 - **Realtime transport** — a Cloudflare Worker fronting two Durable Object
   classes: `UserInbox` (one per user, holds device sockets) and `Chat` (one per
   chat, owns fanout + ordering). WebSocket Hibernation → idle sockets cost ~\$0.
@@ -174,11 +174,10 @@ packages/
   chat-calls    1:1 voice/video (placeholder — M7)
   db-edge       Worker-runtime Neon HTTP client for the persist hot path (ADR-0010)
   database      Prisma schema authority + migrations + seed
-  api           tRPC client bindings for the app
-  identity      identity/verification helpers
+  identity      tier permission map (hasPermission)
   schemas       shared zod schemas
   ui            shared React UI
-  eslint-config / typescript-config / tailwind-config  shared configs
+  eslint-config / typescript-config  shared configs
 
 infra/stacks/   SST stack modules (see below)
 ```
