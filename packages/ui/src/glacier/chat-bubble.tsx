@@ -66,10 +66,12 @@ export function ChatBubble({
       opacity={sending ? 0.6 : 1}
     >
       {outgoing ? (
-        <LinearGradient
-          colors={["$iceLight", "$secondary"]}
-          start={[0, 0]}
-          end={[1, 1]}
+        // Gradient is an absolute fill behind the text, not the sizing element.
+        // expo LinearGradient shrink-wraps to min-content (longest word), which
+        // wrapped bubbles far too narrow — letting the padded YStack size to the
+        // text (like IncomingShell) fixes the width. The gradient self-clips via
+        // matching radii; shadow lives on the outer YStack so it isn't masked.
+        <YStack
           borderRadius="$lg"
           borderBottomRightRadius={4}
           paddingHorizontal="$sm"
@@ -82,8 +84,16 @@ export function ChatBubble({
           shadowRadius={10}
           shadowOffset={{ width: 0, height: 4 }}
         >
+          <LinearGradient
+            fullscreen
+            colors={["$primary", "$secondary"]}
+            start={[0, 0]}
+            end={[1, 1]}
+            borderRadius="$lg"
+            borderBottomRightRadius={4}
+          />
           <BodyMd color="$onPrimary">{text}</BodyMd>
-        </LinearGradient>
+        </YStack>
       ) : (
         <IncomingShell failed={failed}>
           {sender ? (

@@ -5,15 +5,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet } from "react-native";
 import { FlashList } from "@shopify/flash-list";
 import { useRouter } from "expo-router";
-import {
-  Button,
-  Input,
-  Spinner,
-  Text,
-  View,
-  XStack,
-  YStack,
-} from "tamagui";
+import { Feather } from "@expo/vector-icons";
+import { Button, Spinner, Text, View, XStack, YStack, useTheme } from "tamagui";
+import { TextField } from "@repo/ui/glacier/text-field";
+import { ListRow } from "@repo/ui/glacier/list-row";
+import { Title, Label, BodyMd, BodySm } from "@repo/ui/glacier/typography";
 
 import { trpc } from "@/lib/trpc/client";
 import { createNewChat } from "@/lib/chat/create-chat";
@@ -31,6 +27,8 @@ type Mode = "direct" | "group";
 
 export default function NewChatScreen() {
   const router = useRouter();
+  const theme = useTheme();
+  const iconColor = theme.onSurfaceVariant.val;
   const [mode, setMode] = useState<Mode>("direct");
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchedUser[]>([]);
@@ -128,22 +126,29 @@ export default function NewChatScreen() {
         py="$3"
         alignItems="center"
         justifyContent="space-between"
-        borderBottomWidth={1}
-        borderColor="$borderColor"
+        borderBottomWidth={0.5}
+        borderColor="$outlineVariant"
       >
         <Button size="$2" chromeless onPress={() => router.back()}>
-          Cancel
+          <Text color="$onSurfaceVariant" fontFamily="$body">
+            Cancel
+          </Text>
         </Button>
-        <Text fontSize="$5" fontWeight="700">
-          New Chat
-        </Text>
+        <Title>New Chat</Title>
         <Button
           size="$2"
+          chromeless
           disabled={!canSubmit}
           opacity={canSubmit ? 1 : 0.4}
           onPress={() => void submit()}
         >
-          {submitting ? <Spinner size="small" /> : "Create"}
+          {submitting ? (
+            <Spinner size="small" color="$primary" />
+          ) : (
+            <Text color="$primary" fontFamily="$body" fontWeight="600">
+              Create
+            </Text>
+          )}
         </Button>
       </XStack>
 
@@ -162,9 +167,7 @@ export default function NewChatScreen() {
 
       {mode === "group" && selected.length > 0 && (
         <YStack px="$4" gap="$2" pb="$2">
-          <Text fontSize="$2" color="$placeholderColor">
-            Selected ({selected.length})
-          </Text>
+          <Label color="$onSurfaceVariant">Selected ({selected.length})</Label>
           <XStack gap="$2" flexWrap="wrap">
             {selected.map((u) => (
               <Pressable
@@ -172,17 +175,15 @@ export default function NewChatScreen() {
                 onPress={() => removeSelected(u.accountId)}
               >
                 <XStack
-                  bg="$backgroundHover"
+                  bg="$surfaceContainerLow"
                   px="$2"
                   py="$1"
-                  borderRadius="$3"
+                  borderRadius="$full"
                   gap="$1"
                   alignItems="center"
                 >
-                  <Text fontSize="$3">{u.handle}</Text>
-                  <Text fontSize="$3" color="$placeholderColor">
-                    ×
-                  </Text>
+                  <BodySm color="$onSurface">{u.handle}</BodySm>
+                  <BodySm color="$onSurfaceVariant">×</BodySm>
                 </XStack>
               </Pressable>
             ))}
@@ -192,7 +193,7 @@ export default function NewChatScreen() {
 
       {mode === "group" && selected.length >= 2 && (
         <YStack px="$4" pb="$2">
-          <Input
+          <TextField
             value={groupName}
             onChangeText={setGroupName}
             placeholder="Group name (optional)"
@@ -202,7 +203,8 @@ export default function NewChatScreen() {
       )}
 
       <YStack px="$4" pb="$2">
-        <Input
+        <TextField
+          icon={<Feather name="search" size={18} color={iconColor} />}
           value={query}
           onChangeText={setQuery}
           placeholder="Search by handle…"
@@ -214,31 +216,24 @@ export default function NewChatScreen() {
 
       {error && (
         <YStack px="$4" pb="$2">
-          <Text color="#dc2626" fontSize="$2">
-            {error}
-          </Text>
+          <BodySm color="$error">{error}</BodySm>
         </YStack>
       )}
 
       <View flex={1}>
         {searching ? (
-          <YStack
-            flex={1}
-            alignItems="center"
-            justifyContent="center"
-            gap="$2"
-          >
+          <YStack flex={1} alignItems="center" justifyContent="center" gap="$2">
             <Spinner />
           </YStack>
         ) : query.trim().length < MIN_QUERY_LEN ? (
           <YStack flex={1} alignItems="center" justifyContent="center">
-            <Text color="$placeholderColor">
+            <BodyMd color="$onSurfaceVariant">
               Type at least {MIN_QUERY_LEN} characters
-            </Text>
+            </BodyMd>
           </YStack>
         ) : results.length === 0 ? (
           <YStack flex={1} alignItems="center" justifyContent="center">
-            <Text color="$placeholderColor">No matches</Text>
+            <BodyMd color="$onSurfaceVariant">No matches</BodyMd>
           </YStack>
         ) : (
           <FlashList
@@ -275,10 +270,14 @@ function ModeTab({
       <View
         px="$4"
         py="$2"
-        borderRadius="$3"
-        backgroundColor={active ? "$brand" : "$backgroundHover"}
+        borderRadius="$full"
+        backgroundColor={active ? "$primary" : "$surfaceContainerLow"}
       >
-        <Text color={active ? "white" : "$color"} fontWeight="600">
+        <Text
+          fontFamily="$body"
+          fontWeight="600"
+          color={active ? "$onPrimary" : "$onSurface"}
+        >
           {label}
         </Text>
       </View>
@@ -286,6 +285,9 @@ function ModeTab({
   );
 }
 
+// Search result row — same Glacier ListRow the chat list uses, so the picker
+// reads as one surface. Name is the display name, handle sits in the preview
+// line, and group multi-select uses the trailing receipt slot for the tick.
 function UserRow({
   user,
   isSelected,
@@ -295,44 +297,20 @@ function UserRow({
   isSelected: boolean;
   onPress: () => void;
 }) {
+  const theme = useTheme();
   return (
-    <Pressable onPress={onPress}>
-      <XStack
-        px="$4"
-        py="$3"
-        gap="$3"
-        alignItems="center"
-        borderBottomWidth={1}
-        borderColor="$borderColor"
-        backgroundColor={isSelected ? "$backgroundHover" : "$background"}
-      >
-        <View
-          width={40}
-          height={40}
-          borderRadius={20}
-          backgroundColor="#3b82f6"
-          alignItems="center"
-          justifyContent="center"
-        >
-          <Text color="white" fontWeight="600">
-            {user.handle.slice(0, 2).toUpperCase()}
-          </Text>
-        </View>
-        <YStack flex={1} gap="$1">
-          <Text fontSize="$4" fontWeight="600">
-            {user.displayName}
-          </Text>
-          <Text fontSize="$2" color="$placeholderColor">
-            @{user.handle}
-          </Text>
-        </YStack>
-        {isSelected && (
-          <Text fontSize="$5" color="$brand">
-            ✓
-          </Text>
-        )}
-      </XStack>
-    </Pressable>
+    <ListRow
+      name={user.displayName}
+      preview={`@${user.handle}`}
+      timestamp=""
+      avatar={{ name: user.handle, seed: user.accountId }}
+      receipt={
+        isSelected ? (
+          <Feather name="check" size={18} color={theme.primary.val} />
+        ) : null
+      }
+      onPress={onPress}
+    />
   );
 }
 

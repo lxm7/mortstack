@@ -26,15 +26,20 @@ const ComposerPill = styled(XStack, {
   backgroundColor: "$surfaceContainerLow",
   borderWidth: 1,
   borderColor: "$outlineVariant",
+  // Glow kept always-present at 0 opacity so focus only changes values on a
+  // fixed style signature — otherwise adding shadow* on focus makes Tamagui
+  // reconstruct the pill view, remounting the Input and dropping focus.
+  shadowColor: "$primary",
+  shadowRadius: 6,
+  shadowOffset: { width: 0, height: 0 },
+  shadowOpacity: 0,
 
   variants: {
     focused: {
       true: {
         borderColor: "$primary",
         borderWidth: 1.5,
-        shadowColor: "$primary",
         shadowOpacity: 0.15,
-        shadowRadius: 6,
       },
     },
   } as const,
