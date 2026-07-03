@@ -1,15 +1,23 @@
 import { useState } from "react";
-import { router } from "expo-router";
-import { YStack, Text, Button, Input, Spinner } from "tamagui";
+import { router, Link } from "expo-router";
+import { Feather } from "@expo/vector-icons";
+import { Spinner, XStack, YStack, useTheme } from "tamagui";
+import { Button } from "@repo/ui/glacier/button";
+import { TextField } from "@repo/ui/glacier/text-field";
+import { BodySm, Meta } from "@repo/ui/glacier/typography";
 import { useAuthStore } from "@/store/auth";
 import { authClient } from "@/lib/auth/client";
+import { AuthShell, AuthFooter } from "@/lib/auth/ui";
 
 export default function SignIn() {
+  const theme = useTheme();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const setSession = useAuthStore((s) => s.setSession);
+
+  const iconColor = theme.onSurfaceVariant.val;
 
   async function handleEmailSignIn() {
     if (!email || !password) return;
@@ -28,65 +36,69 @@ export default function SignIn() {
   }
 
   return (
-    <YStack f={1} bg="$background" px="$4" jc="center" gap="$4">
-      <YStack gap="$1">
-        <Text
-          fontFamily="$heading"
-          fontSize="$9"
-          fontWeight="700"
-          color="$color"
-        >
-          Mortstack
-        </Text>
-        <Text color="$colorHover" fontSize="$5">
-          Chat app
-        </Text>
-      </YStack>
-
-      <YStack gap="$3" mt="$4">
-        <Input
-          placeholder="Email"
+    <AuthShell
+      subtitle="Sign in to your encrypted workspace"
+      footer={
+        <AuthFooter
+          prompt="Don't have an account?"
+          action="Sign Up"
+          href="/(auth)/sign-up"
+        />
+      }
+    >
+      <YStack gap="$sm">
+        <TextField
+          icon={<Feather name="mail" size={18} color={iconColor} />}
+          placeholder="Email Address"
           value={email}
           onChangeText={setEmail}
-          autoCapitalize="none"
           keyboardType="email-address"
-          size="$5"
+          inputMode="email"
+          autoCapitalize="none"
+          autoComplete="email"
+          enterKeyHint="next"
+          error={!!error}
         />
-        <Input
+        <TextField
+          icon={<Feather name="lock" size={18} color={iconColor} />}
           placeholder="Password"
           value={password}
           onChangeText={setPassword}
           secureTextEntry
-          size="$5"
+          autoComplete="password"
+          enterKeyHint="go"
+          onSubmitEditing={handleEmailSignIn}
+          error={!!error}
         />
 
-        {error && (
-          <Text color="$error" fontSize="$3">
-            {error}
-          </Text>
-        )}
+        <XStack jc="flex-end">
+          <Link href="/(auth)/forgot-password" asChild>
+            <Meta color="$primary">Forgot Password?</Meta>
+          </Link>
+        </XStack>
+
+        {error && <BodySm color="$error">{error}</BodySm>}
 
         <Button
-          size="$5"
-          bg="$brand"
-          // @ts-expect-error -- color is in ButtonContext but not yet in exported prop type (Tamagui RC)
-          color="$brandText"
+          size="lg"
+          alignSelf="stretch"
+          mt="$xs"
           onPress={handleEmailSignIn}
           disabled={loading}
-          icon={loading ? <Spinner /> : undefined}
+          icon={loading ? <Spinner color="$onPrimary" /> : undefined}
+          iconAfter={
+            loading ? undefined : (
+              <Feather
+                name="arrow-right"
+                size={18}
+                color={theme.onPrimary.val}
+              />
+            )
+          }
         >
-          Sign in
+          Login
         </Button>
       </YStack>
-
-      <Button
-        size="$4"
-        variant="outlined"
-        onPress={() => router.push("/(auth)/sign-up")}
-        disabled={loading}
-      >
-        Create account
-      </Button>
-    </YStack>
+    </AuthShell>
   );
 }

@@ -10,16 +10,27 @@ import { Stack } from "expo-router";
 import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
+// Glacier type system (THEME §3): Sora (heading), Plus Jakarta Sans (body +
+// metadata), JetBrains Mono (crypto/technical). Face names MUST match the
+// `face` entries in the Tamagui config.
 import {
-  IBMPlexSans_400Regular,
-  IBMPlexSans_400Regular_Italic,
-  IBMPlexSans_500Medium,
-  IBMPlexSans_500Medium_Italic,
-  IBMPlexSans_600SemiBold,
-  IBMPlexSans_600SemiBold_Italic,
-  IBMPlexSans_700Bold,
-  IBMPlexSans_700Bold_Italic,
-} from "@expo-google-fonts/ibm-plex-sans";
+  Sora_400Regular,
+  Sora_500Medium,
+  Sora_600SemiBold,
+  Sora_700Bold,
+} from "@expo-google-fonts/sora";
+import {
+  PlusJakartaSans_400Regular,
+  PlusJakartaSans_400Regular_Italic,
+  PlusJakartaSans_500Medium,
+  PlusJakartaSans_500Medium_Italic,
+  PlusJakartaSans_600SemiBold,
+  PlusJakartaSans_700Bold,
+} from "@expo-google-fonts/plus-jakarta-sans";
+import {
+  JetBrainsMono_400Regular,
+  JetBrainsMono_500Medium,
+} from "@expo-google-fonts/jetbrains-mono";
 import { Providers } from "@/providers";
 import { logChatEndpoints } from "@/lib/api/url";
 import { getChatDb } from "@repo/chat-db";
@@ -68,14 +79,18 @@ getChatDb()
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
-    IBMPlexSans_400Regular,
-    IBMPlexSans_400Regular_Italic,
-    IBMPlexSans_500Medium,
-    IBMPlexSans_500Medium_Italic,
-    IBMPlexSans_600SemiBold,
-    IBMPlexSans_600SemiBold_Italic,
-    IBMPlexSans_700Bold,
-    IBMPlexSans_700Bold_Italic,
+    Sora_400Regular,
+    Sora_500Medium,
+    Sora_600SemiBold,
+    Sora_700Bold,
+    PlusJakartaSans_400Regular,
+    PlusJakartaSans_400Regular_Italic,
+    PlusJakartaSans_500Medium,
+    PlusJakartaSans_500Medium_Italic,
+    PlusJakartaSans_600SemiBold,
+    PlusJakartaSans_700Bold,
+    JetBrainsMono_400Regular,
+    JetBrainsMono_500Medium,
   });
 
   useEffect(() => {
@@ -89,7 +104,8 @@ export default function RootLayout() {
   return (
     <Providers>
       <Stack screenOptions={{ headerShown: false }} />
-      <StatusBar style="auto" />
+      {/* Light-only app → dark status-bar content on the hospital-white surface */}
+      <StatusBar style="dark" />
     </Providers>
   );
 }

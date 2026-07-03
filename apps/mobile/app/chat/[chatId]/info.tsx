@@ -195,7 +195,7 @@ export default function ChatInfoScreen() {
               await trpc.chat.leave.mutate({ chatId: chat.id });
               removeChatFromStore(chat.id);
               clearChatGroupCache(chat.id);
-              router.replace("/chats" as never);
+              router.replace("/(tabs)" as never);
             } catch (err) {
               setError(err instanceof Error ? err.message : String(err));
               setPending(null);
@@ -331,7 +331,7 @@ export default function ChatInfoScreen() {
             {chat.kind === "direct" && otherMembers[0] && (
               <DirectChatTrustActions
                 peer={otherMembers[0]}
-                onBlocked={() => router.replace("/chats" as never)}
+                onBlocked={() => router.replace("/(tabs)" as never)}
               />
             )}
 

@@ -1,13 +1,20 @@
-// Thread screen — inverted FlashList of messages, Tamagui composer, Telegram-
-// ish bubbles. Outgoing right (brand), incoming left (surface). Per-bubble
-// timestamp + sender display (groups only). Long-press on a failed own
-// bubble opens BubbleActionSheet (retry / delete).
+// Chat thread — Glacier / App-Light "Frozen Light reading room" (chat/DESIGN.md).
+// Full-bleed message list with sticky day-dividers, incoming avatars, outgoing
+// gradient bubbles, and a pinned Composer. Long-press any bubble → actions menu
+// (Copy · Delete/Report · Inspect encryption → crypto inspector).
 
 import { useCallback, useMemo, useRef, useState } from "react";
-import { KeyboardAvoidingView, Platform, StyleSheet } from "react-native";
+import {
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  StyleSheet,
+} from "react-native";
 import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Button, Input, Spinner, Text, View, XStack, YStack } from "tamagui";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Feather } from "@expo/vector-icons";
+import { Spinner, XStack, YStack, useTheme } from "tamagui";
 
 import {
   useChat,
@@ -18,14 +25,57 @@ import {
   type Member,
   type Message,
 } from "@repo/chat";
+import { Avatar } from "@repo/ui/glacier/avatar";
+import { ChatBubble, DayDivider } from "@repo/ui/glacier/chat-bubble";
+import { Composer } from "@repo/ui/glacier/composer";
+import { HeadlineMd, BodyMd, Meta, Title } from "@repo/ui/glacier/typography";
 
 import { useAuthStore } from "@/store/auth";
-import { BubbleActionSheet } from "@/lib/chat/components/BubbleActionSheet";
-import { MessageBubble } from "@/lib/chat/components/MessageBubble";
+import { MessageActionsSheet } from "@/lib/chat/components/MessageActionsSheet";
 import { trpc } from "@/lib/trpc/client";
+
+function formatTime(ms: number): string {
+  const d = new Date(ms);
+  let h = d.getHours();
+  const m = d.getMinutes().toString().padStart(2, "0");
+  const ampm = h >= 12 ? "PM" : "AM";
+  h = h % 12 || 12;
+  return `${h}:${m} ${ampm}`;
+}
+
+function sameDay(a: number, b: number): boolean {
+  const da = new Date(a);
+  const db = new Date(b);
+  return (
+    da.getFullYear() === db.getFullYear() &&
+    da.getMonth() === db.getMonth() &&
+    da.getDate() === db.getDate()
+  );
+}
+
+function dayLabel(ms: number): string {
+  const d = new Date(ms);
+  const now = new Date();
+  if (sameDay(ms, now.getTime())) return `Today, ${formatTime(ms)}`;
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+type Row =
+  | { type: "divider"; id: string; label: string }
+  | {
+      type: "message";
+      id: string;
+      message: Message;
+      isMine: boolean;
+      isLastInRun: boolean;
+      isFirstInRun: boolean;
+      sender: Member | null;
+    };
 
 export default function ChatThreadScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const theme = useTheme();
   const params = useLocalSearchParams<{ chatId: string }>();
   const chatId = params.chatId ?? "";
   const { chat } = useChat(chatId);
@@ -36,51 +86,67 @@ export default function ChatThreadScreen() {
   const myAuthUserId = useAuthStore((s) => s.session?.user.id ?? null);
   const [text, setText] = useState("");
   const [sheetTarget, setSheetTarget] = useState<Message | null>(null);
-  const listRef = useRef<FlashListRef<Message>>(null);
+  const listRef = useRef<FlashListRef<Row>>(null);
 
-  // Members lookup table for sender display in group chats.
+  const isGroup = chat?.kind === "group";
   const memberByAuthUserId = useMemo(() => {
     const map = new Map<string, Member>();
     if (chat) for (const m of chat.members) map.set(m.authUserId, m);
     return map;
   }, [chat]);
 
+  // Flatten messages → rows with day-dividers + same-sender run metadata.
+  const rows = useMemo<Row[]>(() => {
+    const out: Row[] = [];
+    for (let i = 0; i < messages.length; i++) {
+      const cur = messages[i]!;
+      const prev = messages[i - 1];
+      const next = messages[i + 1];
+      if (!prev || !sameDay(prev.createdAt, cur.createdAt)) {
+        out.push({
+          type: "divider",
+          id: `d-${cur.id}`,
+          label: dayLabel(cur.createdAt),
+        });
+      }
+      const prevRun =
+        !!prev &&
+        prev.senderAuthUserId === cur.senderAuthUserId &&
+        sameDay(prev.createdAt, cur.createdAt);
+      const nextRun =
+        !!next &&
+        next.senderAuthUserId === cur.senderAuthUserId &&
+        sameDay(next.createdAt, cur.createdAt);
+      out.push({
+        type: "message",
+        id: cur.id,
+        message: cur,
+        isMine: cur.senderAuthUserId === myAuthUserId,
+        isFirstInRun: !prevRun,
+        isLastInRun: !nextRun,
+        sender: memberByAuthUserId.get(cur.senderAuthUserId) ?? null,
+      });
+    }
+    return out;
+  }, [messages, myAuthUserId, memberByAuthUserId]);
+
   const onSend = useCallback(() => {
     if (!myAuthUserId) return;
     const trimmed = text.trim();
-    if (trimmed.length === 0) return;
+    if (!trimmed) return;
     send({ chatId, text: trimmed, senderAuthUserId: myAuthUserId });
     setText("");
-    // Jump to the newest bubble once the optimistic row is laid out — your
-    // own sends always scroll to the bottom regardless of prior scroll pos.
     requestAnimationFrame(() =>
       listRef.current?.scrollToEnd({ animated: true }),
     );
   }, [text, send, chatId, myAuthUserId]);
 
-  const handleLongPress = useCallback(
+  const onInspect = useCallback(
     (m: Message) => {
-      const isMine = m.senderAuthUserId === myAuthUserId;
-      // Own bubbles only open the sheet when failed (retry/delete). Other
-      // users' bubbles always open it (report). Avoids a no-op animation
-      // for sent/sending own rows that have no actions yet.
-      if (isMine && m.status !== "failed") return;
-      setSheetTarget(m);
+      const msgId = m.serverSerial ?? m.clientMsgId;
+      router.push(`/chat/${chatId}/inspect/${msgId}` as never);
     },
-    [myAuthUserId],
-  );
-
-  const renderItem = useCallback(
-    ({ item }: { item: Message }) => (
-      <MessageBubble
-        message={item}
-        isMine={item.senderAuthUserId === myAuthUserId}
-        isGroup={chat?.kind === "group"}
-        sender={memberByAuthUserId.get(item.senderAuthUserId) ?? null}
-        onLongPress={handleLongPress}
-      />
-    ),
-    [chat?.kind, handleLongPress, memberByAuthUserId, myAuthUserId],
+    [router, chatId],
   );
 
   const title = useMemo(() => {
@@ -90,82 +156,130 @@ export default function ChatThreadScreen() {
       const peer = chat.members.find((m) => m.authUserId !== myAuthUserId);
       return peer?.handle ?? peer?.displayName ?? "Direct chat";
     }
-    const peers = chat.members
-      .filter((m) => m.authUserId !== myAuthUserId)
-      .map((m) => m.handle ?? m.displayName ?? "?");
-    return peers.join(", ") || "Group";
+    return (
+      chat.members
+        .filter((m) => m.authUserId !== myAuthUserId)
+        .map((m) => m.handle ?? m.displayName ?? "?")
+        .join(", ") || "Group"
+    );
   }, [chat, myAuthUserId]);
+
+  const ovc = theme.onSurfaceVariant?.val;
+
+  const renderItem = useCallback(
+    ({ item }: { item: Row }) => {
+      if (item.type === "divider") return <DayDivider label={item.label} />;
+      const { message: m, isMine, isLastInRun, isFirstInRun, sender } = item;
+      const senderName =
+        isGroup && !isMine && isFirstInRun
+          ? (sender?.handle ?? sender?.displayName ?? "Unknown")
+          : null;
+      const receipt =
+        isMine && m.status === "sent" ? (
+          <Feather name="check" size={13} color={ovc} />
+        ) : null;
+
+      const bubble = (
+        <ChatBubble
+          text={m.text}
+          outgoing={isMine}
+          timestamp={formatTime(m.createdAt)}
+          showTimestamp={isLastInRun}
+          sender={senderName}
+          status={m.status}
+          receipt={receipt}
+          onRetryPress={() => setSheetTarget(m)}
+        />
+      );
+
+      return (
+        <Pressable onLongPress={() => setSheetTarget(m)} delayLongPress={300}>
+          <YStack paddingHorizontal="$md" paddingTop={isFirstInRun ? "$sm" : 2}>
+            {isMine ? (
+              bubble
+            ) : (
+              <XStack gap="$xs" alignItems="flex-end">
+                {isLastInRun ? (
+                  <Avatar
+                    size="sm"
+                    name={sender?.handle ?? sender?.displayName ?? "?"}
+                    seed={sender?.accountId}
+                  />
+                ) : (
+                  <YStack width={32} />
+                )}
+                {bubble}
+              </XStack>
+            )}
+          </YStack>
+        </Pressable>
+      );
+    },
+    [isGroup, ovc],
+  );
 
   return (
     <KeyboardAvoidingView
       style={styles.flex}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
     >
       <YStack flex={1} backgroundColor="$background">
-        <XStack
-          px="$3"
-          py="$3"
-          alignItems="center"
-          justifyContent="space-between"
-          borderBottomWidth={1}
-          borderColor="$borderColor"
+        {/* Header */}
+        <YStack
+          paddingTop={insets.top}
+          backgroundColor="$surface"
+          borderBottomWidth={0.5}
+          borderBottomColor="$outlineVariant"
         >
-          <Button size="$2" chromeless onPress={() => router.back()}>
-            ‹ Back
-          </Button>
-          <YStack alignItems="center" flex={1} mx="$2">
-            <Text fontSize="$5" fontWeight="700" numberOfLines={1}>
-              {title}
-            </Text>
-            {chat && chat.kind === "group" && (
-              <Text fontSize="$1" color="$placeholderColor">
-                {chat.members.length} members
-              </Text>
-            )}
-          </YStack>
-          <Button
-            size="$2"
-            chromeless
-            disabled={!chat}
-            onPress={() => router.push(`/chat/${chatId}/info` as never)}
-          >
-            Info
-          </Button>
-        </XStack>
+          <XStack height={56} px="$xs" alignItems="center">
+            <IconButton
+              label="Back"
+              onPress={() => router.back()}
+              icon={<Feather name="arrow-left" size={22} color={ovc} />}
+            />
+            <YStack flex={1} alignItems="center">
+              <Title numberOfLines={1}>{title}</Title>
+              {/* Presence is a static placeholder — no presence field on the
+                  model yet. Group chats show member count instead. */}
+              <Meta color="$onSurfaceVariant">
+                {isGroup ? `${chat?.members.length ?? 0} members` : "online"}
+              </Meta>
+            </YStack>
+            <IconButton
+              label="Call"
+              onPress={() => router.push(`/chat/${chatId}/info` as never)}
+              icon={<Feather name="phone" size={20} color={ovc} />}
+            />
+          </XStack>
+        </YStack>
 
-        <View flex={1}>
-          {messages.length === 0 ? (
+        {/* Messages */}
+        <YStack flex={1}>
+          {rows.length === 0 ? (
             <YStack
               flex={1}
               alignItems="center"
               justifyContent="center"
-              gap="$2"
+              gap="$xs"
             >
               {chat ? (
                 <>
-                  <Text fontSize="$5" fontWeight="600">
-                    No messages yet
-                  </Text>
-                  <Text color="$placeholderColor" fontSize="$2">
-                    Say hello
-                  </Text>
+                  <HeadlineMd>Say hello</HeadlineMd>
+                  <BodyMd color="$onSurfaceVariant">
+                    This conversation is end-to-end encrypted.
+                  </BodyMd>
                 </>
               ) : (
-                <Spinner />
+                <Spinner color="$primary" />
               )}
             </YStack>
           ) : (
             <FlashList
               ref={listRef}
-              data={messages}
-              keyExtractor={(m) => m.id}
+              data={rows}
+              keyExtractor={(r) => r.id}
               renderItem={renderItem}
-              // v2 chat pattern: render from the bottom and auto-stick to the
-              // newest message when the user is near the bottom. Replaces the
-              // v1 `inverted` transform, which fought v2's default
-              // maintainVisibleContentPosition and left new bubbles off-screen
-              // until an unrelated re-layout (the "press return to see it" bug).
+              getItemType={(r) => r.type}
               maintainVisibleContentPosition={{
                 startRenderingFromBottom: true,
                 autoscrollToBottomThreshold: 0.2,
@@ -173,43 +287,29 @@ export default function ChatThreadScreen() {
               contentContainerStyle={styles.listContent}
             />
           )}
-        </View>
+        </YStack>
 
-        <XStack
-          px="$3"
-          py="$2"
-          gap="$2"
-          alignItems="center"
-          borderTopWidth={1}
-          borderColor="$borderColor"
-          backgroundColor="$background"
-        >
-          <Input
-            flex={1}
-            value={text}
-            onChangeText={setText}
-            placeholder="Message"
-            autoCapitalize="sentences"
-            multiline
-            maxHeight={120}
-            onSubmitEditing={onSend}
-            blurOnSubmit={false}
-          />
-          <Button
-            size="$3"
-            disabled={text.trim().length === 0 || !myAuthUserId}
-            opacity={text.trim().length === 0 ? 0.4 : 1}
-            onPress={onSend}
-          >
-            Send
-          </Button>
-        </XStack>
+        {/* Composer */}
+        <Composer
+          value={text}
+          onChangeText={setText}
+          onSend={onSend}
+          disabled={!myAuthUserId}
+          bottomInset={insets.bottom}
+          emojiIcon={<Feather name="smile" size={20} color={ovc} />}
+          renderSendIcon={(active) => (
+            <Feather
+              name="send"
+              size={20}
+              color={active ? theme.primary?.val : theme.outlineVariant?.val}
+            />
+          )}
+        />
       </YStack>
-      <BubbleActionSheet
+
+      <MessageActionsSheet
         message={sheetTarget}
-        isMine={
-          sheetTarget !== null && sheetTarget.senderAuthUserId === myAuthUserId
-        }
+        isMine={sheetTarget?.senderAuthUserId === myAuthUserId}
         onClose={() => setSheetTarget(null)}
         onRetry={(m) =>
           void retry({ chatId: m.chatId, clientMsgId: m.clientMsgId })
@@ -217,15 +317,11 @@ export default function ChatThreadScreen() {
         onDelete={(m) =>
           void deleteMessage({ chatId: m.chatId, clientMsgId: m.clientMsgId })
         }
+        onInspect={onInspect}
         onReport={(m, reason) => {
-          // Fire-and-forget — UI returns to the thread immediately. The
-          // backend already de-dupes identical (reporter, target, reason)
-          // so accidental double-fires are safe.
           void trpc.reports.create
             .mutate({
               targetType: "MESSAGE",
-              // serverSerial is the authoritative server id; clientMsgId
-              // works for pending rows but those shouldn't be reportable.
               targetId: m.serverSerial ?? m.clientMsgId,
               reason,
             })
@@ -233,6 +329,33 @@ export default function ChatThreadScreen() {
         }}
       />
     </KeyboardAvoidingView>
+  );
+}
+
+// Borderless 44×44 header icon button (search/back/call). Ghost Button carries a
+// border; header chrome in the design is borderless, so this is a bare press.
+function IconButton({
+  icon,
+  label,
+  onPress,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  onPress: () => void;
+}) {
+  return (
+    <YStack
+      width={44}
+      height={44}
+      alignItems="center"
+      justifyContent="center"
+      borderRadius="$full"
+      accessibilityLabel={label}
+      pressStyle={{ backgroundColor: "$surfaceContainerLow" }}
+      onPress={onPress}
+    >
+      {icon}
+    </YStack>
   );
 }
 
