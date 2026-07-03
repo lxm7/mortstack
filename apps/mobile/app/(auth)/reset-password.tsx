@@ -1,32 +1,34 @@
 import { useState } from "react";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { Spinner, YStack, useTheme } from "tamagui";
 import { Button } from "@repo/ui/glacier/button";
 import { TextField } from "@repo/ui/glacier/text-field";
-import { BodySm } from "@repo/ui/glacier/typography";
-import { useAuthStore, type Session } from "@/store/auth";
+import { BodyMd, BodySm, Title } from "@repo/ui/glacier/typography";
 import { authClient } from "@/lib/auth/client";
 import { AuthShell, AuthFooter } from "@/lib/auth/ui";
 
 // Mirrors the server rule (services/api/src/lib/auth.ts minPasswordLength).
 const MIN_PASSWORD = 8;
 
-export default function SignUp() {
+export default function ResetPassword() {
   const theme = useTheme();
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
+  // Deep link: mortstack-chatapp://reset-password?token=…
+  const { token } = useLocalSearchParams<{ token?: string }>();
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const setSession = useAuthStore((s) => s.setSession);
+  const [done, setDone] = useState(false);
 
   const iconColor = theme.onSurfaceVariant.val;
   const passwordTooShort =
     password.length > 0 && password.length < MIN_PASSWORD;
 
-  async function handleSignUp() {
-    if (!email || !password || !name) return;
+  async function handleReset() {
+    if (!token) {
+      setError("This reset link is invalid or has expired.");
+      return;
+    }
     if (password.length < MIN_PASSWORD) {
       setError(`Password must be at least ${MIN_PASSWORD} characters`);
       return;
@@ -34,59 +36,65 @@ export default function SignUp() {
     setLoading(true);
     setError(null);
     try {
-      const result = await authClient.signUp.email({ email, password, name });
+      const result = await authClient.resetPassword({
+        newPassword: password,
+        token,
+      });
       if (result.error) throw new Error(result.error.message);
-      setSession(result.data as Session | null);
-      router.replace("/(tabs)");
+      setDone(true);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Sign up failed");
+      setError(e instanceof Error ? e.message : "Reset failed");
     } finally {
       setLoading(false);
     }
   }
 
+  const footer = (
+    <AuthFooter
+      prompt="Remembered it?"
+      action="Sign In"
+      href="/(auth)/sign-in"
+    />
+  );
+
+  if (done) {
+    return (
+      <AuthShell subtitle="Password updated" footer={footer}>
+        <YStack ai="center" gap="$sm" py="$sm">
+          <Feather name="check-circle" size={40} color={theme.primary.val} />
+          <Title>All set</Title>
+          <BodySm color="$onSurfaceVariant" textAlign="center">
+            Your password has been reset. Sign in with your new password.
+          </BodySm>
+          <Button
+            size="lg"
+            alignSelf="stretch"
+            mt="$sm"
+            onPress={() => router.replace("/(auth)/sign-in")}
+          >
+            Go to Sign In
+          </Button>
+        </YStack>
+      </AuthShell>
+    );
+  }
+
   return (
-    <AuthShell
-      subtitle="Create your encrypted workspace"
-      footer={
-        <AuthFooter
-          prompt="Already have an account?"
-          action="Sign In"
-          href="/(auth)/sign-in"
-        />
-      }
-    >
+    <AuthShell subtitle="Choose a new password" footer={footer}>
       <YStack gap="$sm">
-        <TextField
-          icon={<Feather name="user" size={18} color={iconColor} />}
-          placeholder="Full Name"
-          value={name}
-          onChangeText={setName}
-          autoCapitalize="words"
-          autoComplete="name"
-          enterKeyHint="next"
-        />
-        <TextField
-          icon={<Feather name="mail" size={18} color={iconColor} />}
-          placeholder="Email Address"
-          value={email}
-          onChangeText={setEmail}
-          keyboardType="email-address"
-          inputMode="email"
-          autoCapitalize="none"
-          autoComplete="email"
-          enterKeyHint="next"
-          error={!!error}
-        />
+        <BodyMd color="$onSurfaceVariant">
+          Enter a new password for your account.
+        </BodyMd>
+
         <TextField
           icon={<Feather name="lock" size={18} color={iconColor} />}
-          placeholder="Password"
+          placeholder="New Password"
           value={password}
           onChangeText={setPassword}
           secureTextEntry
           autoComplete="new-password"
           enterKeyHint="go"
-          onSubmitEditing={handleSignUp}
+          onSubmitEditing={handleReset}
           error={!!error || passwordTooShort}
         />
 
@@ -100,7 +108,7 @@ export default function SignUp() {
           size="lg"
           alignSelf="stretch"
           mt="$xs"
-          onPress={handleSignUp}
+          onPress={handleReset}
           disabled={loading}
           icon={loading ? <Spinner color="$onPrimary" /> : undefined}
           iconAfter={
@@ -113,7 +121,7 @@ export default function SignUp() {
             )
           }
         >
-          Create Account
+          Reset Password
         </Button>
       </YStack>
     </AuthShell>

@@ -6,10 +6,14 @@
 // default). Roles can land in M8 if needed.
 
 import { useCallback, useEffect, useState } from "react";
-import { Alert, Pressable, StyleSheet } from "react-native";
+import { Alert, StyleSheet } from "react-native";
 import { FlashList } from "@shopify/flash-list";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Button, Input, Spinner, Text, View, XStack, YStack } from "tamagui";
+import { Feather } from "@expo/vector-icons";
+import { Button, Spinner, Text, View, XStack, YStack, useTheme } from "tamagui";
+import { TextField } from "@repo/ui/glacier/text-field";
+import { ListRow } from "@repo/ui/glacier/list-row";
+import { Title, HeadlineMd, BodySm, Label } from "@repo/ui/glacier/typography";
 
 import {
   useChat,
@@ -28,7 +32,6 @@ import {
 
 const SEARCH_DEBOUNCE_MS = 250;
 const MIN_QUERY_LEN = 2;
-const ERROR_COLOR = "#dc2626";
 
 interface SearchedUser {
   accountId: string;
@@ -38,6 +41,8 @@ interface SearchedUser {
 
 export default function ChatInfoScreen() {
   const router = useRouter();
+  const theme = useTheme();
+  const iconColor = theme.onSurfaceVariant.val;
   const params = useLocalSearchParams<{ chatId: string }>();
   const chatId = params.chatId ?? "";
   const { chat } = useChat(chatId);
@@ -195,7 +200,7 @@ export default function ChatInfoScreen() {
               await trpc.chat.leave.mutate({ chatId: chat.id });
               removeChatFromStore(chat.id);
               clearChatGroupCache(chat.id);
-              router.replace("/chats" as never);
+              router.replace("/(tabs)" as never);
             } catch (err) {
               setError(err instanceof Error ? err.message : String(err));
               setPending(null);
@@ -230,15 +235,15 @@ export default function ChatInfoScreen() {
         py="$3"
         alignItems="center"
         justifyContent="space-between"
-        borderBottomWidth={1}
-        borderColor="$borderColor"
+        borderBottomWidth={0.5}
+        borderColor="$outlineVariant"
       >
         <Button size="$2" chromeless onPress={() => router.back()}>
-          ‹ Back
+          <Text color="$primary" fontFamily="$body">
+            ‹ Back
+          </Text>
         </Button>
-        <Text fontSize="$5" fontWeight="700">
-          Chat info
-        </Text>
+        <Title>Chat info</Title>
         <View width={60} />
       </XStack>
 
@@ -247,19 +252,15 @@ export default function ChatInfoScreen() {
         keyExtractor={(m) => m.accountId}
         ListHeaderComponent={
           <YStack px="$4" py="$3" gap="$2">
-            <Text fontSize="$6" fontWeight="700">
+            <HeadlineMd>
               {chat.name ?? (chat.kind === "direct" ? "Direct chat" : "Group")}
-            </Text>
-            <Text fontSize="$2" color="$placeholderColor">
+            </HeadlineMd>
+            <BodySm color="$onSurfaceVariant">
               {chat.kind === "group"
                 ? `Group · ${chat.members.length} members`
                 : "Direct chat"}
-            </Text>
-            {error && (
-              <Text fontSize="$2" color={ERROR_COLOR}>
-                {error}
-              </Text>
-            )}
+            </BodySm>
+            {error && <BodySm color="$error">{error}</BodySm>}
           </YStack>
         }
         renderItem={({ item }) => (
@@ -277,10 +278,9 @@ export default function ChatInfoScreen() {
           <YStack px="$4" py="$3" gap="$3">
             {chat.kind === "group" && (
               <YStack gap="$2">
-                <Text fontSize="$2" color="$placeholderColor">
-                  Add members
-                </Text>
-                <Input
+                <Label color="$onSurfaceVariant">Add members</Label>
+                <TextField
+                  icon={<Feather name="search" size={18} color={iconColor} />}
                   value={query}
                   onChangeText={setQuery}
                   placeholder="Search by handle…"
@@ -288,39 +288,33 @@ export default function ChatInfoScreen() {
                   autoCorrect={false}
                 />
                 {searching ? (
-                  <Spinner />
+                  <Spinner color="$primary" />
                 ) : query.trim().length >= MIN_QUERY_LEN &&
                   results.length === 0 ? (
-                  <Text fontSize="$2" color="$placeholderColor">
+                  <BodySm color="$onSurfaceVariant">
                     No matches (already in chat?)
-                  </Text>
+                  </BodySm>
                 ) : null}
                 {results.map((u) => (
-                  <Pressable
+                  <ListRow
                     key={u.accountId}
-                    onPress={() => void onAddMember(u)}
-                  >
-                    <XStack
-                      bg="$backgroundHover"
-                      px="$3"
-                      py="$2"
-                      borderRadius="$3"
-                      alignItems="center"
-                      justifyContent="space-between"
-                    >
-                      <YStack>
-                        <Text fontWeight="600">{u.displayName}</Text>
-                        <Text fontSize="$2" color="$placeholderColor">
-                          @{u.handle}
-                        </Text>
-                      </YStack>
-                      {pending === `add:${u.accountId}` ? (
-                        <Spinner size="small" />
+                    name={u.displayName}
+                    preview={`@${u.handle}`}
+                    timestamp=""
+                    avatar={{ name: u.handle, seed: u.accountId }}
+                    receipt={
+                      pending === `add:${u.accountId}` ? (
+                        <Spinner size="small" color="$primary" />
                       ) : (
-                        <Text color="$brand">+ Add</Text>
-                      )}
-                    </XStack>
-                  </Pressable>
+                        <Feather
+                          name="user-plus"
+                          size={18}
+                          color={theme.primary.val}
+                        />
+                      )
+                    }
+                    onPress={() => void onAddMember(u)}
+                  />
                 ))}
               </YStack>
             )}
@@ -331,7 +325,7 @@ export default function ChatInfoScreen() {
             {chat.kind === "direct" && otherMembers[0] && (
               <DirectChatTrustActions
                 peer={otherMembers[0]}
-                onBlocked={() => router.replace("/chats" as never)}
+                onBlocked={() => router.replace("/(tabs)" as never)}
               />
             )}
 
@@ -339,21 +333,22 @@ export default function ChatInfoScreen() {
               size="$3"
               disabled={pending === "leave"}
               onPress={onLeave}
-              style={{ backgroundColor: ERROR_COLOR }}
+              backgroundColor="$error"
+              pressStyle={{ backgroundColor: "$error", opacity: 0.85 }}
             >
               {pending === "leave" ? (
-                <Spinner size="small" />
+                <Spinner size="small" color="$onError" />
               ) : (
-                <Text color="white" fontWeight="700">
+                <Text color="$onError" fontFamily="$body" fontWeight="700">
                   Leave chat
                 </Text>
               )}
             </Button>
 
             {otherMembers.length === 0 && chat.kind === "direct" && (
-              <Text fontSize="$2" color="$placeholderColor" textAlign="center">
+              <BodySm color="$onSurfaceVariant" textAlign="center">
                 The other member left.
-              </Text>
+              </BodySm>
             )}
           </YStack>
         }
@@ -449,9 +444,11 @@ function DirectChatTrustActions({
         onPress={onReport}
       >
         {busy === "report" ? (
-          <Spinner size="small" />
+          <Spinner size="small" color="$primary" />
         ) : (
-          <Text>Report user</Text>
+          <Text color="$onSurface" fontFamily="$body">
+            Report user
+          </Text>
         )}
       </Button>
       <Button
@@ -462,9 +459,11 @@ function DirectChatTrustActions({
         onPress={onBlock}
       >
         {busy === "block" ? (
-          <Spinner size="small" />
+          <Spinner size="small" color="$error" />
         ) : (
-          <Text color={ERROR_COLOR}>Block user</Text>
+          <Text color="$error" fontFamily="$body">
+            Block user
+          </Text>
         )}
       </Button>
     </XStack>
@@ -484,50 +483,30 @@ function MemberRow({
   isPending: boolean;
   onRemove: () => void;
 }) {
+  const name = member.displayName ?? member.handle ?? "Unknown";
   return (
-    <XStack
-      px="$4"
-      py="$3"
-      gap="$3"
-      alignItems="center"
-      borderBottomWidth={1}
-      borderColor="$borderColor"
-    >
-      <View
-        width={40}
-        height={40}
-        borderRadius={20}
-        alignItems="center"
-        justifyContent="center"
-        style={{ backgroundColor: "#3b82f6" }}
-      >
-        <Text color="white" fontWeight="600">
-          {(member.handle ?? member.displayName ?? "?")
-            .slice(0, 2)
-            .toUpperCase()}
-        </Text>
-      </View>
-      <YStack flex={1}>
-        <Text fontSize="$4" fontWeight="600">
-          {member.displayName ?? member.handle ?? "Unknown"}
-          {isMe ? " (you)" : ""}
-        </Text>
-        {member.handle && (
-          <Text fontSize="$2" color="$placeholderColor">
-            @{member.handle}
-          </Text>
-        )}
-      </YStack>
-      {canRemove && (
-        <Button size="$2" chromeless disabled={isPending} onPress={onRemove}>
-          {isPending ? (
-            <Spinner size="small" />
+    <ListRow
+      name={`${name}${isMe ? " (you)" : ""}`}
+      preview={member.handle ? `@${member.handle}` : ""}
+      timestamp=""
+      avatar={{
+        name: member.handle ?? member.displayName ?? "?",
+        seed: member.accountId,
+      }}
+      receipt={
+        canRemove ? (
+          isPending ? (
+            <Spinner size="small" color="$error" />
           ) : (
-            <Text color={ERROR_COLOR}>Remove</Text>
-          )}
-        </Button>
-      )}
-    </XStack>
+            <Button size="$2" chromeless onPress={onRemove}>
+              <Text color="$error" fontFamily="$body">
+                Remove
+              </Text>
+            </Button>
+          )
+        ) : null
+      }
+    />
   );
 }
 

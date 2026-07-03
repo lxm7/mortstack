@@ -15,13 +15,13 @@
   },
   "dependencies": {
     "@noble/ed25519": "^2.3.0",
-    "@repo/chat-crypto": "workspace:*",
     "@repo/chat-mls-core": "workspace:*",
     "@repo/database": "workspace:*",
     "@repo/identity": "workspace:*",
     "@repo/schemas": "workspace:*",
     "@trpc/server": "^11.0.0",
     "better-auth": "^1.3.4",
+    "resend": "^6.17.0",
     "zod": "^3.24.1"
   },
   "devDependencies": {

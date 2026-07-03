@@ -2,5 +2,6 @@
 // Order matters — teleport (Sheet/Dialog/Popover) first, then gesture handler.
 import "@tamagui/native/setup-teleport";
 import "@tamagui/native/setup-gesture-handler";
+import "@tamagui/native/setup-expo-linear-gradient";
 
 import "expo-router/entry";

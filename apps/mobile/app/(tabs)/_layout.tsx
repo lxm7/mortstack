@@ -1,77 +1,9 @@
-import { Tabs } from "expo-router";
-import { Text } from "tamagui";
+// Chat-only app: no tab bar. The chat-list screen owns a single "New Chat"
+// bottom action bar instead (chat-list/DESIGN.md 2.1.0 — the 5-icon tab bar and
+// Stories row were cut). This group is now just a headerless Stack whose index
+// is the conversations list.
+import { Stack } from "expo-router";
 
-function TabIcon({ label, focused }: { label: string; focused: boolean }) {
-  return (
-    <Text
-      fontSize="$2"
-      color={focused ? "$brand" : "$placeholderColor"}
-      mt="$1"
-    >
-      {label}
-    </Text>
-  );
-}
-
-export default function TabsLayout() {
-  return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarStyle: {
-          backgroundColor: "transparent",
-          borderTopWidth: 1,
-        },
-        tabBarActiveTintColor: undefined,
-        tabBarInactiveTintColor: undefined,
-      }}
-    >
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: "Feed",
-          tabBarIcon: ({ focused }) => (
-            <TabIcon label="Feed" focused={focused} />
-          ),
-          tabBarShowLabel: false,
-        }}
-      />
-      <Tabs.Screen
-        name="gigs"
-        options={{
-          title: "Gigs",
-          tabBarIcon: ({ focused }) => (
-            <TabIcon label="Gigs" focused={focused} />
-          ),
-          tabBarShowLabel: false,
-        }}
-      />
-      <Tabs.Screen
-        name="chats"
-        options={{
-          title: "Chats",
-          tabBarIcon: ({ focused }) => (
-            <TabIcon label="Chats" focused={focused} />
-          ),
-          tabBarShowLabel: false,
-        }}
-      />
-      <Tabs.Screen
-        name="create"
-        options={{
-          title: "Post",
-          tabBarIcon: ({ focused }) => <TabIcon label="+" focused={focused} />,
-          tabBarShowLabel: false,
-        }}
-      />
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: "Profile",
-          tabBarIcon: ({ focused }) => <TabIcon label="Me" focused={focused} />,
-          tabBarShowLabel: false,
-        }}
-      />
-    </Tabs>
-  );
+export default function AppLayout() {
+  return <Stack screenOptions={{ headerShown: false }} />;
 }
