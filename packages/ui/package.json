@@ -3,6 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "exports": {
+    "./tamagui.config": "./src/tamagui.config.ts",
     "./*": "./src/*.tsx"
   },
   "scripts": {
@@ -19,6 +20,9 @@
     "typescript": "5.9.2"
   },
   "dependencies": {
-    "react": "^19.1.0"
+    "@tamagui/animations-react-native": "2.0.0-rc.42",
+    "@tamagui/linear-gradient": "2.0.0-rc.42",
+    "react": "^19.1.0",
+    "tamagui": "2.0.0-rc.42"
   }
 }

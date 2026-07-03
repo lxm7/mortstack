@@ -1,10 +1,19 @@
 import { useState } from "react";
 import { router } from "expo-router";
-import { YStack, Text, Button, Input, Spinner } from "tamagui";
+import { Feather } from "@expo/vector-icons";
+import { Spinner, YStack, useTheme } from "tamagui";
+import { Button } from "@repo/ui/glacier/button";
+import { TextField } from "@repo/ui/glacier/text-field";
+import { BodySm } from "@repo/ui/glacier/typography";
 import { useAuthStore, type Session } from "@/store/auth";
 import { authClient } from "@/lib/auth/client";
+import { AuthShell, AuthFooter } from "@/lib/auth/ui";
+
+// Mirrors the server rule (services/api/src/lib/auth.ts minPasswordLength).
+const MIN_PASSWORD = 8;
 
 export default function SignUp() {
+  const theme = useTheme();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -12,8 +21,16 @@ export default function SignUp() {
   const [error, setError] = useState<string | null>(null);
   const setSession = useAuthStore((s) => s.setSession);
 
+  const iconColor = theme.onSurfaceVariant.val;
+  const passwordTooShort =
+    password.length > 0 && password.length < MIN_PASSWORD;
+
   async function handleSignUp() {
     if (!email || !password || !name) return;
+    if (password.length < MIN_PASSWORD) {
+      setError(`Password must be at least ${MIN_PASSWORD} characters`);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -29,72 +46,76 @@ export default function SignUp() {
   }
 
   return (
-    <YStack f={1} bg="$background" px="$4" jc="center" gap="$4">
-      <YStack gap="$1">
-        <Text
-          fontFamily="$heading"
-          fontSize="$8"
-          fontWeight="700"
-          color="$color"
-        >
-          Create account
-        </Text>
-        <Text color="$colorHover" fontSize="$5">
-          Join the Mortstack Chat network
-        </Text>
-      </YStack>
-
-      <YStack gap="$3" mt="$4">
-        <Input
-          placeholder="Name"
+    <AuthShell
+      subtitle="Create your encrypted workspace"
+      footer={
+        <AuthFooter
+          prompt="Already have an account?"
+          action="Sign In"
+          href="/(auth)/sign-in"
+        />
+      }
+    >
+      <YStack gap="$sm">
+        <TextField
+          icon={<Feather name="user" size={18} color={iconColor} />}
+          placeholder="Full Name"
           value={name}
           onChangeText={setName}
           autoCapitalize="words"
-          size="$5"
+          autoComplete="name"
+          enterKeyHint="next"
         />
-        <Input
-          placeholder="Email"
+        <TextField
+          icon={<Feather name="mail" size={18} color={iconColor} />}
+          placeholder="Email Address"
           value={email}
           onChangeText={setEmail}
-          autoCapitalize="none"
           keyboardType="email-address"
-          size="$5"
+          inputMode="email"
+          autoCapitalize="none"
+          autoComplete="email"
+          enterKeyHint="next"
+          error={!!error}
         />
-        <Input
+        <TextField
+          icon={<Feather name="lock" size={18} color={iconColor} />}
           placeholder="Password"
           value={password}
           onChangeText={setPassword}
           secureTextEntry
-          size="$5"
+          autoComplete="new-password"
+          enterKeyHint="go"
+          onSubmitEditing={handleSignUp}
+          error={!!error || passwordTooShort}
         />
 
-        {error && (
-          <Text color="$error" fontSize="$3">
-            {error}
-          </Text>
+        {(error || passwordTooShort) && (
+          <BodySm color="$error">
+            {error ?? `Password must be at least ${MIN_PASSWORD} characters`}
+          </BodySm>
         )}
 
         <Button
-          size="$5"
-          bg="$brand"
-          // @ts-expect-error -- color is in ButtonContext but not yet in exported prop type (Tamagui RC)
-          color="$brandText"
+          size="lg"
+          alignSelf="stretch"
+          mt="$xs"
           onPress={handleSignUp}
           disabled={loading}
-          icon={loading ? <Spinner /> : undefined}
+          icon={loading ? <Spinner color="$onPrimary" /> : undefined}
+          iconAfter={
+            loading ? undefined : (
+              <Feather
+                name="arrow-right"
+                size={18}
+                color={theme.onPrimary.val}
+              />
+            )
+          }
         >
-          Create account
-        </Button>
-
-        <Button
-          size="$4"
-          variant="outlined"
-          onPress={() => router.back()}
-          disabled={loading}
-        >
-          Back to sign in
+          Create Account
         </Button>
       </YStack>
-    </YStack>
+    </AuthShell>
   );
 }
