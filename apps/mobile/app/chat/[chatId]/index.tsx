@@ -208,7 +208,12 @@ export default function ChatThreadScreen() {
                 ) : (
                   <YStack width={32} />
                 )}
-                {bubble}
+                {/* flex={1} gives the bubble a definite-width column parent so
+                    its maxWidth:"85%" resolves — without it the Text collapses
+                    to min-content (~30px) inside the row. */}
+                <YStack flex={1} alignItems="flex-start">
+                  {bubble}
+                </YStack>
               </XStack>
             )}
           </YStack>

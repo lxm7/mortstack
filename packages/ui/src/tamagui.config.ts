@@ -272,10 +272,6 @@ const light = {
   errorContainer: palette.errorContainer,
   success: palette.success,
 
-  // Accent thread used by the outgoing chat-bubble gradient (ChatBubble.md).
-  // iceLight = ice-300 so the outgoing fill reads ice-blue → violet.
-  iceLight: palette.ice300,
-
   // Semantic crypto slots (light-mode equivalents — colour + label + weight
   // carry the wire/device contrast, per crypto-inspector 2.1.0). cipher = dim
   // recessed ink; plaintext = bright forward ink.
