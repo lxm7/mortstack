@@ -55,6 +55,11 @@ export const apiFunction = new sst.aws.Function("Api", {
     // directly, so we map it explicitly here. Pooler URL only — direct URL
     // is reserved for migrations.
     DATABASE_URL: databaseUrl.value,
+    // Transactional email (Resend). Captured from the deploy environment.
+    // For production, promote these to sst.Secret in infra/stacks/secrets.ts
+    // and reference .value here instead of plaintext passthrough.
+    RESEND_API_KEY: process.env.RESEND_API_KEY ?? "",
+    EMAIL_FROM: process.env.EMAIL_FROM ?? "",
   },
   ...prismaLambdaBundling,
 });

@@ -1,0 +1,14 @@
+{
+  // Monorepo ESLint (flat config). Run the extension per-package so each file
+  // is linted with its nearest eslint.config.mjs AND from that package's cwd —
+  // the latter is what lets import/tsconfig resolvers see `@/` path aliases.
+  // Without this the extension runs at repo root, applies the root base config
+  // to apps/mobile/**, and errors "rule react-hooks/* not found".
+  "eslint.workingDirectories": [{ "mode": "auto" }],
+  // Opt into ESLint v10's file-based config lookup early (default in v10).
+  // Redundant once workingDirectories scopes cwd, but keeps a root-level run
+  // resolving each file's nearest config too, and eases the v10 bump.
+  "eslint.options": {
+    "flags": ["v10_config_lookup_from_file"]
+  }
+}

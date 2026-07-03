@@ -142,8 +142,8 @@ export const chatWsWorker = new sst.cloudflare.Worker("ChatWs", {
       // is still v1 — in that case set { oldTag: "v1", newTag: "v2" } here and
       // let the KV binding ride that deploy, rather than jumping to v3.
       args.migrations = {
-        oldTag: "v3",
-        newTag: "v4",
+        oldTag: "v7",
+        newTag: "v8",
       };
 
       // Compatibility date with WebSocket auto-reply-to-close behaviour

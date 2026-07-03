@@ -4,6 +4,8 @@ import { prismaAdapter } from "better-auth/adapters/prisma";
 import { bearer } from "better-auth/plugins";
 import { prisma } from "@repo/database";
 import { purgeSessionCache } from "./chat-ws-push";
+import { sendEmail, resetPasswordLink } from "./email";
+import { verificationEmail, resetPasswordEmail } from "./email-templates";
 // ── Better Auth server instance ───────────────────────────────────────────────
 // Sessions are DB-backed (via Prisma) — fully revocable on logout or ban.
 // The `bearer` plugin enables Authorization: Bearer <token> for API clients
@@ -55,8 +57,32 @@ export const auth = betterAuth({
   // Email + password auth (web2 path)
   emailAndPassword: {
     enabled: true,
-    requireEmailVerification: false, // set true when email provider is wired
+    // Nudge, not a wall: signup still returns a session and the client routes
+    // straight into the app. Flip to true (and add the "check your inbox"
+    // signup state + a verify landing screen) to gate login on verification.
+    requireEmailVerification: false,
     minPasswordLength: 8,
+    // Reset flow: forgot-password.tsx calls requestPasswordReset; we build our
+    // own deep link with the token so the email opens the app's reset screen
+    // directly (no browser bounce). The app calls authClient.resetPassword.
+    sendResetPassword: async ({ user, token }) => {
+      const { subject, html, text } = resetPasswordEmail(
+        resetPasswordLink(token),
+      );
+      await sendEmail({ to: user.email, subject, html, text });
+    },
+  },
+
+  // Verification email on signup. Uses Better Auth's server-side `url`
+  // (/auth/verify-email?token=…): tapping it verifies and redirects, so no app
+  // screen is required for the non-gated flow.
+  emailVerification: {
+    sendOnSignUp: true,
+    autoSignInAfterVerification: true,
+    sendVerificationEmail: async ({ user, url }) => {
+      const { subject, html, text } = verificationEmail(url);
+      await sendEmail({ to: user.email, subject, html, text });
+    },
   },
 
   // On new email signup, create linked domain Account

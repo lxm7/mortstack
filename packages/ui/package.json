@@ -3,6 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "exports": {
+    "./tamagui.config": "./src/tamagui.config.ts",
     "./*": "./src/*.tsx"
   },
   "scripts": {
@@ -15,12 +16,13 @@
     "@repo/typescript-config": "workspace:*",
     "@types/node": "^22.15.3",
     "@types/react": "~19.1.10",
-    "@types/react-dom": "~19.1.10",
     "eslint": "^9.39.1",
     "typescript": "5.9.2"
   },
   "dependencies": {
+    "@tamagui/animations-react-native": "2.0.0-rc.42",
+    "@tamagui/linear-gradient": "2.0.0-rc.42",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "tamagui": "2.0.0-rc.42"
   }
 }
