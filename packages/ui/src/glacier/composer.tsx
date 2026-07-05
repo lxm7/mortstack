@@ -94,6 +94,7 @@ export function Composer({
     <ComposerBar paddingBottom={bottomInset ? bottomInset + 8 : "$xs"}>
       <ComposerPill focused={focused}>
         <Input
+          testID="composer-input"
           flex={1}
           unstyled
           value={value}
@@ -115,6 +116,7 @@ export function Composer({
       </ComposerPill>
 
       <SendButton
+        testID="composer-send"
         active={active}
         onPress={active ? onSend : undefined}
         pressStyle={active ? { opacity: 0.85 } : undefined}

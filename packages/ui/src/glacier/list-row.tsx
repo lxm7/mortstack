@@ -75,6 +75,8 @@ export interface ListRowProps {
   avatar?: Omit<AvatarProps, "size">;
   onPress?: () => void;
   onLongPress?: () => void;
+  /** E2E anchor forwarded to the row frame. */
+  testID?: string;
 }
 
 export function ListRow({
@@ -88,9 +90,10 @@ export function ListRow({
   avatar,
   onPress,
   onLongPress,
+  testID,
 }: ListRowProps) {
   return (
-    <RowFrame onPress={onPress} onLongPress={onLongPress}>
+    <RowFrame testID={testID} onPress={onPress} onLongPress={onLongPress}>
       <Avatar size="lg" name={name} {...avatar} />
 
       <YStack flex={1} minWidth={0} gap={2}>
