@@ -12,13 +12,23 @@ import {
   encryptOutboundMls,
   FRAME_VERSION_V2,
   type ChatFrame,
+  type ChatFrameBody,
   type FanoutTarget,
   type MlsApi,
 } from "./crypto-pipe";
 
-export interface EncryptedSendInput {
+export interface ReactionInput {
+  /** serverSerial (string) of the message being reacted to. */
+  target: string;
+  emoji: string;
+  op: "add" | "del";
+}
+
+// Discriminated on payload: exactly one of `text` (a message) or `reaction`
+// (a reaction that rides the same encrypted frame — Option A). Both share the
+// routing fields below.
+export type EncryptedSendInput = {
   chatId: string;
-  text: string;
   /** Required for v=1 chats; ignored for v=2 (MLS routes by groupId). */
   targets: FanoutTarget[];
   /** Idempotency key forwarded to the underlying transport. Outbox worker
@@ -26,7 +36,10 @@ export interface EncryptedSendInput {
    *  server's (chatId, clientMsgId) unique constraint dedupes. Optional —
    *  when absent the transport generates a nanoid internally. */
   clientMsgId?: string;
-}
+} & (
+  | { text: string; reaction?: undefined }
+  | { reaction: ReactionInput; text?: undefined }
+);
 
 export interface EncryptedSendResultV1 extends SendResult {
   recipientAccountId: string;
@@ -211,6 +224,28 @@ export function createEncryptedTransport(
     for (const h of decryptedHandlers) h(decoded);
   }
 
+  // Build the plaintext frame body for a send. Reactions carry no text/sender;
+  // messages resolve the display-name snapshot only on the v=2 path (`withSender`)
+  // — the v=1 legacy path never populated it.
+  async function frameBody(
+    input: EncryptedSendInput,
+    withSender: boolean,
+  ): Promise<ChatFrameBody> {
+    if (input.reaction) {
+      return {
+        kind: "rx",
+        target: input.reaction.target,
+        emoji: input.reaction.emoji,
+        op: input.reaction.op,
+      };
+    }
+    if (withSender && opts.getMyDisplayName) {
+      const sender = await opts.getMyDisplayName().catch(() => null);
+      return sender ? { text: input.text, sender } : { text: input.text };
+    }
+    return { text: input.text };
+  }
+
   async function send(
     input: EncryptedSendInput,
   ): Promise<EncryptedSendResult[]> {
@@ -223,14 +258,11 @@ export function createEncryptedTransport(
         // Resolve display name in parallel with anything else the caller
         // wants to await — currently nothing, but if a snapshot/ratchet
         // persist call lands here later it should not block on this read.
-        const sender = opts.getMyDisplayName
-          ? await opts.getMyDisplayName().catch(() => null)
-          : null;
+        const body = await frameBody(input, true);
         const env = encryptOutboundMls({
-          text: input.text,
+          body,
           groupId,
           mls: opts.mls,
-          ...(sender ? { sender } : {}),
         });
         const r = await underlying.send({
           chatId: input.chatId,
@@ -243,8 +275,9 @@ export function createEncryptedTransport(
     }
 
     const seed = await opts.getMySeed();
+    const body = await frameBody(input, false);
     const envelopes = encryptOutbound({
-      text: input.text,
+      body,
       targets: input.targets,
       seed,
     });

@@ -24,6 +24,23 @@ export interface ChatRecord {
 
 export type MessageStatus = "sending" | "sent" | "failed";
 
+// A reaction folded onto a message bubble. The wire frame is `ChatReactionFrame`
+// (crypto-pipe.ts) carried inside the same E2EE ciphertext as a message; this is
+// the resolved view-model the store keeps and the UI renders as a pill.
+//
+// In-memory only for now (like plaintext messages — see the store's M4-3 note);
+// a reactions-persistence column is a follow-up. `status` drives the optimistic
+// pill: "sending" until the outbox worker acks, "sent" after.
+export interface Reaction {
+  /** clientMsgId of the reaction send — optimistic reconciliation key. */
+  clientMsgId: string;
+  /** serverSerial (string) of the reacted-to message. */
+  target: string;
+  emoji: string;
+  senderAuthUserId: string;
+  status: MessageStatus;
+}
+
 export interface Message {
   /** serverMsgId for confirmed messages, clientMsgId for in-flight. */
   id: string;

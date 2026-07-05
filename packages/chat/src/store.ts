@@ -12,7 +12,13 @@
 
 import { create } from "zustand";
 
-import type { ChatApi, ChatRecord, Message, MessagePersistApi } from "./types";
+import type {
+  ChatApi,
+  ChatRecord,
+  Message,
+  MessagePersistApi,
+  Reaction,
+} from "./types";
 
 export interface ChatStoreState {
   chats: Map<string, ChatRecord>;
@@ -23,6 +29,9 @@ export interface ChatStoreState {
   /** Messages per chatId, ordered oldest → newest. The thread screen
    *  renders inverted via FlashList. */
   messages: Map<string, Message[]>;
+  /** Reactions per chatId → target serverSerial → Reaction[]. In-memory only
+   *  (same as plaintext messages, M4-3). Folded onto bubbles by the UI. */
+  reactions: Map<string, Map<string, Reaction[]>>;
   bootstrapStatus: "idle" | "loading" | "ready" | "error";
   bootstrapError: string | null;
   /** Optional local persistence (M4-followup #25). Set by the provider on
@@ -79,6 +88,39 @@ export interface ChatStoreActions {
     chatId: string;
     clientMsgId: string;
   }): void;
+  // ── Reactions (M8) ──────────────────────────────────────────────────────
+  /** Optimistic add: insert a "sending" reaction pill immediately. Ignores a
+   *  duplicate clientMsgId or an existing (sender, target, emoji). */
+  addOptimisticReaction(input: {
+    chatId: string;
+    clientMsgId: string;
+    target: string;
+    emoji: string;
+    senderAuthUserId: string;
+  }): void;
+  /** Flip an optimistic reaction to "sent" on outbox ack. Keyed by
+   *  clientMsgId; no-op if not found (e.g. an op:"del" row has no pill). */
+  confirmReaction(input: { chatId: string; clientMsgId: string }): void;
+  /** Roll back an optimistic reaction that terminally failed to send. */
+  failReaction(input: { chatId: string; clientMsgId: string }): void;
+  /** Optimistic un-react: remove my own pill immediately (paired with an
+   *  op:"del" send). No rollback on send failure — reconciles on reload
+   *  (in-memory, demo-scoped). */
+  removeOwnReaction(input: {
+    chatId: string;
+    target: string;
+    emoji: string;
+    senderAuthUserId: string;
+  }): void;
+  /** Apply an inbound reaction frame. op "add" inserts (dedup per
+   *  sender+target+emoji); op "del" removes the matching pill. */
+  applyIncomingReaction(input: {
+    chatId: string;
+    target: string;
+    emoji: string;
+    op: "add" | "del";
+    senderAuthUserId: string;
+  }): void;
   /** Inject (or clear) the persistence API. Idempotent. */
   setPersistApi(api: MessagePersistApi | null): void;
   /** Merge a batch of persisted messages into the per-chat slice. Used by
@@ -96,6 +138,7 @@ const emptyState: ChatStoreState = {
   chats: new Map(),
   chatOrder: [],
   messages: new Map(),
+  reactions: new Map(),
   bootstrapStatus: "idle",
   bootstrapError: null,
   persistApi: null,
@@ -175,10 +218,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     chats.delete(chatId);
     const messages = new Map(get().messages);
     messages.delete(chatId);
+    const reactions = new Map(get().reactions);
+    reactions.delete(chatId);
     set({
       chats,
       chatOrder: get().chatOrder.filter((id) => id !== chatId),
       messages,
+      reactions,
     });
   },
 
@@ -295,6 +341,139 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set({ messages });
   },
 
+  // ── Reactions (M8) ────────────────────────────────────────────────────────
+  addOptimisticReaction(input) {
+    const reactions = new Map(get().reactions);
+    const perChat = new Map<string, Reaction[]>(reactions.get(input.chatId));
+    const list = perChat.get(input.target) ?? [];
+    if (list.some((r) => r.clientMsgId === input.clientMsgId)) return;
+    // One reaction per (sender, target, emoji) — don't stack a duplicate.
+    if (
+      list.some(
+        (r) =>
+          r.senderAuthUserId === input.senderAuthUserId &&
+          r.emoji === input.emoji,
+      )
+    ) {
+      return;
+    }
+    const reaction: Reaction = {
+      clientMsgId: input.clientMsgId,
+      target: input.target,
+      emoji: input.emoji,
+      senderAuthUserId: input.senderAuthUserId,
+      status: "sending",
+    };
+    perChat.set(input.target, [...list, reaction]);
+    reactions.set(input.chatId, perChat);
+    set({ reactions });
+  },
+
+  confirmReaction(input) {
+    const reactions = new Map(get().reactions);
+    const perChat = reactions.get(input.chatId);
+    if (!perChat) return;
+    const nextPerChat = new Map(perChat);
+    let changed = false;
+    for (const [target, list] of perChat) {
+      const idx = list.findIndex((r) => r.clientMsgId === input.clientMsgId);
+      if (idx < 0) continue;
+      const next = [...list];
+      next[idx] = { ...next[idx]!, status: "sent" };
+      nextPerChat.set(target, next);
+      changed = true;
+      break;
+    }
+    if (!changed) return;
+    reactions.set(input.chatId, nextPerChat);
+    set({ reactions });
+  },
+
+  failReaction(input) {
+    // Terminal failure → drop the optimistic pill entirely.
+    const reactions = new Map(get().reactions);
+    const perChat = reactions.get(input.chatId);
+    if (!perChat) return;
+    const nextPerChat = new Map(perChat);
+    let changed = false;
+    for (const [target, list] of perChat) {
+      const filtered = list.filter((r) => r.clientMsgId !== input.clientMsgId);
+      if (filtered.length === list.length) continue;
+      if (filtered.length === 0) nextPerChat.delete(target);
+      else nextPerChat.set(target, filtered);
+      changed = true;
+      break;
+    }
+    if (!changed) return;
+    reactions.set(input.chatId, nextPerChat);
+    set({ reactions });
+  },
+
+  removeOwnReaction(input) {
+    const reactions = new Map(get().reactions);
+    const perChat = reactions.get(input.chatId);
+    if (!perChat) return;
+    const list = perChat.get(input.target);
+    if (!list) return;
+    const filtered = list.filter(
+      (r) =>
+        !(
+          r.senderAuthUserId === input.senderAuthUserId &&
+          r.emoji === input.emoji
+        ),
+    );
+    if (filtered.length === list.length) return;
+    const nextPerChat = new Map(perChat);
+    if (filtered.length === 0) nextPerChat.delete(input.target);
+    else nextPerChat.set(input.target, filtered);
+    reactions.set(input.chatId, nextPerChat);
+    set({ reactions });
+  },
+
+  applyIncomingReaction(input) {
+    const reactions = new Map(get().reactions);
+    const perChat = new Map<string, Reaction[]>(reactions.get(input.chatId));
+    const list = perChat.get(input.target) ?? [];
+
+    if (input.op === "del") {
+      const filtered = list.filter(
+        (r) =>
+          !(
+            r.senderAuthUserId === input.senderAuthUserId &&
+            r.emoji === input.emoji
+          ),
+      );
+      if (filtered.length === list.length) return;
+      if (filtered.length === 0) perChat.delete(input.target);
+      else perChat.set(input.target, filtered);
+      reactions.set(input.chatId, perChat);
+      set({ reactions });
+      return;
+    }
+
+    // op "add" — dedup per (sender, target, emoji). Last-write-wins is trivial
+    // here: a repeat add is a no-op.
+    if (
+      list.some(
+        (r) =>
+          r.senderAuthUserId === input.senderAuthUserId &&
+          r.emoji === input.emoji,
+      )
+    ) {
+      return;
+    }
+    const reaction: Reaction = {
+      clientMsgId: `in-${input.senderAuthUserId}-${input.emoji}-${input.target}`,
+      target: input.target,
+      emoji: input.emoji,
+      senderAuthUserId: input.senderAuthUserId,
+      status: "sent",
+    };
+    perChat.set(input.target, [...list, reaction]);
+    reactions.set(input.chatId, perChat);
+    set({ reactions });
+  },
+
   setPersistApi(api) {
     set({ persistApi: api });
   },
@@ -321,6 +500,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       chats: new Map(),
       chatOrder: [],
       messages: new Map(),
+      reactions: new Map(),
       // Preserve persistApi across resets — caller (provider) controls its
       // lifetime independently from auth state.
       persistApi: get().persistApi,

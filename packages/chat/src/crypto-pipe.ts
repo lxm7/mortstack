@@ -36,16 +36,72 @@ export interface MlsApi {
 // informational, never trusted for ordering (server assigns serverMsgId
 // which carries authoritative ts).
 //
-// `sender` is the sender's display-name snapshot at send time. Optional
-// because (a) v=1 doesn't populate it, (b) the user may not have a Profile
-// yet, and (c) the receiver-side NSE/FCM treats absence as "show generic
-// title". Carrying it inside the ciphertext is necessary because the NSE
-// has no network access at notification-decrypt time and can't look it up.
-export interface ChatFrame {
+// M8: the frame is now a discriminated union on `kind` so one encrypted
+// channel carries both messages and reactions (reactions are E2EE for the
+// same reason messages are — a plaintext emoji on the wire would contradict
+// "server never sees plaintext", ADR/CONTEXT hero). The server + transport
+// stay content-blind; only the receiving client decodes `kind`.
+//
+// EXPAND/CONTRACT: legacy (pre-M8) frames are `{ v, text, ts, sender? }` with
+// NO `kind`. parseFrame treats a missing/absent `kind` as "msg", and the
+// message encoder OMITS `kind` on the wire so message frames stay byte-for-byte
+// identical to legacy — the native NSE msgpack readers (which skip unknown
+// keys but require `text`) keep working unchanged for messages.
+export interface ChatMsgFrame {
   v: number;
-  text: string;
   ts: number;
+  /** Absent on the wire for messages (legacy-identical); narrows the union. */
+  kind?: "msg";
+  text: string;
+  // `sender` is the sender's display-name snapshot at send time. Optional
+  // because (a) v=1 doesn't populate it, (b) the user may not have a Profile
+  // yet, and (c) the receiver-side NSE/FCM treats absence as "show generic
+  // title". Carried inside the ciphertext because the NSE has no network at
+  // notification-decrypt time and can't look it up.
   sender?: string;
+}
+
+// Reaction frame (M8). Rides the same ciphertext as a message (Option A — no
+// new transport frame), so the server can't distinguish it and stays blind.
+// No `text`: the receiver folds it onto the target bubble instead of rendering
+// a row. `target` is the reacted-to message's serverSerial (string).
+export interface ChatReactionFrame {
+  v: number;
+  ts: number;
+  kind: "rx";
+  target: string;
+  emoji: string;
+  op: "add" | "del";
+}
+
+export type ChatFrame = ChatMsgFrame | ChatReactionFrame;
+
+// Caller-supplied frame content (the part that isn't the version/timestamp,
+// which the encoders stamp). Discriminated the same way as ChatFrame.
+export type ChatFrameBody =
+  | { kind?: "msg"; text: string; sender?: string }
+  | { kind: "rx"; target: string; emoji: string; op: "add" | "del" };
+
+export function isReactionFrame(f: ChatFrame): f is ChatReactionFrame {
+  return f.kind === "rx";
+}
+
+// Stamp version + timestamp onto a caller body → a full ChatFrame. Message
+// frames deliberately omit `kind` to stay legacy-identical on the wire.
+function buildFrame(v: number, ts: number, body: ChatFrameBody): ChatFrame {
+  if (body.kind === "rx") {
+    return {
+      v,
+      ts,
+      kind: "rx",
+      target: body.target,
+      emoji: body.emoji,
+      op: body.op,
+    };
+  }
+  const f: ChatMsgFrame = { v, ts, text: body.text };
+  if (body.sender !== undefined) f.sender = body.sender;
+  return f;
 }
 
 export interface RecipientDevice {
@@ -97,7 +153,7 @@ export class DecryptError extends Error {
 // ── encrypt ────────────────────────────────────────────────────────────────
 
 export interface EncryptOutboundOpts {
-  text: string;
+  body: ChatFrameBody;
   targets: FanoutTarget[];
   // Required for v=1 (libsodium box uses our X25519 secret).
   seed: Uint8Array;
@@ -109,7 +165,7 @@ export interface EncryptOutboundOpts {
 // caller routes through encryptOutboundMls instead.
 export function encryptOutbound(opts: EncryptOutboundOpts): OutboundEnvelope[] {
   const ts = opts.now ?? Date.now();
-  const frame: ChatFrame = { v: FRAME_VERSION_V1, text: opts.text, ts };
+  const frame = buildFrame(FRAME_VERSION_V1, ts, opts.body);
   const plaintext = encode(frame);
 
   const out: OutboundEnvelope[] = [];
@@ -134,13 +190,10 @@ export function encryptOutbound(opts: EncryptOutboundOpts): OutboundEnvelope[] {
 }
 
 export interface EncryptOutboundMlsOpts {
-  text: string;
+  body: ChatFrameBody;
   groupId: Uint8Array;
   mls: MlsApi;
   now?: number;
-  // Sender display name attached to the plaintext frame. Read by the
-  // recipient's NSE/FCM decryptor for the push-notification title.
-  sender?: string;
 }
 
 // v=2 MLS group-native send. One plaintext → one application message →
@@ -156,11 +209,10 @@ export function encryptOutboundMls(
   opts: EncryptOutboundMlsOpts,
 ): OutboundMlsEnvelope {
   const ts = opts.now ?? Date.now();
-  const frame: ChatFrame = { v: FRAME_VERSION_V2, text: opts.text, ts };
-  // Only attach `sender` when provided — keeps the key out of the msgpack map
-  // entirely (vs encoding `null`), so receivers can rely on simple "key
-  // present" semantics and the wire stays minimal.
-  if (opts.sender !== undefined) frame.sender = opts.sender;
+  // buildFrame omits `kind` for messages (legacy-identical) and only attaches
+  // `sender` when the body carries it — keeping the key out of the msgpack map
+  // entirely (vs encoding `null`) so the wire stays minimal.
+  const frame = buildFrame(FRAME_VERSION_V2, ts, opts.body);
   const plaintext = encode(frame);
   const mlsBytes = opts.mls.encryptApp(opts.groupId, plaintext);
   // Prepend version byte so decryptInbound dispatches without needing the
@@ -281,7 +333,6 @@ function parseFrame(plaintext: Uint8Array, expectedV: number): ChatFrame {
     typeof decoded !== "object" ||
     decoded === null ||
     !("v" in decoded) ||
-    !("text" in decoded) ||
     !("ts" in decoded)
   ) {
     throw new DecryptError("decrypted payload missing required frame fields");
@@ -292,14 +343,38 @@ function parseFrame(plaintext: Uint8Array, expectedV: number): ChatFrame {
       `plaintext frame.v=${String(f.v)} disagrees with wire version=${expectedV}`,
     );
   }
-  if (typeof f.text !== "string" || typeof f.ts !== "number") {
+  if (typeof f.ts !== "number") {
+    throw new DecryptError("frame field types mismatch");
+  }
+
+  // Reaction frame (M8). A missing/absent `kind` is a legacy/message frame —
+  // fall through to the text branch, preserving pre-M8 compatibility.
+  if (f.kind === "rx") {
+    if (
+      typeof f.target !== "string" ||
+      typeof f.emoji !== "string" ||
+      (f.op !== "add" && f.op !== "del")
+    ) {
+      throw new DecryptError("reaction frame missing/invalid target|emoji|op");
+    }
+    return {
+      v: expectedV,
+      ts: f.ts,
+      kind: "rx",
+      target: f.target,
+      emoji: f.emoji,
+      op: f.op,
+    };
+  }
+
+  if (typeof f.text !== "string") {
     throw new DecryptError("frame field types mismatch");
   }
   const senderRaw = "sender" in f ? f.sender : undefined;
   if (senderRaw !== undefined && typeof senderRaw !== "string") {
     throw new DecryptError("frame.sender, when present, must be a string");
   }
-  const out: ChatFrame = { v: expectedV, text: f.text, ts: f.ts };
+  const out: ChatMsgFrame = { v: expectedV, ts: f.ts, text: f.text };
   if (senderRaw !== undefined) out.sender = senderRaw;
   return out;
 }
