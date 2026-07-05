@@ -32,6 +32,13 @@ export interface ChatStoreState {
   /** Reactions per chatId → target serverSerial → Reaction[]. In-memory only
    *  (same as plaintext messages, M4-3). Folded onto bubbles by the UI. */
   reactions: Map<string, Map<string, Reaction[]>>;
+  /** Typing indicators per chatId → userId → expiry epoch-ms (receiver-side
+   *  TTL). A typer past expiry is treated as stopped; sweepExpiredTyping prunes
+   *  so a dropped `on:false` (sender crash) self-clears with no server TTL. */
+  typing: Map<string, Map<string, number>>;
+  /** Read watermarks per chatId → userId → their lastReadSerial (string).
+   *  Drives whether my outgoing messages show as read by a peer. */
+  readReceipts: Map<string, Map<string, string>>;
   bootstrapStatus: "idle" | "loading" | "ready" | "error";
   bootstrapError: string | null;
   /** Optional local persistence (M4-followup #25). Set by the provider on
@@ -121,6 +128,18 @@ export interface ChatStoreActions {
     op: "add" | "del";
     senderAuthUserId: string;
   }): void;
+  // ── Typing (M8) ───────────────────────────────────────────────────────────
+  /** Apply an inbound typing signal. `on` sets/refreshes the userId's expiry
+   *  (now + TTL); `!on` clears it immediately. */
+  setTyping(input: { chatId: string; userId: string; on: boolean }): void;
+  /** Prune expired typers across all chats. Called on a timer by the provider
+   *  so a stuck indicator (dropped `on:false`) self-clears. No-op — skips the
+   *  set() — when nothing expired, to avoid needless re-renders. */
+  sweepExpiredTyping(now?: number): void;
+  // ── Read receipts (M8) ────────────────────────────────────────────────────
+  /** Advance a peer's read watermark. Monotonic — only moves forward (BigInt
+   *  compare), so out-of-order `read` fanout can't regress it. */
+  setReadReceipt(input: { chatId: string; userId: string; upto: string }): void;
   /** Inject (or clear) the persistence API. Idempotent. */
   setPersistApi(api: MessagePersistApi | null): void;
   /** Merge a batch of persisted messages into the per-chat slice. Used by
@@ -134,11 +153,17 @@ export interface ChatStoreActions {
 
 export type ChatStore = ChatStoreState & ChatStoreActions;
 
+// Receiver-side typing expiry. The sender re-emits `on:true` on a ~3s heartbeat
+// (see the emit hook, #6), so this must exceed that interval with margin.
+const TYPING_TTL_MS = 6_000;
+
 const emptyState: ChatStoreState = {
   chats: new Map(),
   chatOrder: [],
   messages: new Map(),
   reactions: new Map(),
+  typing: new Map(),
+  readReceipts: new Map(),
   bootstrapStatus: "idle",
   bootstrapError: null,
   persistApi: null,
@@ -220,11 +245,17 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     messages.delete(chatId);
     const reactions = new Map(get().reactions);
     reactions.delete(chatId);
+    const typing = new Map(get().typing);
+    typing.delete(chatId);
+    const readReceipts = new Map(get().readReceipts);
+    readReceipts.delete(chatId);
     set({
       chats,
       chatOrder: get().chatOrder.filter((id) => id !== chatId),
       messages,
       reactions,
+      typing,
+      readReceipts,
     });
   },
 
@@ -474,6 +505,61 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set({ reactions });
   },
 
+  // ── Typing (M8) ────────────────────────────────────────────────────────────
+  setTyping(input) {
+    const typing = new Map(get().typing);
+    const perChat = new Map<string, number>(typing.get(input.chatId));
+    if (input.on) {
+      perChat.set(input.userId, Date.now() + TYPING_TTL_MS);
+    } else {
+      if (!perChat.has(input.userId)) return;
+      perChat.delete(input.userId);
+    }
+    if (perChat.size === 0) typing.delete(input.chatId);
+    else typing.set(input.chatId, perChat);
+    set({ typing });
+  },
+
+  sweepExpiredTyping(now = Date.now()) {
+    const typing = new Map(get().typing);
+    let changed = false;
+    for (const [chatId, perChat] of typing) {
+      const next = new Map(perChat);
+      let localChanged = false;
+      for (const [userId, expiresAt] of perChat) {
+        if (expiresAt <= now) {
+          next.delete(userId);
+          localChanged = true;
+        }
+      }
+      if (!localChanged) continue;
+      changed = true;
+      if (next.size === 0) typing.delete(chatId);
+      else typing.set(chatId, next);
+    }
+    if (!changed) return;
+    set({ typing });
+  },
+
+  // ── Read receipts (M8) ──────────────────────────────────────────────────────
+  setReadReceipt(input) {
+    const readReceipts = new Map(get().readReceipts);
+    const perChat = new Map<string, string>(readReceipts.get(input.chatId));
+    const current = perChat.get(input.userId);
+    // Monotonic: ignore a watermark that doesn't advance. Guard BigInt against
+    // a malformed serial (defensive — the server sends a numeric serverMsgId).
+    let advances: boolean;
+    try {
+      advances = current === undefined || BigInt(input.upto) > BigInt(current);
+    } catch {
+      return;
+    }
+    if (!advances) return;
+    perChat.set(input.userId, input.upto);
+    readReceipts.set(input.chatId, perChat);
+    set({ readReceipts });
+  },
+
   setPersistApi(api) {
     set({ persistApi: api });
   },
@@ -501,6 +587,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       chatOrder: [],
       messages: new Map(),
       reactions: new Map(),
+      typing: new Map(),
+      readReceipts: new Map(),
       // Preserve persistApi across resets — caller (provider) controls its
       // lifetime independently from auth state.
       persistApi: get().persistApi,

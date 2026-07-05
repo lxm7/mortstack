@@ -73,6 +73,9 @@ export function ChatStoreProvider({
   const reset = useChatStore((s) => s.reset);
   const addIncomingMessage = useChatStore((s) => s.addIncomingMessage);
   const applyIncomingReaction = useChatStore((s) => s.applyIncomingReaction);
+  const setTyping = useChatStore((s) => s.setTyping);
+  const setReadReceipt = useChatStore((s) => s.setReadReceipt);
+  const sweepExpiredTyping = useChatStore((s) => s.sweepExpiredTyping);
   const setPersistApi = useChatStore((s) => s.setPersistApi);
   const hydrateMessages = useChatStore((s) => s.hydrateMessages);
 
@@ -167,6 +170,31 @@ export function ChatStoreProvider({
       });
     });
   }, [authenticated, addIncomingMessage, applyIncomingReaction, transport]);
+
+  // Live typing + read-receipt ingestion. These are ephemeral/metadata frames
+  // (plaintext, not encrypted) fanned out by the Chat DO.
+  useEffect(() => {
+    if (!authenticated) return;
+    const offTyping = transport.onTyping((m) => {
+      setTyping({ chatId: m.chatId, userId: m.userId, on: m.on });
+    });
+    const offRead = transport.onRead((m) => {
+      setReadReceipt({ chatId: m.chatId, userId: m.userId, upto: m.upto });
+    });
+    return () => {
+      offTyping();
+      offRead();
+    };
+  }, [authenticated, setTyping, setReadReceipt, transport]);
+
+  // Typing expiry sweep — clears a stuck indicator when a peer's `on:false`
+  // never arrives (sender crash / dropped frame). 2s cadence sits well under
+  // the store's 6s TTL.
+  useEffect(() => {
+    if (!authenticated) return;
+    const id = setInterval(() => sweepExpiredTyping(), 2_000);
+    return () => clearInterval(id);
+  }, [authenticated, sweepExpiredTyping]);
 
   return (
     <ChatTransportContext.Provider value={transport}>

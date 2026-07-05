@@ -1,7 +1,7 @@
 // Public React hooks over the chat store. Selectors use useShallow so
 // callers don't re-render on unrelated slice changes.
 
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { encode } from "@msgpack/msgpack";
 import { useShallow } from "zustand/react/shallow";
 
@@ -338,4 +338,151 @@ const EMPTY_REACTIONS: ReadonlyMap<string, Reaction[]> = new Map();
 
 export function useReactions(chatId: string): ReadonlyMap<string, Reaction[]> {
   return useChatStore((s) => s.reactions.get(chatId) ?? EMPTY_REACTIONS);
+}
+
+// Selector hook: userIds currently typing in a chat (excluding an optional
+// self id). Filters by expiry at read time as a belt-and-suspenders alongside
+// the provider's sweep timer. useShallow keeps the array reference stable while
+// the typer set is unchanged, avoiding re-render loops.
+const EMPTY_TYPERS: string[] = [];
+
+export function useTypers(chatId: string, excludeUserId?: string): string[] {
+  return useChatStore(
+    useShallow((s) => {
+      const perChat = s.typing.get(chatId);
+      if (!perChat || perChat.size === 0) return EMPTY_TYPERS;
+      const now = Date.now();
+      const out: string[] = [];
+      for (const [userId, expiresAt] of perChat) {
+        if (expiresAt > now && userId !== excludeUserId) out.push(userId);
+      }
+      return out.length === 0 ? EMPTY_TYPERS : out;
+    }),
+  );
+}
+
+// Selector hook: whether my outgoing message (by serverSerial) has been read by
+// any peer — i.e. some member other than me has a read watermark ≥ its serial.
+// Returns a boolean (Object.is-stable, no useShallow needed).
+export function useIsReadByPeer(
+  chatId: string,
+  serverSerial: string | undefined,
+  myAuthUserId: string | null,
+): boolean {
+  return useChatStore((s) => {
+    if (!serverSerial) return false;
+    const perChat = s.readReceipts.get(chatId);
+    if (!perChat) return false;
+    let target: bigint;
+    try {
+      target = BigInt(serverSerial);
+    } catch {
+      return false;
+    }
+    for (const [userId, upto] of perChat) {
+      if (userId === myAuthUserId) continue;
+      try {
+        if (BigInt(upto) >= target) return true;
+      } catch {
+        // skip a malformed watermark
+      }
+    }
+    return false;
+  });
+}
+
+// Typing-emitter hook. Wire onActivity() to the composer's onChangeText and
+// stop() to send/blur. Emits `on:true` on first activity, re-emits as a ~3s
+// heartbeat while composing (keeps the receiver's 6s TTL alive), and `on:false`
+// after a 4s idle gap or an explicit stop().
+const TYPING_HEARTBEAT_MS = 3_000;
+const TYPING_IDLE_MS = 4_000;
+
+export interface UseTypingEmitterResult {
+  onActivity(): void;
+  stop(): void;
+}
+
+export function useTypingEmitter(chatId: string): UseTypingEmitterResult {
+  const transport = useChatTransport();
+  const activeRef = useRef(false);
+  const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const idleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearTimers = useCallback(() => {
+    if (heartbeatRef.current) {
+      clearInterval(heartbeatRef.current);
+      heartbeatRef.current = null;
+    }
+    if (idleRef.current) {
+      clearTimeout(idleRef.current);
+      idleRef.current = null;
+    }
+  }, []);
+
+  const stop = useCallback(() => {
+    clearTimers();
+    if (!activeRef.current) return;
+    activeRef.current = false;
+    transport.sendTyping({ chatId, on: false });
+  }, [chatId, clearTimers, transport]);
+
+  const onActivity = useCallback(() => {
+    if (!activeRef.current) {
+      activeRef.current = true;
+      transport.sendTyping({ chatId, on: true });
+      heartbeatRef.current = setInterval(() => {
+        transport.sendTyping({ chatId, on: true });
+      }, TYPING_HEARTBEAT_MS);
+    }
+    if (idleRef.current) clearTimeout(idleRef.current);
+    idleRef.current = setTimeout(stop, TYPING_IDLE_MS);
+  }, [chatId, stop, transport]);
+
+  // Stop + clear on unmount or chat change so a "typing…" doesn't leak into a
+  // thread the user left. Cleanup runs the previous chatId's stop().
+  useEffect(() => stop, [stop]);
+
+  return { onActivity, stop };
+}
+
+// Read-emitter hook. Call markRead(serverSerial) when the newest visible
+// message changes (thread focus / list viewability). Monotonic + deduped so we
+// only emit when the watermark advances. Gated by `enabled` — the symmetric
+// read-receipts privacy toggle (#8); when off we emit nothing (and, per the
+// symmetric model, the UI also suppresses peers' receipts).
+export interface UseReadEmitterResult {
+  markRead(serverSerial: string): void;
+}
+
+export function useReadEmitter(
+  chatId: string,
+  enabled: boolean,
+): UseReadEmitterResult {
+  const transport = useChatTransport();
+  const lastSentRef = useRef<bigint | null>(null);
+
+  const markRead = useCallback(
+    (serverSerial: string) => {
+      if (!enabled) return;
+      let serial: bigint;
+      try {
+        serial = BigInt(serverSerial);
+      } catch {
+        return;
+      }
+      if (lastSentRef.current !== null && serial <= lastSentRef.current) return;
+      lastSentRef.current = serial;
+      transport.sendRead({ chatId, upto: serverSerial });
+    },
+    [chatId, enabled, transport],
+  );
+
+  // Reset the watermark when switching chats so the first read in a new thread
+  // always emits.
+  useEffect(() => {
+    lastSentRef.current = null;
+  }, [chatId]);
+
+  return { markRead };
 }

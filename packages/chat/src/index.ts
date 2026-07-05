@@ -52,6 +52,10 @@ export {
   useDeleteMessage,
   useReactToMessage,
   useReactions,
+  useTypers,
+  useIsReadByPeer,
+  useTypingEmitter,
+  useReadEmitter,
   type UseChatsResult,
   type UseChatResult,
   type UseMessagesResult,
@@ -59,6 +63,8 @@ export {
   type UseRetryMessageResult,
   type UseDeleteMessageResult,
   type UseReactToMessageResult,
+  type UseTypingEmitterResult,
+  type UseReadEmitterResult,
 } from "./hooks";
 export {
   ChatStoreProvider,
