@@ -503,9 +503,12 @@ model ChatMember {
   // Member identified by Better Auth user id. Matches the value the chat-ws
   // Worker derives from the bearer token at WS upgrade time.
   userId String
-  // For unread counts + read-receipt UX. Updated by the API on read events.
-  lastReadAt DateTime?
-  joinedAt   DateTime  @default(now())
+  // Read-receipt + unread-count high-water-mark: the greatest ChatMessage
+  // serverSerial this member has read. Keyed on serial (the DO's monotonic
+  // authority, ADR-012), not wall-clock — skew-free and directly comparable to
+  // a message's serial. Updated by the API on `read` frames (chat-ws).
+  lastReadSerial BigInt?
+  joinedAt       DateTime @default(now())
 
   @@unique([chatId, userId])
   @@index([userId])

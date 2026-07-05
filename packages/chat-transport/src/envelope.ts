@@ -26,6 +26,17 @@ export type ClientToServer =
       nonce: Uint8Array;
       unencrypted?: boolean;
     }
+  // Typing signal — ephemeral, never persisted. `on:true` on first keystroke
+  // and re-sent as a heartbeat (~3s) while composing; `on:false` on send / blur
+  // / idle. The Chat DO is a stateless relay — the receiver holds a short expiry
+  // timer, so a dropped `on:false` (sender crash) self-clears with no server
+  // TTL. Content-blind: whether someone is typing is metadata, no plaintext.
+  | { t: "typ"; chatId: string; on: boolean }
+  // Read receipt — high-water-mark, not per-message. `upto` is the greatest
+  // serverMsgId (= serverSerial as string) the user has read. Server persists it
+  // to ChatMember.lastReadSerial and fans out. Gated client-side by the
+  // symmetric read-receipts privacy toggle (never emitted when off).
+  | { t: "read"; chatId: string; upto: string }
   // Heartbeat — answered with `pong`. Auto-handled when supported by the
   // platform; manual fallback for clients without auto-ping.
   | { t: "ping" };
@@ -57,6 +68,14 @@ export type ServerToClient =
   // background poll. Best-effort: the 30s poll remains the correctness
   // guarantee in case the push fails or the client is offline at send time.
   | { t: "mls-welcome"; ts: number }
+  // Typing fanout — a peer in `chatId` started/stopped composing. Server stamps
+  // `userId`; receiver renders the three-dot pulse (chat/DESIGN.md §Typing).
+  // Never sent for the connection's own userId.
+  | { t: "typ"; chatId: string; userId: string; on: boolean }
+  // Read fanout — `userId` has read up to `upto` (serverMsgId string) in
+  // `chatId`. Receiver advances that member's watermark; the sender's own
+  // outgoing bubbles flip sent → read once a peer's `upto` covers their serial.
+  | { t: "read"; chatId: string; userId: string; upto: string }
   // Soft error — connection stays open. Use error.code for routing.
   | { t: "err"; code: ChatErrorCode; msg?: string }
   | { t: "pong" };

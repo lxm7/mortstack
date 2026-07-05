@@ -8,6 +8,7 @@
 
 import { createContext, useContext, useEffect, type ReactNode } from "react";
 
+import { isReactionFrame } from "./crypto-pipe";
 import type { EncryptedChatTransport } from "./encrypted-transport";
 import type { BoundOutboxApi, OutboxWorker } from "./outbox-worker";
 import { useChatStore } from "./store";
@@ -71,6 +72,10 @@ export function ChatStoreProvider({
   const refresh = useChatStore((s) => s.refresh);
   const reset = useChatStore((s) => s.reset);
   const addIncomingMessage = useChatStore((s) => s.addIncomingMessage);
+  const applyIncomingReaction = useChatStore((s) => s.applyIncomingReaction);
+  const setTyping = useChatStore((s) => s.setTyping);
+  const setReadReceipt = useChatStore((s) => s.setReadReceipt);
+  const sweepExpiredTyping = useChatStore((s) => s.sweepExpiredTyping);
   const setPersistApi = useChatStore((s) => s.setPersistApi);
   const hydrateMessages = useChatStore((s) => s.hydrateMessages);
 
@@ -141,10 +146,21 @@ export function ChatStoreProvider({
   }, [authenticated, api, refresh, transport]);
 
   // Live message ingestion. The transport already decrypts (v=1 libsodium
-  // or v=2 MLS) and surfaces a ChatFrame with plaintext text + ts.
+  // or v=2 MLS) and surfaces a ChatFrame. A reaction frame (kind "rx") folds
+  // onto its target bubble instead of rendering as a message row.
   useEffect(() => {
     if (!authenticated) return;
     return transport.onMessage((msg) => {
+      if (isReactionFrame(msg.frame)) {
+        applyIncomingReaction({
+          chatId: msg.chatId,
+          target: msg.frame.target,
+          emoji: msg.frame.emoji,
+          op: msg.frame.op,
+          senderAuthUserId: msg.senderId,
+        });
+        return;
+      }
       addIncomingMessage({
         chatId: msg.chatId,
         serverMsgId: msg.serverMsgId,
@@ -153,7 +169,32 @@ export function ChatStoreProvider({
         ts: msg.ts,
       });
     });
-  }, [authenticated, addIncomingMessage, transport]);
+  }, [authenticated, addIncomingMessage, applyIncomingReaction, transport]);
+
+  // Live typing + read-receipt ingestion. These are ephemeral/metadata frames
+  // (plaintext, not encrypted) fanned out by the Chat DO.
+  useEffect(() => {
+    if (!authenticated) return;
+    const offTyping = transport.onTyping((m) => {
+      setTyping({ chatId: m.chatId, userId: m.userId, on: m.on });
+    });
+    const offRead = transport.onRead((m) => {
+      setReadReceipt({ chatId: m.chatId, userId: m.userId, upto: m.upto });
+    });
+    return () => {
+      offTyping();
+      offRead();
+    };
+  }, [authenticated, setTyping, setReadReceipt, transport]);
+
+  // Typing expiry sweep — clears a stuck indicator when a peer's `on:false`
+  // never arrives (sender crash / dropped frame). 2s cadence sits well under
+  // the store's 6s TTL.
+  useEffect(() => {
+    if (!authenticated) return;
+    const id = setInterval(() => sweepExpiredTyping(), 2_000);
+    return () => clearInterval(id);
+  }, [authenticated, sweepExpiredTyping]);
 
   return (
     <ChatTransportContext.Provider value={transport}>

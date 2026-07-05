@@ -1,13 +1,13 @@
 // Public React hooks over the chat store. Selectors use useShallow so
 // callers don't re-render on unrelated slice changes.
 
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { encode } from "@msgpack/msgpack";
 import { useShallow } from "zustand/react/shallow";
 
 import { useChatTransport, useOutbox, useOutboxWorker } from "./provider";
 import { useChatStore } from "./store";
-import type { ChatRecord, Message } from "./types";
+import type { ChatRecord, Message, Reaction } from "./types";
 
 export interface UseChatsResult {
   chats: ChatRecord[];
@@ -222,4 +222,295 @@ export function useDeleteMessage(): UseDeleteMessageResult {
     [outbox, remove],
   );
   return { delete: del };
+}
+
+// React-to-message hook (M8). Toggles the given emoji on a message: if the
+// user already has it on that target → op "del", else → op "add". The reaction
+// rides the same encrypted outbox path as a message (Option A) — it's an MLS
+// application message carrying a "rx" frame, so per-chat FIFO/generation order
+// is preserved across retries. Optimistic: the pill appears (add) or disappears
+// (del) immediately; the worker reconciles on ack.
+export interface UseReactToMessageResult {
+  react(input: {
+    chatId: string;
+    /** serverSerial (string) of the message being reacted to. */
+    target: string;
+    emoji: string;
+    senderAuthUserId: string;
+  }): void;
+}
+
+export function useReactToMessage(): UseReactToMessageResult {
+  const addOptimistic = useChatStore((s) => s.addOptimisticReaction);
+  const removeOwn = useChatStore((s) => s.removeOwnReaction);
+  const confirm = useChatStore((s) => s.confirmReaction);
+  const fail = useChatStore((s) => s.failReaction);
+  const transport = useChatTransport();
+  const outbox = useOutbox();
+  const worker = useOutboxWorker();
+
+  const react = useCallback(
+    (input: {
+      chatId: string;
+      target: string;
+      emoji: string;
+      senderAuthUserId: string;
+    }) => {
+      // Toggle: derive op from current state. getState() reads synchronously —
+      // this is an event handler, not render, so it's safe + avoids a subscription.
+      const perChat = useChatStore.getState().reactions.get(input.chatId);
+      const mine = (perChat?.get(input.target) ?? []).some(
+        (r) =>
+          r.senderAuthUserId === input.senderAuthUserId &&
+          r.emoji === input.emoji,
+      );
+      const op: "add" | "del" = mine ? "del" : "add";
+      const clientMsgId = randomClientMsgId();
+
+      if (op === "add") {
+        addOptimistic({
+          chatId: input.chatId,
+          clientMsgId,
+          target: input.target,
+          emoji: input.emoji,
+          senderAuthUserId: input.senderAuthUserId,
+        });
+      } else {
+        removeOwn({
+          chatId: input.chatId,
+          target: input.target,
+          emoji: input.emoji,
+          senderAuthUserId: input.senderAuthUserId,
+        });
+      }
+
+      if (outbox && worker) {
+        const payload = encode({
+          kind: "rx",
+          target: input.target,
+          emoji: input.emoji,
+          op,
+        });
+        void (async () => {
+          try {
+            await outbox.enqueue({
+              id: clientMsgId,
+              chatId: input.chatId,
+              payload,
+              idempotencyKey: clientMsgId,
+            });
+            worker.kick();
+          } catch (err) {
+            console.warn("[chat] reaction enqueue failed", err);
+            // Only "add" has a pill to roll back; a failed "del" reconciles on
+            // reload (in-memory, demo-scoped).
+            if (op === "add") fail({ chatId: input.chatId, clientMsgId });
+          }
+        })();
+        return;
+      }
+
+      // Fallback: direct send without retry (tests, pre-outbox screens).
+      void (async () => {
+        try {
+          const results = await transport.send({
+            chatId: input.chatId,
+            reaction: { target: input.target, emoji: input.emoji, op },
+            targets: [],
+            clientMsgId,
+          });
+          if (!results[0]) throw new Error("transport returned no results");
+          if (op === "add") confirm({ chatId: input.chatId, clientMsgId });
+        } catch (err) {
+          console.warn("[chat] reaction send failed", err);
+          if (op === "add") fail({ chatId: input.chatId, clientMsgId });
+        }
+      })();
+    },
+    [addOptimistic, removeOwn, confirm, fail, outbox, transport, worker],
+  );
+  return { react };
+}
+
+// Selector hook: reactions folded onto a chat's messages, keyed by target
+// serverSerial. Stable empty-map fallback to avoid re-render loops.
+const EMPTY_REACTIONS: ReadonlyMap<string, Reaction[]> = new Map();
+
+export function useReactions(chatId: string): ReadonlyMap<string, Reaction[]> {
+  return useChatStore((s) => s.reactions.get(chatId) ?? EMPTY_REACTIONS);
+}
+
+// Selector hook: userIds currently typing in a chat (excluding an optional
+// self id). Filters by expiry at read time as a belt-and-suspenders alongside
+// the provider's sweep timer. useShallow keeps the array reference stable while
+// the typer set is unchanged, avoiding re-render loops.
+const EMPTY_TYPERS: string[] = [];
+
+export function useTypers(chatId: string, excludeUserId?: string): string[] {
+  return useChatStore(
+    useShallow((s) => {
+      const perChat = s.typing.get(chatId);
+      if (!perChat || perChat.size === 0) return EMPTY_TYPERS;
+      const now = Date.now();
+      const out: string[] = [];
+      for (const [userId, expiresAt] of perChat) {
+        if (expiresAt > now && userId !== excludeUserId) out.push(userId);
+      }
+      return out.length === 0 ? EMPTY_TYPERS : out;
+    }),
+  );
+}
+
+// Selector hook: whether my outgoing message (by serverSerial) has been read by
+// any peer — i.e. some member other than me has a read watermark ≥ its serial.
+// Returns a boolean (Object.is-stable, no useShallow needed).
+export function useIsReadByPeer(
+  chatId: string,
+  serverSerial: string | undefined,
+  myAuthUserId: string | null,
+): boolean {
+  return useChatStore((s) => {
+    if (!serverSerial) return false;
+    const perChat = s.readReceipts.get(chatId);
+    if (!perChat) return false;
+    let target: bigint;
+    try {
+      target = BigInt(serverSerial);
+    } catch {
+      return false;
+    }
+    for (const [userId, upto] of perChat) {
+      if (userId === myAuthUserId) continue;
+      try {
+        if (BigInt(upto) >= target) return true;
+      } catch {
+        // skip a malformed watermark
+      }
+    }
+    return false;
+  });
+}
+
+// Selector: the greatest read watermark among a chat's members excluding self,
+// as a serverSerial string (or null). Lets a thread derive per-message read
+// state without a hook-per-row — compare each message's serial to this once.
+export function usePeerReadWatermark(
+  chatId: string,
+  excludeUserId: string | null,
+): string | null {
+  return useChatStore((s) => {
+    const perChat = s.readReceipts.get(chatId);
+    if (!perChat) return null;
+    let max: bigint | null = null;
+    let maxStr: string | null = null;
+    for (const [userId, upto] of perChat) {
+      if (userId === excludeUserId) continue;
+      try {
+        const v = BigInt(upto);
+        if (max === null || v > max) {
+          max = v;
+          maxStr = upto;
+        }
+      } catch {
+        // skip a malformed watermark
+      }
+    }
+    return maxStr;
+  });
+}
+
+// Typing-emitter hook. Wire onActivity() to the composer's onChangeText and
+// stop() to send/blur. Emits `on:true` on first activity, re-emits as a ~3s
+// heartbeat while composing (keeps the receiver's 6s TTL alive), and `on:false`
+// after a 4s idle gap or an explicit stop().
+const TYPING_HEARTBEAT_MS = 3_000;
+const TYPING_IDLE_MS = 4_000;
+
+export interface UseTypingEmitterResult {
+  onActivity(): void;
+  stop(): void;
+}
+
+export function useTypingEmitter(chatId: string): UseTypingEmitterResult {
+  const transport = useChatTransport();
+  const activeRef = useRef(false);
+  const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const idleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearTimers = useCallback(() => {
+    if (heartbeatRef.current) {
+      clearInterval(heartbeatRef.current);
+      heartbeatRef.current = null;
+    }
+    if (idleRef.current) {
+      clearTimeout(idleRef.current);
+      idleRef.current = null;
+    }
+  }, []);
+
+  const stop = useCallback(() => {
+    clearTimers();
+    if (!activeRef.current) return;
+    activeRef.current = false;
+    transport.sendTyping({ chatId, on: false });
+  }, [chatId, clearTimers, transport]);
+
+  const onActivity = useCallback(() => {
+    if (!activeRef.current) {
+      activeRef.current = true;
+      transport.sendTyping({ chatId, on: true });
+      heartbeatRef.current = setInterval(() => {
+        transport.sendTyping({ chatId, on: true });
+      }, TYPING_HEARTBEAT_MS);
+    }
+    if (idleRef.current) clearTimeout(idleRef.current);
+    idleRef.current = setTimeout(stop, TYPING_IDLE_MS);
+  }, [chatId, stop, transport]);
+
+  // Stop + clear on unmount or chat change so a "typing…" doesn't leak into a
+  // thread the user left. Cleanup runs the previous chatId's stop().
+  useEffect(() => stop, [stop]);
+
+  return { onActivity, stop };
+}
+
+// Read-emitter hook. Call markRead(serverSerial) when the newest visible
+// message changes (thread focus / list viewability). Monotonic + deduped so we
+// only emit when the watermark advances. Gated by `enabled` — the symmetric
+// read-receipts privacy toggle (#8); when off we emit nothing (and, per the
+// symmetric model, the UI also suppresses peers' receipts).
+export interface UseReadEmitterResult {
+  markRead(serverSerial: string): void;
+}
+
+export function useReadEmitter(
+  chatId: string,
+  enabled: boolean,
+): UseReadEmitterResult {
+  const transport = useChatTransport();
+  const lastSentRef = useRef<bigint | null>(null);
+
+  const markRead = useCallback(
+    (serverSerial: string) => {
+      if (!enabled) return;
+      let serial: bigint;
+      try {
+        serial = BigInt(serverSerial);
+      } catch {
+        return;
+      }
+      if (lastSentRef.current !== null && serial <= lastSentRef.current) return;
+      lastSentRef.current = serial;
+      transport.sendRead({ chatId, upto: serverSerial });
+    },
+    [chatId, enabled, transport],
+  );
+
+  // Reset the watermark when switching chats so the first read in a new thread
+  // always emits.
+  useEffect(() => {
+    lastSentRef.current = null;
+  }, [chatId]);
+
+  return { markRead };
 }

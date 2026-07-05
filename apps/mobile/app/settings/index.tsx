@@ -5,12 +5,16 @@
 
 import { useRouter } from "expo-router";
 import type { ComponentProps } from "react";
-import { Button, Text, View, XStack, YStack } from "tamagui";
+import { Button, Switch, Text, View, XStack, YStack } from "tamagui";
+
+import { useSettingsStore } from "@/store/settings";
 
 const DESTRUCTIVE = "#dc2626";
 
 export default function SettingsScreen() {
   const router = useRouter();
+  const readReceipts = useSettingsStore((s) => s.readReceipts);
+  const setReadReceipts = useSettingsStore((s) => s.setReadReceipts);
 
   return (
     <YStack flex={1} backgroundColor="$background">
@@ -38,6 +42,13 @@ export default function SettingsScreen() {
         <SettingsRow
           label="Blocked accounts"
           onPress={() => router.push("/settings/blocks" as never)}
+        />
+        {/* Symmetric: off = we send no receipts AND hide peers' (see the thread
+            screen's read-tick + useReadEmitter gating). */}
+        <SettingsToggleRow
+          label="Read receipts"
+          value={readReceipts}
+          onValueChange={setReadReceipts}
         />
 
         <Text fontSize="$2" color="$placeholderColor" pt="$4">
@@ -79,5 +90,33 @@ function SettingsRow({
         ›
       </Text>
     </Button>
+  );
+}
+
+function SettingsToggleRow({
+  label,
+  value,
+  onValueChange,
+}: {
+  label: string;
+  value: boolean;
+  onValueChange: (next: boolean) => void;
+}) {
+  return (
+    <XStack
+      justifyContent="space-between"
+      alignItems="center"
+      px="$3"
+      py="$3"
+      borderBottomWidth={1}
+      borderColor="$borderColor"
+    >
+      <Text fontSize="$4" color="$color">
+        {label}
+      </Text>
+      <Switch size="$3" checked={value} onCheckedChange={onValueChange}>
+        <Switch.Thumb />
+      </Switch>
+    </XStack>
   );
 }

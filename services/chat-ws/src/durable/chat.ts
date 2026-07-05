@@ -44,6 +44,13 @@ export class Chat extends DurableObject<Env> {
   private bufferLoaded = false;
   private nextSerial: bigint | null = null;
   private flushTimer: number | null = null;
+  // Authoritative ChatMember set, cached to gate ephemeral typ/read signals
+  // without a Postgres round-trip per frame (typing heartbeats fire ~every 3s).
+  // Short TTL bounds staleness for add/remove-member (a removed member can spoof
+  // for at most MEMBER_CACHE_TTL_MS; a new member is briefly denied) — an
+  // acceptable window for plaintext metadata signals.
+  private memberCache: { ids: Set<string>; at: number } | null = null;
+  private static readonly MEMBER_CACHE_TTL_MS = 30_000;
 
   // ── RPC: attach / detach UserInbox membership ─────────────────────────────
   async attachInbox(userId: string): Promise<void> {
@@ -58,6 +65,73 @@ export class Chat extends DurableObject<Env> {
     if (!set.has(userId)) return;
     set.delete(userId);
     await this.ctx.storage.put(ATTACHED_KEY, [...set]);
+  }
+
+  // ── RPC: typing relay (ephemeral — no persistence, no storage, no alarm) ──
+  // A UserInbox forwards a typing signal. Pure fanout to every *other* attached
+  // member. Expiry lives on the receiver client (short timer refreshed by the
+  // sender's ~3s `on:true` heartbeat), so a dropped `on:false` self-clears
+  // without any server-side TTL — keeps this hibernation-proof and stateless.
+  async acceptTyping(input: { userId: string; on: boolean }): Promise<void> {
+    const chatId = this.ctx.id.name ?? this.ctx.id.toString();
+    // Authorization: typing/read frames carry a client-supplied chatId with no
+    // crypto barrier (unlike `send`, whose secrecy rests on E2EE). Gate on the
+    // authoritative member set so a client can't spoof presence into a chat it
+    // isn't in.
+    if (!(await this.isMember(chatId, input.userId))) return;
+    const attached = await this.loadAttached();
+    await Promise.all(
+      [...attached]
+        .filter((userId) => userId !== input.userId)
+        .map((userId) => {
+          const stub = this.env.USER_INBOX.get(
+            this.env.USER_INBOX.idFromName(userId),
+          );
+          return stub.deliverTyping({
+            chatId,
+            userId: input.userId,
+            on: input.on,
+          });
+        }),
+    );
+  }
+
+  // ── RPC: read receipt (persist watermark + fanout) ────────────────────────
+  // A UserInbox forwards a read high-water-mark. Persist it (monotonic) to
+  // ChatMember.lastReadSerial, then fan out to every *other* attached member so
+  // their outgoing bubbles flip sent → read live. Offline members reconcile the
+  // watermark from ChatMember on their next chat load.
+  async acceptRead(input: { userId: string; upto: string }): Promise<void> {
+    const chatId = this.ctx.id.name ?? this.ctx.id.toString();
+    // Same authorization gate as acceptTyping — a non-member must not be able to
+    // spoof a read receipt (fanned out to real members) into this chat.
+    if (!(await this.isMember(chatId, input.userId))) return;
+    let serial: bigint;
+    try {
+      serial = BigInt(input.upto);
+    } catch {
+      // Malformed watermark — drop silently (content-blind soft handling).
+      return;
+    }
+
+    const db = getPersistClient(this.env);
+    await db.updateLastReadSerial(chatId, input.userId, serial);
+
+    const attached = await this.loadAttached();
+    await Promise.all(
+      [...attached]
+        .filter((userId) => userId !== input.userId)
+        .map((userId) => {
+          const stub = this.env.USER_INBOX.get(
+            this.env.USER_INBOX.idFromName(userId),
+          );
+          return stub.deliverRead({
+            chatId,
+            userId: input.userId,
+            upto: input.upto,
+          });
+        }),
+    );
   }
 
   // ── RPC: a UserInbox forwards an outbound send ────────────────────────────
@@ -308,6 +382,21 @@ export class Chat extends DurableObject<Env> {
   private async loadAttached(): Promise<Set<string>> {
     const arr = (await this.ctx.storage.get<string[]>(ATTACHED_KEY)) ?? [];
     return new Set(arr);
+  }
+
+  // Membership check against the authoritative ChatMember set, memoised with a
+  // short TTL so hot paths (typing heartbeats) don't hit Postgres per frame.
+  private async isMember(chatId: string, userId: string): Promise<boolean> {
+    const now = Date.now();
+    if (
+      !this.memberCache ||
+      now - this.memberCache.at > Chat.MEMBER_CACHE_TTL_MS
+    ) {
+      const db = getPersistClient(this.env);
+      const ids = await db.memberIds(chatId);
+      this.memberCache = { ids: new Set(ids), at: now };
+    }
+    return this.memberCache.ids.has(userId);
   }
 
   private async dispatchErr(
