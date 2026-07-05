@@ -42,6 +42,9 @@ export interface ChatBubbleProps {
   status?: BubbleStatus;
   /** Read-receipt tick node (outgoing only; screen owns the icon). */
   receipt?: ReactNode;
+  /** Reaction pills, rendered attached below the bubble body (screen owns the
+   *  node — it needs reanimated, which this package doesn't depend on). */
+  reactions?: ReactNode;
   onRetryPress?: () => void;
 }
 
@@ -53,6 +56,7 @@ export function ChatBubble({
   sender,
   status = "sent",
   receipt,
+  reactions,
   onRetryPress,
 }: ChatBubbleProps) {
   const sending = status === "sending";
@@ -109,6 +113,17 @@ export function ChatBubble({
           <BodyMd color="$onSurface">{text}</BodyMd>
         </IncomingShell>
       )}
+
+      {/* Reaction pills — attached under the bubble, aligned to its side. */}
+      {reactions ? (
+        <XStack
+          alignSelf={outgoing ? "flex-end" : "flex-start"}
+          gap={4}
+          flexWrap="wrap"
+        >
+          {reactions}
+        </XStack>
+      ) : null}
 
       {/* Footer: timestamp + receipt, or the failed affordance */}
       {failed ? (

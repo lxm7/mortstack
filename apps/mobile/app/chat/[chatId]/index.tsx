@@ -3,7 +3,7 @@
 // gradient bubbles, and a pinned Composer. Long-press any bubble → actions menu
 // (Copy · Delete/Report · Inspect encryption → crypto inspector).
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -13,15 +13,21 @@ import {
 import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Feather } from "@expo/vector-icons";
+import { Feather, Ionicons } from "@expo/vector-icons";
 import { Spinner, XStack, YStack, useTheme } from "tamagui";
 
 import {
   useChat,
   useDeleteMessage,
   useMessages,
+  usePeerReadWatermark,
+  useReactions,
+  useReactToMessage,
+  useReadEmitter,
   useRetryMessage,
   useSendMessage,
+  useTypers,
+  useTypingEmitter,
   type Member,
   type Message,
 } from "@repo/chat";
@@ -31,7 +37,10 @@ import { Composer } from "@repo/ui/glacier/composer";
 import { HeadlineMd, BodyMd, Meta, Title } from "@repo/ui/glacier/typography";
 
 import { useAuthStore } from "@/store/auth";
+import { useSettingsStore } from "@/store/settings";
 import { MessageActionsSheet } from "@/lib/chat/components/MessageActionsSheet";
+import { ReactionPills } from "@/lib/chat/components/ReactionPills";
+import { TypingIndicator } from "@/lib/chat/components/TypingIndicator";
 import { trpc } from "@/lib/trpc/client";
 
 function formatTime(ms: number): string {
@@ -60,6 +69,16 @@ function dayLabel(ms: number): string {
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+// True when a peer's read watermark (bigint) covers a message's serverSerial.
+function serialCovered(watermark: bigint | null, serial?: string): boolean {
+  if (watermark === null || !serial) return false;
+  try {
+    return watermark >= BigInt(serial);
+  } catch {
+    return false;
+  }
+}
+
 type Row =
   | { type: "divider"; id: string; label: string }
   | {
@@ -83,10 +102,28 @@ export default function ChatThreadScreen() {
   const { send } = useSendMessage();
   const { retry } = useRetryMessage();
   const { delete: deleteMessage } = useDeleteMessage();
+  const { react } = useReactToMessage();
   const myAuthUserId = useAuthStore((s) => s.session?.user.id ?? null);
+  const readReceiptsOn = useSettingsStore((s) => s.readReceipts);
+  const reactionsMap = useReactions(chatId);
+  const typers = useTypers(chatId, myAuthUserId ?? undefined);
+  const peerReadWatermark = usePeerReadWatermark(chatId, myAuthUserId);
+  const typing = useTypingEmitter(chatId);
+  const { markRead } = useReadEmitter(chatId, readReceiptsOn);
   const [text, setText] = useState("");
   const [sheetTarget, setSheetTarget] = useState<Message | null>(null);
   const listRef = useRef<FlashListRef<Row>>(null);
+
+  // Peer read watermark as bigint, computed once for the whole list (renderItem
+  // can't call a hook per row).
+  const peerReadBig = useMemo(() => {
+    if (!peerReadWatermark) return null;
+    try {
+      return BigInt(peerReadWatermark);
+    } catch {
+      return null;
+    }
+  }, [peerReadWatermark]);
 
   const isGroup = chat?.kind === "group";
   const memberByAuthUserId = useMemo(() => {
@@ -135,11 +172,41 @@ export default function ChatThreadScreen() {
     const trimmed = text.trim();
     if (!trimmed) return;
     send({ chatId, text: trimmed, senderAuthUserId: myAuthUserId });
+    typing.stop();
     setText("");
     requestAnimationFrame(() =>
       listRef.current?.scrollToEnd({ animated: true }),
     );
-  }, [text, send, chatId, myAuthUserId]);
+  }, [text, send, chatId, myAuthUserId, typing]);
+
+  // Composer text change → optimistic local text + a typing heartbeat.
+  const onChangeText = useCallback(
+    (t: string) => {
+      setText(t);
+      typing.onActivity();
+    },
+    [typing],
+  );
+
+  // Mark the newest message read whenever the thread's messages change. markRead
+  // is gated by the read-receipts toggle + monotonic + deduped internally.
+  useEffect(() => {
+    let maxSerial: bigint | null = null;
+    let maxStr: string | null = null;
+    for (const m of messages) {
+      if (!m.serverSerial) continue;
+      try {
+        const v = BigInt(m.serverSerial);
+        if (maxSerial === null || v > maxSerial) {
+          maxSerial = v;
+          maxStr = m.serverSerial;
+        }
+      } catch {
+        // skip a malformed serial
+      }
+    }
+    if (maxStr) markRead(maxStr);
+  }, [messages, markRead]);
 
   const onInspect = useCallback(
     (m: Message) => {
@@ -174,9 +241,39 @@ export default function ChatThreadScreen() {
         isGroup && !isMine && isFirstInRun
           ? (sender?.handle ?? sender?.displayName ?? "Unknown")
           : null;
+      // Tick ladder: sent ✓ → read ✓✓ (primary tint). Read state is gated by
+      // the symmetric read-receipts toggle — off = never show read.
+      const isRead =
+        readReceiptsOn && serialCovered(peerReadBig, m.serverSerial);
       const receipt =
         isMine && m.status === "sent" ? (
-          <Feather name="check" size={13} color={ovc} />
+          isRead ? (
+            <Ionicons
+              name="checkmark-done"
+              size={15}
+              color={theme.primary?.val}
+            />
+          ) : (
+            <Feather name="check" size={13} color={ovc} />
+          )
+        ) : null;
+
+      const rx = m.serverSerial ? reactionsMap.get(m.serverSerial) : undefined;
+      const reactionsNode =
+        rx && rx.length > 0 ? (
+          <ReactionPills
+            reactions={rx}
+            myAuthUserId={myAuthUserId}
+            onToggle={(emoji) => {
+              if (!m.serverSerial || !myAuthUserId) return;
+              react({
+                chatId,
+                target: m.serverSerial,
+                emoji,
+                senderAuthUserId: myAuthUserId,
+              });
+            }}
+          />
         ) : null;
 
       const bubble = (
@@ -188,6 +285,7 @@ export default function ChatThreadScreen() {
           sender={senderName}
           status={m.status}
           receipt={receipt}
+          reactions={reactionsNode}
           onRetryPress={() => setSheetTarget(m)}
         />
       );
@@ -220,7 +318,17 @@ export default function ChatThreadScreen() {
         </Pressable>
       );
     },
-    [isGroup, ovc],
+    [
+      isGroup,
+      ovc,
+      readReceiptsOn,
+      peerReadBig,
+      reactionsMap,
+      myAuthUserId,
+      react,
+      chatId,
+      theme,
+    ],
   );
 
   return (
@@ -294,10 +402,14 @@ export default function ChatThreadScreen() {
           )}
         </YStack>
 
+        {/* Typing pulse — sits just above the composer when a peer is
+            composing. Cleared by the store's expiry sweep. */}
+        {typers.length > 0 ? <TypingIndicator /> : null}
+
         {/* Composer */}
         <Composer
           value={text}
-          onChangeText={setText}
+          onChangeText={onChangeText}
           onSend={onSend}
           disabled={!myAuthUserId}
           bottomInset={insets.bottom}
@@ -316,6 +428,15 @@ export default function ChatThreadScreen() {
         message={sheetTarget}
         isMine={sheetTarget?.senderAuthUserId === myAuthUserId}
         onClose={() => setSheetTarget(null)}
+        onReact={(m, emoji) => {
+          if (!m.serverSerial || !myAuthUserId) return;
+          react({
+            chatId,
+            target: m.serverSerial,
+            emoji,
+            senderAuthUserId: myAuthUserId,
+          });
+        }}
         onRetry={(m) =>
           void retry({ chatId: m.chatId, clientMsgId: m.clientMsgId })
         }

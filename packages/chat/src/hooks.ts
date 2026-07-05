@@ -391,6 +391,34 @@ export function useIsReadByPeer(
   });
 }
 
+// Selector: the greatest read watermark among a chat's members excluding self,
+// as a serverSerial string (or null). Lets a thread derive per-message read
+// state without a hook-per-row — compare each message's serial to this once.
+export function usePeerReadWatermark(
+  chatId: string,
+  excludeUserId: string | null,
+): string | null {
+  return useChatStore((s) => {
+    const perChat = s.readReceipts.get(chatId);
+    if (!perChat) return null;
+    let max: bigint | null = null;
+    let maxStr: string | null = null;
+    for (const [userId, upto] of perChat) {
+      if (userId === excludeUserId) continue;
+      try {
+        const v = BigInt(upto);
+        if (max === null || v > max) {
+          max = v;
+          maxStr = upto;
+        }
+      } catch {
+        // skip a malformed watermark
+      }
+    }
+    return maxStr;
+  });
+}
+
 // Typing-emitter hook. Wire onActivity() to the composer's onChangeText and
 // stop() to send/blur. Emits `on:true` on first activity, re-emits as a ~3s
 // heartbeat while composing (keeps the receiver's 6s TTL alive), and `on:false`

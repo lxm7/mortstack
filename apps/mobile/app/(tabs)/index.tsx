@@ -131,15 +131,27 @@ export default function ChatListScreen() {
           justifyContent="space-between"
         >
           <HeadlineMd>Mortstack</HeadlineMd>
-          <Button
-            variant="ghost"
-            borderWidth={0}
-            width={44}
-            height={44}
-            p={0}
-            accessibilityLabel="Search chats"
-            icon={<Feather name="search" size={20} color={ovc} />}
-          />
+          <XStack gap="$xs" alignItems="center">
+            <Button
+              variant="ghost"
+              borderWidth={0}
+              width={44}
+              height={44}
+              p={0}
+              accessibilityLabel="Settings"
+              onPress={() => router.push("/settings" as never)}
+              icon={<Feather name="settings" size={20} color={ovc} />}
+            />
+            <Button
+              variant="ghost"
+              borderWidth={0}
+              width={44}
+              height={44}
+              p={0}
+              accessibilityLabel="Search chats"
+              icon={<Feather name="search" size={20} color={ovc} />}
+            />
+          </XStack>
         </XStack>
       </YStack>
 

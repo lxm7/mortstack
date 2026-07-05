@@ -54,6 +54,7 @@ export {
   useReactions,
   useTypers,
   useIsReadByPeer,
+  usePeerReadWatermark,
   useTypingEmitter,
   useReadEmitter,
   type UseChatsResult,
