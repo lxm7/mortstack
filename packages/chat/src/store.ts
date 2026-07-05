@@ -436,7 +436,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       break;
     }
     if (!changed) return;
-    reactions.set(input.chatId, nextPerChat);
+    if (nextPerChat.size === 0) reactions.delete(input.chatId);
+    else reactions.set(input.chatId, nextPerChat);
     set({ reactions });
   },
 
@@ -457,7 +458,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const nextPerChat = new Map(perChat);
     if (filtered.length === 0) nextPerChat.delete(input.target);
     else nextPerChat.set(input.target, filtered);
-    reactions.set(input.chatId, nextPerChat);
+    if (nextPerChat.size === 0) reactions.delete(input.chatId);
+    else reactions.set(input.chatId, nextPerChat);
     set({ reactions });
   },
 
@@ -477,7 +479,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       if (filtered.length === list.length) return;
       if (filtered.length === 0) perChat.delete(input.target);
       else perChat.set(input.target, filtered);
-      reactions.set(input.chatId, perChat);
+      if (perChat.size === 0) reactions.delete(input.chatId);
+      else reactions.set(input.chatId, perChat);
       set({ reactions });
       return;
     }
