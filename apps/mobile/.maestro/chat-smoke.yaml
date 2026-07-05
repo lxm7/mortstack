@@ -1,0 +1,84 @@
+# Single-client smoke — M8 "alive chat" (typing / read receipts / reactions).
+#
+# A single device can only assert the OPTIMISTIC / local surface:
+#   • sending a message renders my bubble
+#   • reacting via the long-press tray renders my reaction pill
+# Typing indicators and read-receipt double-ticks are CROSS-USER and cannot be
+# observed with one client — see ./README.md (2-client rig is a follow-up).
+#
+# Preconditions: app installed on a booted sim, DB seeded (alice + password123),
+# and at least one chat on alice's conversations list. The flow signs in itself
+# (see the runFlow block below). Set MAESTRO_APP_ID (e.g. io.sessions.app). Run:
+#   maestro --device <sim-udid> test apps/mobile/.maestro/chat-smoke.yaml
+appId: ${MAESTRO_APP_ID}
+---
+- launchApp
+
+# Cold-start sign-in. launchApp relaunches the process and the Better Auth
+# session does not rehydrate, so we land on the auth gate. Gated on the login
+# screen being visible — a no-op if a session ever does persist.
+# Creds come from the DB seed (packages/database/prisma/seed.ts): SEED_PASSWORD.
+- runFlow:
+    when:
+      visible: "Login"
+    commands:
+      - tapOn: "Email Address"
+      - inputText: "alice@example.com"
+      - tapOn: "Password"
+      - inputText: "password123"
+      # Password field has enterKeyHint="go" + onSubmitEditing → submit via the
+      # keyboard return key. Avoids hideKeyboard (unsupported on the RN input)
+      # and a Login-button tap that the keyboard can overlap.
+      - pressKey: Enter
+
+- extendedWaitUntil:
+    visible:
+      id: "chat-row"
+    timeout: 20000
+# Open the first conversation (testID on the Glacier ListRow).
+- tapOn:
+    id: "chat-row"
+    index: 0
+
+# --- Send a message ---
+- tapOn:
+    id: "composer-input"
+- inputText: "Maestro smoke"
+- tapOn:
+    id: "composer-send"
+# Optimistic (status "sending") bubble renders NO footer (chat-bubble.tsx), so
+# its accessibility label is exactly "Maestro smoke" and this text match works.
+# This asserts the text we typed actually rendered.
+- assertVisible: "Maestro smoke"
+
+# On ACK the store swaps the message .id (clientMsgId → serverSerial,
+# store.ts confirmOptimisticMessage), which flips the FlashList row key and
+# REMOUNTS the bubble. The confirmed bubble now shows a footer (timestamp +
+# receipt), and because the row Pressable is one iOS a11y container its label
+# folds into "Maestro smoke, 2:11 PM, " — so a bare text match no longer hits.
+# Anchor on the stable testID instead. The app tags the newest message I sent
+# ONLY once it's CONFIRMED (serverSerial present), so this wait blocks through
+# the whole ack window — not just until the optimistic bubble paints. That
+# matters because the quick-react tray is gated on serverSerial and the actions
+# sheet snapshots the message at long-press time: long-pressing a still-optimistic
+# bubble opens a tray-less sheet that never recovers. Waiting for the confirmed
+# anchor guarantees the long-press lands on a reactable, settled row.
+- waitForAnimationToEnd:
+    timeout: 4000
+- extendedWaitUntil:
+    visible:
+      id: "latest-sent-message"
+    timeout: 10000
+
+# --- React to the message (long-press → quick-react tray → pill) ---
+- longPressOn:
+    id: "latest-sent-message"
+# Quick-react tray sits in the actions sheet; each emoji is its own a11y node,
+# so an exact emoji match works. NOTE: "❤️" here must be U+2764 U+FE0F (heart +
+# variation selector) to match the rendered node — a bare U+2764 won't.
+- assertVisible: "❤️"
+- tapOn: "❤️"
+# The reaction pill folds UNDER the bubble, inside the same row Pressable, so it
+# merges into the row's a11y label ("Maestro smoke … ❤️ …"). Match a substring
+# regex rather than the bare emoji, which would anchor-fail against the label.
+- assertVisible: ".*❤️.*"

@@ -5,6 +5,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -167,6 +168,23 @@ export default function ChatThreadScreen() {
     return out;
   }, [messages, myAuthUserId, memberByAuthUserId]);
 
+  // E2E anchor: the id of the newest message I authored. The row Pressable is an
+  // iOS accessibility container (RN Pressable defaults accessible=true), so it
+  // collapses text + timestamp + receipt + reaction pills into ONE label —
+  // e.g. "Maestro smoke, 2:11 PM, ". Maestro's text selectors are anchored
+  // (full-string) regexes, so a bare "Maestro smoke" no longer matches once the
+  // footer folds in on ack. A stable testID sidesteps the merged label. It rides
+  // "newest mine" rather than a message id because (a) the id swaps
+  // clientMsgId→serverSerial on confirm and (b) the test can't know a random id;
+  // "newest mine" stays on the same row across the optimistic→confirmed remount.
+  const latestMineId = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i]!.senderAuthUserId === myAuthUserId)
+        return messages[i]!.id;
+    }
+    return null;
+  }, [messages, myAuthUserId]);
+
   const onSend = useCallback(() => {
     if (!myAuthUserId) return;
     const trimmed = text.trim();
@@ -291,7 +309,41 @@ export default function ChatThreadScreen() {
       );
 
       return (
-        <Pressable onLongPress={() => setSheetTarget(m)} delayLongPress={300}>
+        <Pressable
+          // Only tag the row once the newest message I sent is CONFIRMED
+          // (serverSerial present). This makes the E2E anchor double as a
+          // "reactable now" signal: the quick-react tray is gated on serverSerial
+          // (MessageActionsSheet), and the actions sheet captures a snapshot of
+          // the message at long-press time — so long-pressing a still-optimistic
+          // bubble would open a tray-less sheet that never updates. Gating here
+          // lets the test's extendedWaitUntil block until the ack lands.
+          testID={
+            m.id === latestMineId && m.serverSerial
+              ? "latest-sent-message"
+              : undefined
+          }
+          onLongPress={() => {
+            // If the composer is focused (e.g. right after sending), the
+            // keyboard-hide layout shift can snap the just-presented modal
+            // sheet (snapPointsMode="fit" + dismissOnSnapToBottom) straight
+            // back closed — the Maestro react-step flake (sheet gone before
+            // the ❤️ assert). Dismissing in the same tick as setSheetTarget
+            // does NOT serialize anything: dismiss animates async and the
+            // sheet mounts into a still-moving layout. Open the sheet only
+            // once keyboardDidHide fires, so it mounts into settled layout.
+            // Also just correct UX: a modal shouldn't sit behind the keyboard.
+            if (Keyboard.isVisible()) {
+              const sub = Keyboard.addListener("keyboardDidHide", () => {
+                sub.remove();
+                setSheetTarget(m);
+              });
+              Keyboard.dismiss();
+            } else {
+              setSheetTarget(m);
+            }
+          }}
+          delayLongPress={300}
+        >
           <YStack paddingHorizontal="$md" paddingTop={isFirstInRun ? "$sm" : 2}>
             {isMine ? (
               bubble
@@ -328,6 +380,7 @@ export default function ChatThreadScreen() {
       react,
       chatId,
       theme,
+      latestMineId,
     ],
   );
 
@@ -397,6 +450,14 @@ export default function ChatThreadScreen() {
                 startRenderingFromBottom: true,
                 autoscrollToBottomThreshold: 0.2,
               }}
+              // Default ("never") swallows the FIRST touch on the list while
+              // the software keyboard is up — the touch is captured to dismiss
+              // the keyboard and never reaches the row Pressable, so a
+              // long-press right after typing silently does nothing (the
+              // Maestro react-step failure). "handled" delivers touches to the
+              // rows; the row's onLongPress dismisses the keyboard itself.
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
               contentContainerStyle={styles.listContent}
             />
           )}

@@ -81,6 +81,7 @@ function ChatRow({ chat, myId, onPress }: ChatRowProps) {
 
   return (
     <ListRow
+      testID="chat-row"
       name={title}
       preview={preview}
       timestamp={last ? formatTime(last.createdAt) : ""}
