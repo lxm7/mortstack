@@ -6,7 +6,7 @@ import { Alert } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
-import { Separator, Sheet, XStack, useTheme } from "tamagui";
+import { Separator, Sheet, Text, XStack, useTheme } from "tamagui";
 
 import type { Message } from "@repo/chat";
 import { Label } from "@repo/ui/glacier/typography";
@@ -14,10 +14,15 @@ import { Label } from "@repo/ui/glacier/typography";
 const INSPECTOR_ENABLED =
   __DEV__ || process.env.EXPO_PUBLIC_DEMO_CRYPTO_INSPECTOR === "1";
 
+// Quick-react row. Reactions target a persisted message (serverSerial), so the
+// row is hidden for a still-sending bubble.
+const QUICK_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
+
 export interface MessageActionsSheetProps {
   message: Message | null;
   isMine: boolean;
   onClose: () => void;
+  onReact: (message: Message, emoji: string) => void;
   onDelete: (message: Message) => void;
   onRetry: (message: Message) => void;
   onReport: (message: Message, reason: "SPAM" | "HARASSMENT" | "OTHER") => void;
@@ -57,6 +62,7 @@ export function MessageActionsSheet({
   message,
   isMine,
   onClose,
+  onReact,
   onDelete,
   onRetry,
   onReport,
@@ -112,6 +118,34 @@ export function MessageActionsSheet({
         gap="$base"
       >
         <Sheet.Handle backgroundColor="$outlineVariant" />
+
+        {/* Quick-react row — reactions ride the E2EE send path (encrypted like
+            a message). Hidden until the target has a serverSerial. */}
+        {message?.serverSerial ? (
+          <>
+            <XStack justifyContent="space-around" paddingVertical="$xs">
+              {QUICK_EMOJIS.map((emoji) => (
+                <XStack
+                  key={emoji}
+                  width={44}
+                  height={44}
+                  alignItems="center"
+                  justifyContent="center"
+                  borderRadius="$full"
+                  pressStyle={{ backgroundColor: "$surfaceContainerLow" }}
+                  onPress={() => {
+                    onReact(message, emoji);
+                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    onClose();
+                  }}
+                >
+                  <Text fontSize={24}>{emoji}</Text>
+                </XStack>
+              ))}
+            </XStack>
+            <Separator marginBottom="$xs" borderColor="$outlineVariant" />
+          </>
+        ) : null}
 
         <MenuItem
           icon={<Feather name="copy" size={20} color={ink} />}
