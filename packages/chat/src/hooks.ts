@@ -7,7 +7,7 @@ import { useShallow } from "zustand/react/shallow";
 
 import { useChatTransport, useOutbox, useOutboxWorker } from "./provider";
 import { useChatStore } from "./store";
-import type { ChatRecord, Message } from "./types";
+import type { ChatRecord, Message, Reaction } from "./types";
 
 export interface UseChatsResult {
   chats: ChatRecord[];
@@ -222,4 +222,120 @@ export function useDeleteMessage(): UseDeleteMessageResult {
     [outbox, remove],
   );
   return { delete: del };
+}
+
+// React-to-message hook (M8). Toggles the given emoji on a message: if the
+// user already has it on that target → op "del", else → op "add". The reaction
+// rides the same encrypted outbox path as a message (Option A) — it's an MLS
+// application message carrying a "rx" frame, so per-chat FIFO/generation order
+// is preserved across retries. Optimistic: the pill appears (add) or disappears
+// (del) immediately; the worker reconciles on ack.
+export interface UseReactToMessageResult {
+  react(input: {
+    chatId: string;
+    /** serverSerial (string) of the message being reacted to. */
+    target: string;
+    emoji: string;
+    senderAuthUserId: string;
+  }): void;
+}
+
+export function useReactToMessage(): UseReactToMessageResult {
+  const addOptimistic = useChatStore((s) => s.addOptimisticReaction);
+  const removeOwn = useChatStore((s) => s.removeOwnReaction);
+  const confirm = useChatStore((s) => s.confirmReaction);
+  const fail = useChatStore((s) => s.failReaction);
+  const transport = useChatTransport();
+  const outbox = useOutbox();
+  const worker = useOutboxWorker();
+
+  const react = useCallback(
+    (input: {
+      chatId: string;
+      target: string;
+      emoji: string;
+      senderAuthUserId: string;
+    }) => {
+      // Toggle: derive op from current state. getState() reads synchronously —
+      // this is an event handler, not render, so it's safe + avoids a subscription.
+      const perChat = useChatStore.getState().reactions.get(input.chatId);
+      const mine = (perChat?.get(input.target) ?? []).some(
+        (r) =>
+          r.senderAuthUserId === input.senderAuthUserId &&
+          r.emoji === input.emoji,
+      );
+      const op: "add" | "del" = mine ? "del" : "add";
+      const clientMsgId = randomClientMsgId();
+
+      if (op === "add") {
+        addOptimistic({
+          chatId: input.chatId,
+          clientMsgId,
+          target: input.target,
+          emoji: input.emoji,
+          senderAuthUserId: input.senderAuthUserId,
+        });
+      } else {
+        removeOwn({
+          chatId: input.chatId,
+          target: input.target,
+          emoji: input.emoji,
+          senderAuthUserId: input.senderAuthUserId,
+        });
+      }
+
+      if (outbox && worker) {
+        const payload = encode({
+          kind: "rx",
+          target: input.target,
+          emoji: input.emoji,
+          op,
+        });
+        void (async () => {
+          try {
+            await outbox.enqueue({
+              id: clientMsgId,
+              chatId: input.chatId,
+              payload,
+              idempotencyKey: clientMsgId,
+            });
+            worker.kick();
+          } catch (err) {
+            console.warn("[chat] reaction enqueue failed", err);
+            // Only "add" has a pill to roll back; a failed "del" reconciles on
+            // reload (in-memory, demo-scoped).
+            if (op === "add") fail({ chatId: input.chatId, clientMsgId });
+          }
+        })();
+        return;
+      }
+
+      // Fallback: direct send without retry (tests, pre-outbox screens).
+      void (async () => {
+        try {
+          const results = await transport.send({
+            chatId: input.chatId,
+            reaction: { target: input.target, emoji: input.emoji, op },
+            targets: [],
+            clientMsgId,
+          });
+          if (!results[0]) throw new Error("transport returned no results");
+          if (op === "add") confirm({ chatId: input.chatId, clientMsgId });
+        } catch (err) {
+          console.warn("[chat] reaction send failed", err);
+          if (op === "add") fail({ chatId: input.chatId, clientMsgId });
+        }
+      })();
+    },
+    [addOptimistic, removeOwn, confirm, fail, outbox, transport, worker],
+  );
+  return { react };
+}
+
+// Selector hook: reactions folded onto a chat's messages, keyed by target
+// serverSerial. Stable empty-map fallback to avoid re-render loops.
+const EMPTY_REACTIONS: ReadonlyMap<string, Reaction[]> = new Map();
+
+export function useReactions(chatId: string): ReadonlyMap<string, Reaction[]> {
+  return useChatStore((s) => s.reactions.get(chatId) ?? EMPTY_REACTIONS);
 }

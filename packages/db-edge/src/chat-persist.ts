@@ -77,4 +77,22 @@ export class ChatPersistClient {
     `) as Array<{ userId: string }>;
     return rows.map((r) => r.userId);
   }
+
+  // Advance a member's read high-water-mark. Monotonic by construction: the
+  // WHERE guard only moves it forward, so out-of-order `read` frames (reconnect
+  // replay, multi-device races) can't regress it. No-op when the member row is
+  // absent or already at/ahead of `upto`.
+  async updateLastReadSerial(
+    chatId: string,
+    userId: string,
+    upto: bigint,
+  ): Promise<void> {
+    await this.sql`
+      UPDATE "ChatMember"
+      SET "lastReadSerial" = ${upto}
+      WHERE "chatId" = ${chatId}
+        AND "userId" = ${userId}
+        AND ("lastReadSerial" IS NULL OR "lastReadSerial" < ${upto})
+    `;
+  }
 }

@@ -20,6 +20,8 @@ import { validateSendFrame } from "../validators";
 // RPC surface (called by Chat DO):
 //   - deliverBatch(frames[]) — fan a list of `msg` frames to all sockets
 //   - ackBatch(frames[])     — fan a list of `ack` frames to all sockets
+//   - deliverTyping(payload) — single `typ` frame (peer typing, ephemeral)
+//   - deliverRead(payload)   — single `read` frame (peer advanced read watermark)
 //   - error({ code, msg })   — single `err` frame, soft error (connection stays)
 
 interface SocketAttachment {
@@ -38,6 +40,8 @@ type MsgFrame = Extract<ServerToClient, { t: "msg" }>;
 type AckFrame = Extract<ServerToClient, { t: "ack" }>;
 type MsgPayload = Omit<MsgFrame, "t">;
 type AckPayload = Omit<AckFrame, "t">;
+type TypPayload = Omit<Extract<ServerToClient, { t: "typ" }>, "t">;
+type ReadPayload = Omit<Extract<ServerToClient, { t: "read" }>, "t">;
 
 export class UserInbox extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
@@ -114,6 +118,12 @@ export class UserInbox extends DurableObject<Env> {
       case "send":
         await this.handleSend(ws, att.userId, env);
         return;
+      case "typ":
+        await this.handleTyping(att.userId, env);
+        return;
+      case "read":
+        await this.handleRead(att.userId, env);
+        return;
       case "ping":
         ws.send(encodeFrame({ t: "pong" } satisfies ServerToClient));
         return;
@@ -189,6 +199,26 @@ export class UserInbox extends DurableObject<Env> {
     }
   }
 
+  // ── Typing / read → Chat DO ───────────────────────────────────────────────
+  private async handleTyping(
+    userId: string,
+    env: Extract<ClientToServer, { t: "typ" }>,
+  ): Promise<void> {
+    if (!env.chatId) return;
+    const stub = this.env.CHAT.get(this.env.CHAT.idFromName(env.chatId));
+    // Fire-and-forget: typing is best-effort, a failed relay just drops.
+    await stub.acceptTyping({ userId, on: env.on });
+  }
+
+  private async handleRead(
+    userId: string,
+    env: Extract<ClientToServer, { t: "read" }>,
+  ): Promise<void> {
+    if (!env.chatId || !env.upto) return;
+    const stub = this.env.CHAT.get(this.env.CHAT.idFromName(env.chatId));
+    await stub.acceptRead({ userId, upto: env.upto });
+  }
+
   // ── Presence RPC (called by Chat DO before push fanout) ──────────────────
   // Returns the set of deviceIds with an open WS attached to this user. The
   // empty string is filtered out — pre-M6 clients connect without a `did`
@@ -251,6 +281,22 @@ export class UserInbox extends DurableObject<Env> {
     }
   }
 
+  // Fan a single `typ` frame to every socket of this user (a peer started or
+  // stopped composing in a shared chat). Ephemeral, best-effort — no retry.
+  async deliverTyping(payload: TypPayload): Promise<void> {
+    this.broadcast(
+      encodeFrame({ t: "typ", ...payload } satisfies ServerToClient),
+    );
+  }
+
+  // Fan a single `read` frame to every socket of this user (a peer advanced
+  // their read watermark). Flips this user's outgoing bubbles sent → read.
+  async deliverRead(payload: ReadPayload): Promise<void> {
+    this.broadcast(
+      encodeFrame({ t: "read", ...payload } satisfies ServerToClient),
+    );
+  }
+
   // Fan a single `mls-welcome` wake-up to every socket of this user. Called
   // by the Worker's /internal/notify endpoint after the API publishes one or
   // more Welcomes addressed to this user. Lets the client skip the 30s
@@ -293,6 +339,20 @@ export class UserInbox extends DurableObject<Env> {
   }
 
   // ── Internal helpers ──────────────────────────────────────────────────────
+  // Send one pre-encoded frame to every open socket of this user. Best-effort:
+  // a failed send is dropped (the close handler cleans up dead sockets).
+  private broadcast(frame: ReturnType<typeof encodeFrame>): void {
+    const sockets = this.ctx.getWebSockets();
+    for (const ws of sockets) {
+      if (ws.readyState !== WebSocket.READY_STATE_OPEN) continue;
+      try {
+        ws.send(frame);
+      } catch {
+        // ignore
+      }
+    }
+  }
+
   private sendErr(ws: WebSocket, code: ChatErrorCode, msg?: string): void {
     try {
       ws.send(encodeFrame({ t: "err", code, msg } satisfies ServerToClient));
