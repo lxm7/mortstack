@@ -3,8 +3,9 @@
 // gradient bubbles, and a pinned Composer. Long-press any bubble → actions menu
 // (Copy · Delete/Report · Inspect encryption → crypto inspector).
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -13,15 +14,21 @@ import {
 import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Feather } from "@expo/vector-icons";
+import { Feather, Ionicons } from "@expo/vector-icons";
 import { Spinner, XStack, YStack, useTheme } from "tamagui";
 
 import {
   useChat,
   useDeleteMessage,
   useMessages,
+  usePeerReadWatermark,
+  useReactions,
+  useReactToMessage,
+  useReadEmitter,
   useRetryMessage,
   useSendMessage,
+  useTypers,
+  useTypingEmitter,
   type Member,
   type Message,
 } from "@repo/chat";
@@ -31,7 +38,10 @@ import { Composer } from "@repo/ui/glacier/composer";
 import { HeadlineMd, BodyMd, Meta, Title } from "@repo/ui/glacier/typography";
 
 import { useAuthStore } from "@/store/auth";
+import { useSettingsStore } from "@/store/settings";
 import { MessageActionsSheet } from "@/lib/chat/components/MessageActionsSheet";
+import { ReactionPills } from "@/lib/chat/components/ReactionPills";
+import { TypingIndicator } from "@/lib/chat/components/TypingIndicator";
 import { trpc } from "@/lib/trpc/client";
 
 function formatTime(ms: number): string {
@@ -60,6 +70,16 @@ function dayLabel(ms: number): string {
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+// True when a peer's read watermark (bigint) covers a message's serverSerial.
+function serialCovered(watermark: bigint | null, serial?: string): boolean {
+  if (watermark === null || !serial) return false;
+  try {
+    return watermark >= BigInt(serial);
+  } catch {
+    return false;
+  }
+}
+
 type Row =
   | { type: "divider"; id: string; label: string }
   | {
@@ -83,10 +103,28 @@ export default function ChatThreadScreen() {
   const { send } = useSendMessage();
   const { retry } = useRetryMessage();
   const { delete: deleteMessage } = useDeleteMessage();
+  const { react } = useReactToMessage();
   const myAuthUserId = useAuthStore((s) => s.session?.user.id ?? null);
+  const readReceiptsOn = useSettingsStore((s) => s.readReceipts);
+  const reactionsMap = useReactions(chatId);
+  const typers = useTypers(chatId, myAuthUserId ?? undefined);
+  const peerReadWatermark = usePeerReadWatermark(chatId, myAuthUserId);
+  const typing = useTypingEmitter(chatId);
+  const { markRead } = useReadEmitter(chatId, readReceiptsOn);
   const [text, setText] = useState("");
   const [sheetTarget, setSheetTarget] = useState<Message | null>(null);
   const listRef = useRef<FlashListRef<Row>>(null);
+
+  // Peer read watermark as bigint, computed once for the whole list (renderItem
+  // can't call a hook per row).
+  const peerReadBig = useMemo(() => {
+    if (!peerReadWatermark) return null;
+    try {
+      return BigInt(peerReadWatermark);
+    } catch {
+      return null;
+    }
+  }, [peerReadWatermark]);
 
   const isGroup = chat?.kind === "group";
   const memberByAuthUserId = useMemo(() => {
@@ -130,16 +168,63 @@ export default function ChatThreadScreen() {
     return out;
   }, [messages, myAuthUserId, memberByAuthUserId]);
 
+  // E2E anchor: the id of the newest message I authored. The row Pressable is an
+  // iOS accessibility container (RN Pressable defaults accessible=true), so it
+  // collapses text + timestamp + receipt + reaction pills into ONE label —
+  // e.g. "Maestro smoke, 2:11 PM, ". Maestro's text selectors are anchored
+  // (full-string) regexes, so a bare "Maestro smoke" no longer matches once the
+  // footer folds in on ack. A stable testID sidesteps the merged label. It rides
+  // "newest mine" rather than a message id because (a) the id swaps
+  // clientMsgId→serverSerial on confirm and (b) the test can't know a random id;
+  // "newest mine" stays on the same row across the optimistic→confirmed remount.
+  const latestMineId = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i]!.senderAuthUserId === myAuthUserId)
+        return messages[i]!.id;
+    }
+    return null;
+  }, [messages, myAuthUserId]);
+
   const onSend = useCallback(() => {
     if (!myAuthUserId) return;
     const trimmed = text.trim();
     if (!trimmed) return;
     send({ chatId, text: trimmed, senderAuthUserId: myAuthUserId });
+    typing.stop();
     setText("");
     requestAnimationFrame(() =>
       listRef.current?.scrollToEnd({ animated: true }),
     );
-  }, [text, send, chatId, myAuthUserId]);
+  }, [text, send, chatId, myAuthUserId, typing]);
+
+  // Composer text change → optimistic local text + a typing heartbeat.
+  const onChangeText = useCallback(
+    (t: string) => {
+      setText(t);
+      typing.onActivity();
+    },
+    [typing],
+  );
+
+  // Mark the newest message read whenever the thread's messages change. markRead
+  // is gated by the read-receipts toggle + monotonic + deduped internally.
+  useEffect(() => {
+    let maxSerial: bigint | null = null;
+    let maxStr: string | null = null;
+    for (const m of messages) {
+      if (!m.serverSerial) continue;
+      try {
+        const v = BigInt(m.serverSerial);
+        if (maxSerial === null || v > maxSerial) {
+          maxSerial = v;
+          maxStr = m.serverSerial;
+        }
+      } catch {
+        // skip a malformed serial
+      }
+    }
+    if (maxStr) markRead(maxStr);
+  }, [messages, markRead]);
 
   const onInspect = useCallback(
     (m: Message) => {
@@ -174,9 +259,39 @@ export default function ChatThreadScreen() {
         isGroup && !isMine && isFirstInRun
           ? (sender?.handle ?? sender?.displayName ?? "Unknown")
           : null;
+      // Tick ladder: sent ✓ → read ✓✓ (primary tint). Read state is gated by
+      // the symmetric read-receipts toggle — off = never show read.
+      const isRead =
+        readReceiptsOn && serialCovered(peerReadBig, m.serverSerial);
       const receipt =
         isMine && m.status === "sent" ? (
-          <Feather name="check" size={13} color={ovc} />
+          isRead ? (
+            <Ionicons
+              name="checkmark-done"
+              size={15}
+              color={theme.primary?.val}
+            />
+          ) : (
+            <Feather name="check" size={13} color={ovc} />
+          )
+        ) : null;
+
+      const rx = m.serverSerial ? reactionsMap.get(m.serverSerial) : undefined;
+      const reactionsNode =
+        rx && rx.length > 0 ? (
+          <ReactionPills
+            reactions={rx}
+            myAuthUserId={myAuthUserId}
+            onToggle={(emoji) => {
+              if (!m.serverSerial || !myAuthUserId) return;
+              react({
+                chatId,
+                target: m.serverSerial,
+                emoji,
+                senderAuthUserId: myAuthUserId,
+              });
+            }}
+          />
         ) : null;
 
       const bubble = (
@@ -188,12 +303,47 @@ export default function ChatThreadScreen() {
           sender={senderName}
           status={m.status}
           receipt={receipt}
+          reactions={reactionsNode}
           onRetryPress={() => setSheetTarget(m)}
         />
       );
 
       return (
-        <Pressable onLongPress={() => setSheetTarget(m)} delayLongPress={300}>
+        <Pressable
+          // Only tag the row once the newest message I sent is CONFIRMED
+          // (serverSerial present). This makes the E2E anchor double as a
+          // "reactable now" signal: the quick-react tray is gated on serverSerial
+          // (MessageActionsSheet), and the actions sheet captures a snapshot of
+          // the message at long-press time — so long-pressing a still-optimistic
+          // bubble would open a tray-less sheet that never updates. Gating here
+          // lets the test's extendedWaitUntil block until the ack lands.
+          testID={
+            m.id === latestMineId && m.serverSerial
+              ? "latest-sent-message"
+              : undefined
+          }
+          onLongPress={() => {
+            // If the composer is focused (e.g. right after sending), the
+            // keyboard-hide layout shift can snap the just-presented modal
+            // sheet (snapPointsMode="fit" + dismissOnSnapToBottom) straight
+            // back closed — the Maestro react-step flake (sheet gone before
+            // the ❤️ assert). Dismissing in the same tick as setSheetTarget
+            // does NOT serialize anything: dismiss animates async and the
+            // sheet mounts into a still-moving layout. Open the sheet only
+            // once keyboardDidHide fires, so it mounts into settled layout.
+            // Also just correct UX: a modal shouldn't sit behind the keyboard.
+            if (Keyboard.isVisible()) {
+              const sub = Keyboard.addListener("keyboardDidHide", () => {
+                sub.remove();
+                setSheetTarget(m);
+              });
+              Keyboard.dismiss();
+            } else {
+              setSheetTarget(m);
+            }
+          }}
+          delayLongPress={300}
+        >
           <YStack paddingHorizontal="$md" paddingTop={isFirstInRun ? "$sm" : 2}>
             {isMine ? (
               bubble
@@ -220,7 +370,18 @@ export default function ChatThreadScreen() {
         </Pressable>
       );
     },
-    [isGroup, ovc],
+    [
+      isGroup,
+      ovc,
+      readReceiptsOn,
+      peerReadBig,
+      reactionsMap,
+      myAuthUserId,
+      react,
+      chatId,
+      theme,
+      latestMineId,
+    ],
   );
 
   return (
@@ -289,15 +450,27 @@ export default function ChatThreadScreen() {
                 startRenderingFromBottom: true,
                 autoscrollToBottomThreshold: 0.2,
               }}
+              // Default ("never") swallows the FIRST touch on the list while
+              // the software keyboard is up — the touch is captured to dismiss
+              // the keyboard and never reaches the row Pressable, so a
+              // long-press right after typing silently does nothing (the
+              // Maestro react-step failure). "handled" delivers touches to the
+              // rows; the row's onLongPress dismisses the keyboard itself.
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
               contentContainerStyle={styles.listContent}
             />
           )}
         </YStack>
 
+        {/* Typing pulse — sits just above the composer when a peer is
+            composing. Cleared by the store's expiry sweep. */}
+        {typers.length > 0 ? <TypingIndicator /> : null}
+
         {/* Composer */}
         <Composer
           value={text}
-          onChangeText={setText}
+          onChangeText={onChangeText}
           onSend={onSend}
           disabled={!myAuthUserId}
           bottomInset={insets.bottom}
@@ -316,6 +489,15 @@ export default function ChatThreadScreen() {
         message={sheetTarget}
         isMine={sheetTarget?.senderAuthUserId === myAuthUserId}
         onClose={() => setSheetTarget(null)}
+        onReact={(m, emoji) => {
+          if (!m.serverSerial || !myAuthUserId) return;
+          react({
+            chatId,
+            target: m.serverSerial,
+            emoji,
+            senderAuthUserId: myAuthUserId,
+          });
+        }}
         onRetry={(m) =>
           void retry({ chatId: m.chatId, clientMsgId: m.clientMsgId })
         }

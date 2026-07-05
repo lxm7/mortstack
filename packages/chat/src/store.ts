@@ -12,7 +12,13 @@
 
 import { create } from "zustand";
 
-import type { ChatApi, ChatRecord, Message, MessagePersistApi } from "./types";
+import type {
+  ChatApi,
+  ChatRecord,
+  Message,
+  MessagePersistApi,
+  Reaction,
+} from "./types";
 
 export interface ChatStoreState {
   chats: Map<string, ChatRecord>;
@@ -23,6 +29,16 @@ export interface ChatStoreState {
   /** Messages per chatId, ordered oldest → newest. The thread screen
    *  renders inverted via FlashList. */
   messages: Map<string, Message[]>;
+  /** Reactions per chatId → target serverSerial → Reaction[]. In-memory only
+   *  (same as plaintext messages, M4-3). Folded onto bubbles by the UI. */
+  reactions: Map<string, Map<string, Reaction[]>>;
+  /** Typing indicators per chatId → userId → expiry epoch-ms (receiver-side
+   *  TTL). A typer past expiry is treated as stopped; sweepExpiredTyping prunes
+   *  so a dropped `on:false` (sender crash) self-clears with no server TTL. */
+  typing: Map<string, Map<string, number>>;
+  /** Read watermarks per chatId → userId → their lastReadSerial (string).
+   *  Drives whether my outgoing messages show as read by a peer. */
+  readReceipts: Map<string, Map<string, string>>;
   bootstrapStatus: "idle" | "loading" | "ready" | "error";
   bootstrapError: string | null;
   /** Optional local persistence (M4-followup #25). Set by the provider on
@@ -79,6 +95,51 @@ export interface ChatStoreActions {
     chatId: string;
     clientMsgId: string;
   }): void;
+  // ── Reactions (M8) ──────────────────────────────────────────────────────
+  /** Optimistic add: insert a "sending" reaction pill immediately. Ignores a
+   *  duplicate clientMsgId or an existing (sender, target, emoji). */
+  addOptimisticReaction(input: {
+    chatId: string;
+    clientMsgId: string;
+    target: string;
+    emoji: string;
+    senderAuthUserId: string;
+  }): void;
+  /** Flip an optimistic reaction to "sent" on outbox ack. Keyed by
+   *  clientMsgId; no-op if not found (e.g. an op:"del" row has no pill). */
+  confirmReaction(input: { chatId: string; clientMsgId: string }): void;
+  /** Roll back an optimistic reaction that terminally failed to send. */
+  failReaction(input: { chatId: string; clientMsgId: string }): void;
+  /** Optimistic un-react: remove my own pill immediately (paired with an
+   *  op:"del" send). No rollback on send failure — reconciles on reload
+   *  (in-memory, demo-scoped). */
+  removeOwnReaction(input: {
+    chatId: string;
+    target: string;
+    emoji: string;
+    senderAuthUserId: string;
+  }): void;
+  /** Apply an inbound reaction frame. op "add" inserts (dedup per
+   *  sender+target+emoji); op "del" removes the matching pill. */
+  applyIncomingReaction(input: {
+    chatId: string;
+    target: string;
+    emoji: string;
+    op: "add" | "del";
+    senderAuthUserId: string;
+  }): void;
+  // ── Typing (M8) ───────────────────────────────────────────────────────────
+  /** Apply an inbound typing signal. `on` sets/refreshes the userId's expiry
+   *  (now + TTL); `!on` clears it immediately. */
+  setTyping(input: { chatId: string; userId: string; on: boolean }): void;
+  /** Prune expired typers across all chats. Called on a timer by the provider
+   *  so a stuck indicator (dropped `on:false`) self-clears. No-op — skips the
+   *  set() — when nothing expired, to avoid needless re-renders. */
+  sweepExpiredTyping(now?: number): void;
+  // ── Read receipts (M8) ────────────────────────────────────────────────────
+  /** Advance a peer's read watermark. Monotonic — only moves forward (BigInt
+   *  compare), so out-of-order `read` fanout can't regress it. */
+  setReadReceipt(input: { chatId: string; userId: string; upto: string }): void;
   /** Inject (or clear) the persistence API. Idempotent. */
   setPersistApi(api: MessagePersistApi | null): void;
   /** Merge a batch of persisted messages into the per-chat slice. Used by
@@ -92,10 +153,17 @@ export interface ChatStoreActions {
 
 export type ChatStore = ChatStoreState & ChatStoreActions;
 
+// Receiver-side typing expiry. The sender re-emits `on:true` on a ~3s heartbeat
+// (see the emit hook, #6), so this must exceed that interval with margin.
+const TYPING_TTL_MS = 6_000;
+
 const emptyState: ChatStoreState = {
   chats: new Map(),
   chatOrder: [],
   messages: new Map(),
+  reactions: new Map(),
+  typing: new Map(),
+  readReceipts: new Map(),
   bootstrapStatus: "idle",
   bootstrapError: null,
   persistApi: null,
@@ -175,10 +243,19 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     chats.delete(chatId);
     const messages = new Map(get().messages);
     messages.delete(chatId);
+    const reactions = new Map(get().reactions);
+    reactions.delete(chatId);
+    const typing = new Map(get().typing);
+    typing.delete(chatId);
+    const readReceipts = new Map(get().readReceipts);
+    readReceipts.delete(chatId);
     set({
       chats,
       chatOrder: get().chatOrder.filter((id) => id !== chatId),
       messages,
+      reactions,
+      typing,
+      readReceipts,
     });
   },
 
@@ -295,6 +372,197 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set({ messages });
   },
 
+  // ── Reactions (M8) ────────────────────────────────────────────────────────
+  addOptimisticReaction(input) {
+    const reactions = new Map(get().reactions);
+    const perChat = new Map<string, Reaction[]>(reactions.get(input.chatId));
+    const list = perChat.get(input.target) ?? [];
+    if (list.some((r) => r.clientMsgId === input.clientMsgId)) return;
+    // One reaction per (sender, target, emoji) — don't stack a duplicate.
+    if (
+      list.some(
+        (r) =>
+          r.senderAuthUserId === input.senderAuthUserId &&
+          r.emoji === input.emoji,
+      )
+    ) {
+      return;
+    }
+    const reaction: Reaction = {
+      clientMsgId: input.clientMsgId,
+      target: input.target,
+      emoji: input.emoji,
+      senderAuthUserId: input.senderAuthUserId,
+      status: "sending",
+    };
+    perChat.set(input.target, [...list, reaction]);
+    reactions.set(input.chatId, perChat);
+    set({ reactions });
+  },
+
+  confirmReaction(input) {
+    const reactions = new Map(get().reactions);
+    const perChat = reactions.get(input.chatId);
+    if (!perChat) return;
+    const nextPerChat = new Map(perChat);
+    let changed = false;
+    for (const [target, list] of perChat) {
+      const idx = list.findIndex((r) => r.clientMsgId === input.clientMsgId);
+      if (idx < 0) continue;
+      const next = [...list];
+      next[idx] = { ...next[idx]!, status: "sent" };
+      nextPerChat.set(target, next);
+      changed = true;
+      break;
+    }
+    if (!changed) return;
+    reactions.set(input.chatId, nextPerChat);
+    set({ reactions });
+  },
+
+  failReaction(input) {
+    // Terminal failure → drop the optimistic pill entirely.
+    const reactions = new Map(get().reactions);
+    const perChat = reactions.get(input.chatId);
+    if (!perChat) return;
+    const nextPerChat = new Map(perChat);
+    let changed = false;
+    for (const [target, list] of perChat) {
+      const filtered = list.filter((r) => r.clientMsgId !== input.clientMsgId);
+      if (filtered.length === list.length) continue;
+      if (filtered.length === 0) nextPerChat.delete(target);
+      else nextPerChat.set(target, filtered);
+      changed = true;
+      break;
+    }
+    if (!changed) return;
+    if (nextPerChat.size === 0) reactions.delete(input.chatId);
+    else reactions.set(input.chatId, nextPerChat);
+    set({ reactions });
+  },
+
+  removeOwnReaction(input) {
+    const reactions = new Map(get().reactions);
+    const perChat = reactions.get(input.chatId);
+    if (!perChat) return;
+    const list = perChat.get(input.target);
+    if (!list) return;
+    const filtered = list.filter(
+      (r) =>
+        !(
+          r.senderAuthUserId === input.senderAuthUserId &&
+          r.emoji === input.emoji
+        ),
+    );
+    if (filtered.length === list.length) return;
+    const nextPerChat = new Map(perChat);
+    if (filtered.length === 0) nextPerChat.delete(input.target);
+    else nextPerChat.set(input.target, filtered);
+    if (nextPerChat.size === 0) reactions.delete(input.chatId);
+    else reactions.set(input.chatId, nextPerChat);
+    set({ reactions });
+  },
+
+  applyIncomingReaction(input) {
+    const reactions = new Map(get().reactions);
+    const perChat = new Map<string, Reaction[]>(reactions.get(input.chatId));
+    const list = perChat.get(input.target) ?? [];
+
+    if (input.op === "del") {
+      const filtered = list.filter(
+        (r) =>
+          !(
+            r.senderAuthUserId === input.senderAuthUserId &&
+            r.emoji === input.emoji
+          ),
+      );
+      if (filtered.length === list.length) return;
+      if (filtered.length === 0) perChat.delete(input.target);
+      else perChat.set(input.target, filtered);
+      if (perChat.size === 0) reactions.delete(input.chatId);
+      else reactions.set(input.chatId, perChat);
+      set({ reactions });
+      return;
+    }
+
+    // op "add" — dedup per (sender, target, emoji). Last-write-wins is trivial
+    // here: a repeat add is a no-op.
+    if (
+      list.some(
+        (r) =>
+          r.senderAuthUserId === input.senderAuthUserId &&
+          r.emoji === input.emoji,
+      )
+    ) {
+      return;
+    }
+    const reaction: Reaction = {
+      clientMsgId: `in-${input.senderAuthUserId}-${input.emoji}-${input.target}`,
+      target: input.target,
+      emoji: input.emoji,
+      senderAuthUserId: input.senderAuthUserId,
+      status: "sent",
+    };
+    perChat.set(input.target, [...list, reaction]);
+    reactions.set(input.chatId, perChat);
+    set({ reactions });
+  },
+
+  // ── Typing (M8) ────────────────────────────────────────────────────────────
+  setTyping(input) {
+    const typing = new Map(get().typing);
+    const perChat = new Map<string, number>(typing.get(input.chatId));
+    if (input.on) {
+      perChat.set(input.userId, Date.now() + TYPING_TTL_MS);
+    } else {
+      if (!perChat.has(input.userId)) return;
+      perChat.delete(input.userId);
+    }
+    if (perChat.size === 0) typing.delete(input.chatId);
+    else typing.set(input.chatId, perChat);
+    set({ typing });
+  },
+
+  sweepExpiredTyping(now = Date.now()) {
+    const typing = new Map(get().typing);
+    let changed = false;
+    for (const [chatId, perChat] of typing) {
+      const next = new Map(perChat);
+      let localChanged = false;
+      for (const [userId, expiresAt] of perChat) {
+        if (expiresAt <= now) {
+          next.delete(userId);
+          localChanged = true;
+        }
+      }
+      if (!localChanged) continue;
+      changed = true;
+      if (next.size === 0) typing.delete(chatId);
+      else typing.set(chatId, next);
+    }
+    if (!changed) return;
+    set({ typing });
+  },
+
+  // ── Read receipts (M8) ──────────────────────────────────────────────────────
+  setReadReceipt(input) {
+    const readReceipts = new Map(get().readReceipts);
+    const perChat = new Map<string, string>(readReceipts.get(input.chatId));
+    const current = perChat.get(input.userId);
+    // Monotonic: ignore a watermark that doesn't advance. Guard BigInt against
+    // a malformed serial (defensive — the server sends a numeric serverMsgId).
+    let advances: boolean;
+    try {
+      advances = current === undefined || BigInt(input.upto) > BigInt(current);
+    } catch {
+      return;
+    }
+    if (!advances) return;
+    perChat.set(input.userId, input.upto);
+    readReceipts.set(input.chatId, perChat);
+    set({ readReceipts });
+  },
+
   setPersistApi(api) {
     set({ persistApi: api });
   },
@@ -321,6 +589,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       chats: new Map(),
       chatOrder: [],
       messages: new Map(),
+      reactions: new Map(),
+      typing: new Map(),
+      readReceipts: new Map(),
       // Preserve persistApi across resets — caller (provider) controls its
       // lifetime independently from auth state.
       persistApi: get().persistApi,

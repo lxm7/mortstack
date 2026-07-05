@@ -44,6 +44,11 @@ export interface OutboxWorkerStoreApi {
     chatId: string;
     clientMsgId: string;
   }): void;
+  // Reaction reconciliation (M8). Optional so environments without reactions
+  // (tests, legacy debug) still satisfy the interface. A "del" row has no
+  // optimistic pill keyed by clientMsgId, so these no-op for it.
+  confirmReaction?(input: { chatId: string; clientMsgId: string }): void;
+  failReaction?(input: { chatId: string; clientMsgId: string }): void;
 }
 
 export interface OutboxWorkerDeps {
@@ -114,6 +119,63 @@ export function createOutboxWorker(deps: OutboxWorkerDeps): OutboxWorker {
       deps.onTerminalFailure?.(row.id, reason);
       return;
     }
+
+    // Reaction row (M8) — rides the same encrypted send path as a message but
+    // carries a "rx" payload instead of `text`. Reconciles the optimistic pill
+    // rather than a message bubble.
+    const asRx = decoded as {
+      kind?: unknown;
+      target?: unknown;
+      emoji?: unknown;
+      op?: unknown;
+    };
+    if (asRx.kind === "rx") {
+      if (
+        typeof asRx.target !== "string" ||
+        typeof asRx.emoji !== "string" ||
+        (asRx.op !== "add" && asRx.op !== "del")
+      ) {
+        const reason = "reaction payload missing/invalid target|emoji|op";
+        await deps.outbox.markPermanentlyFailed(row.id, reason);
+        deps.store.failReaction?.({ chatId: row.chat_id, clientMsgId: row.id });
+        deps.onTerminalFailure?.(row.id, reason);
+        return;
+      }
+      try {
+        const results = await deps.transport.send({
+          chatId: row.chat_id,
+          reaction: { target: asRx.target, emoji: asRx.emoji, op: asRx.op },
+          targets: [],
+          clientMsgId: row.id,
+        });
+        if (!results[0]) throw new Error("transport returned no results");
+        await deps.outbox.markSent(row.id);
+        deps.store.confirmReaction?.({
+          chatId: row.chat_id,
+          clientMsgId: row.id,
+        });
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        const attemptsAfter = row.attempts + 1;
+        if (attemptsAfter >= MAX_ATTEMPTS) {
+          await deps.outbox.markPermanentlyFailed(row.id, reason);
+          deps.store.failReaction?.({
+            chatId: row.chat_id,
+            clientMsgId: row.id,
+          });
+          deps.onTerminalFailure?.(row.id, reason);
+        } else {
+          await deps.outbox.markFailed(
+            row.id,
+            reason,
+            backoffFor(attemptsAfter),
+          );
+          deps.onTransientFailure?.(row.id, reason);
+        }
+      }
+      return;
+    }
+
     if (
       typeof decoded !== "object" ||
       decoded === null ||

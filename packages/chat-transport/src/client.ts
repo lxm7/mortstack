@@ -14,6 +14,8 @@ export type ConnectionState =
 export type IncomingMessage = Extract<ServerToClient, { t: "msg" }>;
 export type IncomingError = Extract<ServerToClient, { t: "err" }>;
 export type IncomingMlsWelcome = Extract<ServerToClient, { t: "mls-welcome" }>;
+export type IncomingTyping = Extract<ServerToClient, { t: "typ" }>;
+export type IncomingRead = Extract<ServerToClient, { t: "read" }>;
 
 export interface ChatTransportOptions {
   // Cloudflare Worker URL. Use ws:// for local wrangler, wss:// in prod.
@@ -61,10 +63,19 @@ export interface ChatTransport {
   close(): void;
   subscribe(chatIds: string[]): void;
   send(input: SendInput): Promise<SendResult>;
+  /** Fire-and-forget typing signal — ephemeral, dropped when the socket isn't
+   *  open (no queue). */
+  sendTyping(input: { chatId: string; on: boolean }): void;
+  /** Fire-and-forget read watermark — dropped when offline; the server
+   *  reconciles ChatMember.lastReadSerial on next load. `upto` is a
+   *  serverMsgId string. */
+  sendRead(input: { chatId: string; upto: string }): void;
   onMessage(handler: (msg: IncomingMessage) => void): () => void;
   onState(handler: (state: ConnectionState) => void): () => void;
   onError(handler: (err: IncomingError) => void): () => void;
   onMlsWelcome(handler: (m: IncomingMlsWelcome) => void): () => void;
+  onTyping(handler: (m: IncomingTyping) => void): () => void;
+  onRead(handler: (m: IncomingRead) => void): () => void;
 }
 
 interface PendingSend {
@@ -100,6 +111,8 @@ export function createChatTransport(opts: ChatTransportOptions): ChatTransport {
   const stateHandlers = new Set<(s: ConnectionState) => void>();
   const errorHandlers = new Set<(e: IncomingError) => void>();
   const mlsWelcomeHandlers = new Set<(m: IncomingMlsWelcome) => void>();
+  const typingHandlers = new Set<(m: IncomingTyping) => void>();
+  const readHandlers = new Set<(m: IncomingRead) => void>();
 
   function setState(next: ConnectionState) {
     if (state === next) return;
@@ -171,6 +184,12 @@ export function createChatTransport(opts: ChatTransportOptions): ChatTransport {
       }
       case "msg":
         for (const h of messageHandlers) h(env);
+        return;
+      case "typ":
+        for (const h of typingHandlers) h(env);
+        return;
+      case "read":
+        for (const h of readHandlers) h(env);
         return;
       case "mls-welcome":
         for (const h of mlsWelcomeHandlers) h(env);
@@ -333,6 +352,27 @@ export function createChatTransport(opts: ChatTransportOptions): ChatTransport {
     return () => mlsWelcomeHandlers.delete(handler);
   }
 
+  // Ephemeral signals — best-effort, no pending queue. sendFrame() no-ops when
+  // the socket isn't open, which is the desired behaviour: a typing signal or
+  // read receipt lost to a disconnect is not worth replaying.
+  function sendTyping(input: { chatId: string; on: boolean }) {
+    sendFrame({ t: "typ", chatId: input.chatId, on: input.on });
+  }
+
+  function sendRead(input: { chatId: string; upto: string }) {
+    sendFrame({ t: "read", chatId: input.chatId, upto: input.upto });
+  }
+
+  function onTyping(handler: (m: IncomingTyping) => void) {
+    typingHandlers.add(handler);
+    return () => typingHandlers.delete(handler);
+  }
+
+  function onRead(handler: (m: IncomingRead) => void) {
+    readHandlers.add(handler);
+    return () => readHandlers.delete(handler);
+  }
+
   return {
     get state() {
       return state;
@@ -341,10 +381,14 @@ export function createChatTransport(opts: ChatTransportOptions): ChatTransport {
     close,
     subscribe,
     send,
+    sendTyping,
+    sendRead,
     onMessage,
     onState,
     onError,
     onMlsWelcome,
+    onTyping,
+    onRead,
   };
 }
 
