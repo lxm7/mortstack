@@ -3,6 +3,8 @@ import type {
   ConnectionState,
   IncomingError,
   IncomingMessage,
+  IncomingRead,
+  IncomingTyping,
   SendResult,
 } from "@repo/chat-transport/client";
 
@@ -68,9 +70,18 @@ export interface EncryptedChatTransport {
   close(): void;
   subscribe(chatIds: string[]): void;
   send(input: EncryptedSendInput): Promise<EncryptedSendResult[]>;
+  /** Ephemeral typing signal — plaintext metadata, bypasses the crypto pipe
+   *  (whether someone is typing isn't content). */
+  sendTyping(input: { chatId: string; on: boolean }): void;
+  /** Read watermark — plaintext metadata (a serverMsgId), bypasses crypto. */
+  sendRead(input: { chatId: string; upto: string }): void;
   onMessage(handler: (msg: EncryptedIncomingMessage) => void): () => void;
   onState(handler: (state: ConnectionState) => void): () => void;
   onError(handler: (err: IncomingError) => void): () => void;
+  /** Inbound typing fanout (peer started/stopped composing). */
+  onTyping(handler: (m: IncomingTyping) => void): () => void;
+  /** Inbound read fanout (peer advanced their read watermark). */
+  onRead(handler: (m: IncomingRead) => void): () => void;
   /** Server-pushed MLS Welcome wake-up. Caller should call
    *  MlsClient.pollPendingWelcomes() immediately. Best-effort: the 30s
    *  background poll remains the correctness fallback. */
@@ -331,9 +342,14 @@ export function createEncryptedTransport(
     close: () => underlying.close(),
     subscribe: (chatIds) => underlying.subscribe(chatIds),
     send,
+    // Ephemeral signals delegate straight through — no encryption.
+    sendTyping: (input) => underlying.sendTyping(input),
+    sendRead: (input) => underlying.sendRead(input),
     onMessage,
     onState: (handler) => underlying.onState(handler),
     onError: (handler) => underlying.onError(handler),
+    onTyping: (handler) => underlying.onTyping(handler),
+    onRead: (handler) => underlying.onRead(handler),
     onMlsWelcome: (handler) =>
       underlying.onMlsWelcome((env) => handler(env.ts)),
   };
