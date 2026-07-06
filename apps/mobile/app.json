@@ -28,7 +28,8 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#000000"
       },
-      "package": "io.sessions.app"
+      "package": "io.sessions.app",
+      "googleServicesFile": "./google-services.json"
     },
     "plugins": [
       "expo-router",
