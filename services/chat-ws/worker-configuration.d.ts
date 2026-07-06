@@ -31,6 +31,16 @@ declare global {
     // Load-test metrics (B1.7): "1" → emit one "SCM {...}" log per verify for
     // wrangler-tail tally. Off ("0") in prod to avoid per-connect log volume.
     SESSION_CACHE_METRICS: string;
+    // Backfill skip-cache (docs/message-backfill.md). Per-chat max served
+    // serverSerial, keyed `chatmax:{chatId}`. Chat.flush writes it; UserInbox
+    // reads it to skip a Neon backfill when the client's cursor already covers
+    // the tip. Skip-only cache — a stale/missing entry only delays catch-up,
+    // never loses a message (the backfill query fetches the full range).
+    CHAT_MAX_CACHE: KVNamespace;
+    // Backfill metrics: "1" → emit one "CMC {...}" log per bf chat for a
+    // wrangler-tail tally of KV-skip vs Neon-read rate (acceptance criterion:
+    // warm reconnect = zero Neon reads). Off ("0") in prod.
+    CHAT_MAX_CACHE_METRICS: string;
     // Note: AWS creds for SigV4 publish come via `Resource.X.value` from
     // the SST `sst` import (linked CF Worker secrets pattern). They are NOT
     // exposed as env bindings; do not add them here.

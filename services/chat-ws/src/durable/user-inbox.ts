@@ -7,7 +7,8 @@ import {
   type ChatErrorCode,
 } from "@repo/chat-transport";
 
-import { validateSendFrame } from "../validators";
+import { getPersistClient } from "../persist";
+import { validateBackfillFrame, validateSendFrame } from "../validators";
 
 // Per-user inbox DO. Holds 1..N device WebSocket connections for a single user
 // and acts as the routing point between devices and Chat DOs the user is a
@@ -35,6 +36,10 @@ interface SocketAttachment {
 }
 
 const SUB_KEY = "subscriptions";
+
+// Backfill page size (docs/message-backfill.md). Server fetches PAGE_SIZE+1 to
+// detect whether another page exists; drop to 50–100 if ciphertexts grow large.
+const BACKFILL_PAGE_SIZE = 200;
 
 type MsgFrame = Extract<ServerToClient, { t: "msg" }>;
 type AckFrame = Extract<ServerToClient, { t: "ack" }>;
@@ -123,6 +128,9 @@ export class UserInbox extends DurableObject<Env> {
         return;
       case "read":
         await this.handleRead(att.userId, env);
+        return;
+      case "bf":
+        await this.handleBackfill(ws, att.userId, env);
         return;
       case "ping":
         ws.send(encodeFrame({ t: "pong" } satisfies ServerToClient));
@@ -217,6 +225,111 @@ export class UserInbox extends DurableObject<Env> {
     if (!env.chatId || !env.upto) return;
     const stub = this.env.CHAT.get(this.env.CHAT.idFromName(env.chatId));
     await stub.acceptRead({ userId, upto: env.upto });
+  }
+
+  // ── Offline backfill (docs/message-backfill.md) ───────────────────────────
+  // One `bf` frame batches every subscribed chat's cursor. Per chat: try the KV
+  // skip-cache, else read Neon membership-gated (never a Chat DO wakeup). Replies
+  // with one `bfd` per chat, sent only to the requesting socket. Membership is
+  // enforced inside messagesSince — a non-member (or stranger guessing a chatId)
+  // gets an empty page, no metadata leak.
+  private async handleBackfill(
+    ws: WebSocket,
+    userId: string,
+    env: Extract<ClientToServer, { t: "bf" }>,
+  ): Promise<void> {
+    const verdict = validateBackfillFrame(env);
+    if (!verdict.ok) {
+      this.sendErr(ws, "BAD_FRAME", verdict.reason);
+      return;
+    }
+
+    const db = getPersistClient(this.env);
+    const frames = await Promise.all(
+      env.chats.map((c) => this.backfillChat(db, userId, c)),
+    );
+    for (const frame of frames) {
+      try {
+        ws.send(encodeFrame(frame));
+      } catch {
+        // Socket died mid-backfill; close handler cleans up. Client re-requests
+        // on the next reconnect (cursor unchanged for undelivered pages).
+      }
+    }
+  }
+
+  // Resolve a single chat's backfill page into a `bfd` frame. Pure of socket
+  // I/O so handleBackfill can compute the batch in parallel then fan the sends.
+  private async backfillChat(
+    db: ReturnType<typeof getPersistClient>,
+    userId: string,
+    c: { chatId: string; after: string; force?: boolean },
+  ): Promise<Extract<ServerToClient, { t: "bfd" }>> {
+    const after = BigInt(c.after);
+
+    // KV skip: the client's cursor already covers the chat's max serial → no
+    // Neon, no rows. Safe by the core invariant — a stale-low/missing KV entry
+    // only delays catch-up (the next send rewrites chatmax and the full-range
+    // query returns the gap). A fresh login sets force:true to bypass it.
+    let skipped = false;
+    if (!c.force && this.env.CHAT_MAX_CACHE) {
+      try {
+        const kvMax = await this.env.CHAT_MAX_CACHE.get(`chatmax:${c.chatId}`);
+        if (kvMax !== null && BigInt(kvMax) <= after) skipped = true;
+      } catch {
+        // KV read failed — fall through to Neon (never skip on uncertainty).
+      }
+    }
+    if (skipped) {
+      this.logBackfill(c.chatId, true, 0);
+      return {
+        t: "bfd",
+        chatId: c.chatId,
+        messages: [],
+        upTo: c.after,
+        more: false,
+      };
+    }
+
+    // Membership-gated read. Fetch PAGE+1 to detect a further page.
+    const rows = await db.messagesSince(
+      c.chatId,
+      userId,
+      after,
+      BACKFILL_PAGE_SIZE + 1,
+    );
+    const more = rows.length > BACKFILL_PAGE_SIZE;
+    const served = more ? rows.slice(0, BACKFILL_PAGE_SIZE) : rows;
+    // upTo advances the cursor even on an empty page (or undecryptable rows on
+    // the client) → no refetch-loop wedge.
+    const upTo =
+      served.length > 0
+        ? served[served.length - 1]!.serverSerial.toString()
+        : c.after;
+    this.logBackfill(c.chatId, false, served.length);
+
+    return {
+      t: "bfd",
+      chatId: c.chatId,
+      messages: served.map((r) => ({
+        serverMsgId: r.serverSerial.toString(),
+        senderId: r.senderId,
+        ciphertext: r.ciphertext,
+        nonce: r.nonce,
+        ts: r.createdAt.getTime(),
+      })),
+      upTo,
+      more,
+    };
+  }
+
+  // Per-chat backfill tally for a wrangler-tail run (acceptance: warm reconnect
+  // = zero Neon reads). Gated so prod carries no per-bf log volume.
+  private logBackfill(chatId: string, skipped: boolean, rows: number): void {
+    if (this.env.CHAT_MAX_CACHE_METRICS !== "1") return;
+    console.log(
+      `CMC ${JSON.stringify({ chatId, skip: skipped, neon: !skipped, rows })}`,
+    );
   }
 
   // ── Presence RPC (called by Chat DO before push fanout) ──────────────────

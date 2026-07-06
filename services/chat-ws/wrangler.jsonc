@@ -16,10 +16,14 @@
       { "name": "USER_INBOX", "class_name": "UserInbox" }
     ]
   },
-  // Edge session cache (ADR-0017). Prod namespace_id is minted by SST
-  // (`sst.cloudflare.Kv` in infra/stacks/chat-ws.ts); this local id is a
-  // placeholder — `wrangler dev` simulates KV in-process and ignores it.
-  "kv_namespaces": [{ "binding": "SESSION_CACHE", "id": "session_cache_local" }],
+  // Edge session cache (ADR-0017) + backfill skip-cache (message-backfill.md).
+  // Prod namespace_ids are minted by SST (`sst.cloudflare.Kv` in
+  // infra/stacks/chat-ws.ts); these local ids are placeholders — `wrangler dev`
+  // simulates KV in-process and ignores them.
+  "kv_namespaces": [
+    { "binding": "SESSION_CACHE", "id": "session_cache_local" },
+    { "binding": "CHAT_MAX_CACHE", "id": "chat_max_cache_local" }
+  ],
   "migrations": [
     {
       "tag": "v1",
@@ -32,7 +36,9 @@
     // Edge session cache config (mirrors SST env in chat-ws.ts).
     "SESSION_CACHE_TTL": "120",
     "SESSION_CACHE_ENABLED": "1",
-    "SESSION_CACHE_METRICS": "0"
+    "SESSION_CACHE_METRICS": "0",
+    // Backfill metrics (message-backfill.md). "1" → per-bf "CMC" tail log.
+    "CHAT_MAX_CACHE_METRICS": "0"
   }
   // DATABASE_URL must be set in .dev.vars locally (not committed). SST
   // injects it in deployed stages; see infra/stacks/chat-ws.ts.

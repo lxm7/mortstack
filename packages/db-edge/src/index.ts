@@ -14,4 +14,5 @@ export type {
   ChatPersistClient as ChatPersistClientType,
   PersistMessageInput,
   PersistedMessageRow,
+  BackfilledMessageRow,
 } from "./chat-persist";
