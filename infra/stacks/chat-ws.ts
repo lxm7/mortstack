@@ -167,8 +167,8 @@ export const chatWsWorker = new sst.cloudflare.Worker("ChatWs", {
       // ⚠ PRECONDITION — deployed tag. VERIFY with `sst diff` before apply; the
       // oldTag MUST equal the currently deployed tag (error 10079 otherwise).
       args.migrations = {
-        oldTag: "v9",
-        newTag: "v10",
+        oldTag: "v10",
+        newTag: "v11",
       };
 
       // Compatibility date with WebSocket auto-reply-to-close behaviour
