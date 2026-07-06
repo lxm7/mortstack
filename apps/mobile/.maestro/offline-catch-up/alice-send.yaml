@@ -1,0 +1,66 @@
+# Phase 2 (Alice's device) — send N messages while Bob is offline.
+#
+# Runs on the ALICE simulator, between Bob's phase 1 (go offline) and phase 3
+# (relaunch + assert). Each send is confirmed via the `latest-sent-message`
+# anchor before moving on: that testID is applied ONLY once the store has the
+# server serial (store.ts confirmOptimisticMessage), i.e. the row is persisted
+# in Neon. Waiting on it guarantees the messages are on the server — and thus
+# backfillable — before phase 3 relaunches Bob.
+#
+# Texts are fixed + numerically ordered so phase 3 can assert each one arrived.
+# Strict serial ORDER of the merged thread is locked by the vitest units
+# (packages/chat/src/store.test.ts → "ingestBackfill … sorted by serverSerial");
+# this flow asserts DELIVERY (that offline messages are caught up at all).
+appId: ${MAESTRO_APP_ID}
+env:
+  ALICE_EMAIL: alice@example.com
+  ALICE_PASSWORD: password123
+  MSG_1: "catch-up 1 of 3"
+  MSG_2: "catch-up 2 of 3"
+  MSG_3: "catch-up 3 of 3"
+---
+- launchApp
+- runFlow:
+    file: _sign-in.yaml
+    env:
+      EMAIL: ${ALICE_EMAIL}
+      PASSWORD: ${ALICE_PASSWORD}
+
+# Open the shared chat with Bob (top row).
+- tapOn:
+    id: "chat-row"
+    index: 0
+
+# ── Send message 1 ──
+- tapOn:
+    id: "composer-input"
+- inputText: ${MSG_1}
+- tapOn:
+    id: "composer-send"
+- assertVisible: ${MSG_1}
+
+# ── Send message 2 ──
+- tapOn:
+    id: "composer-input"
+- inputText: ${MSG_2}
+- tapOn:
+    id: "composer-send"
+- assertVisible: ${MSG_2}
+
+# ── Send message 3 ──
+- tapOn:
+    id: "composer-input"
+- inputText: ${MSG_3}
+- tapOn:
+    id: "composer-send"
+- assertVisible: ${MSG_3}
+
+# Block until the newest send is CONFIRMED (serial assigned → persisted to Neon).
+# Serials are monotonic and DO-assigned in send order, so the last one being
+# persisted implies msg1 + msg2 already are. Now Bob can backfill all three.
+- extendedWaitUntil:
+    visible:
+      id: "latest-sent-message"
+    timeout: 10000
+- waitForAnimationToEnd:
+    timeout: 4000

@@ -1,0 +1,34 @@
+# Phase 1 (Bob's device) — establish a baseline, then go offline.
+#
+# Runs on the BOB simulator. Signs Bob in, opens the shared alice↔bob chat to
+# prove the thread is reachable and to record what he has seen live, then kills
+# the app. A killed process = a dead WebSocket = Bob is offline: any message
+# Alice sends now is persisted to Neon but its live fanout finds zero sockets on
+# Bob's UserInbox and is dropped — the exact gap message-backfill fixes.
+#
+# Precondition: a direct chat between alice + bob already exists and is Bob's
+# top row (see README → "One-time chat establishment"). E2EE chats can't be
+# seeded — the MLS group is provisioned on-device at chat-create time.
+appId: ${MAESTRO_APP_ID}
+env:
+  BOB_EMAIL: bob@example.com
+  BOB_PASSWORD: password123
+---
+- launchApp
+- runFlow:
+    file: _sign-in.yaml
+    env:
+      EMAIL: ${BOB_EMAIL}
+      PASSWORD: ${BOB_PASSWORD}
+
+# Open the shared chat (top row after recent activity) so any already-delivered
+# history is hydrated — establishes the "before" state the catch-up adds onto.
+- tapOn:
+    id: "chat-row"
+    index: 0
+- waitForAnimationToEnd:
+    timeout: 4000
+
+# Go offline. stopApp terminates the process, tearing down the WS. Bob stays
+# down while phase 2 (alice-send) runs; phase 3 relaunches him.
+- stopApp

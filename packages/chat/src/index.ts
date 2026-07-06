@@ -32,6 +32,9 @@ export {
   type EncryptedIncomingMessage,
   type EncryptedSendInput,
   type EncryptedSendResult,
+  type BackfilledMessage,
+  type BackfilledReaction,
+  type DecryptedBackfill,
 } from "./encrypted-transport";
 
 // ── Store + hooks (M4-3) ───────────────────────────────────────────────────
@@ -72,7 +75,9 @@ export {
   useChatTransport,
   useOutbox,
   useOutboxWorker,
+  useChatBackfill,
   type ChatStoreProviderProps,
+  type BackfillCursorApi,
 } from "./provider";
 export type {
   ChatApi,
