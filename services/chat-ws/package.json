@@ -9,7 +9,8 @@
     "dev": "wrangler dev --local --persist-to .wrangler/state",
     "lint": "eslint . --ignore-pattern .wrangler",
     "check-types": "tsc --noEmit",
-    "test": "echo \"no tests yet\" && exit 0",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "smoke:m1": "node scripts/smoke-m1.mjs",
     "smoke:m2": "node scripts/smoke-m2.mjs"
   },
@@ -25,6 +26,7 @@
     "@repo/typescript-config": "workspace:*",
     "eslint": "^9.39.1",
     "typescript": "5.9.2",
+    "vitest": "^2.1.9",
     "wrangler": "^4.90.0"
   }
 }

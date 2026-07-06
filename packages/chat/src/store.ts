@@ -147,6 +147,20 @@ export interface ChatStoreActions {
    *  and feeds the result here. Idempotent: skips ids already in the
    *  in-memory list. */
   hydrateMessages(chatId: string, persisted: Message[]): void;
+  /** Merge a decrypted offline-backfill page into the per-chat slice
+   *  (docs/message-backfill.md §7). Dedupes by serverSerial (against existing
+   *  + within the batch) and re-sorts the merged list by serverSerial so a
+   *  live send that interleaved lands in correct order. The live append path
+   *  (addIncomingMessage) stays untouched / O(1). */
+  ingestBackfill(
+    chatId: string,
+    msgs: Array<{
+      serverMsgId: string;
+      senderAuthUserId: string;
+      text: string;
+      ts: number;
+    }>,
+  ): void;
   /** Wipe everything. Used on sign-out and from tests. */
   reset(): void;
 }
@@ -168,6 +182,22 @@ const emptyState: ChatStoreState = {
   bootstrapError: null,
   persistApi: null,
 };
+
+// Order the merged thread by serverSerial. Serialized messages sort by their
+// serial (numeric via BigInt — "9" < "10", never lexical); an optimistic send
+// (no serverSerial yet) tail-sorts after all confirmed rows, by createdAt, so
+// the user's just-typed unsent bubble stays at the bottom.
+function compareBySerial(a: Message, b: Message): number {
+  const sa = a.serverSerial;
+  const sb = b.serverSerial;
+  if (sa != null && sb != null) {
+    const d = BigInt(sa) - BigInt(sb);
+    return d < 0n ? -1 : d > 0n ? 1 : 0;
+  }
+  if (sa != null) return -1;
+  if (sb != null) return 1;
+  return a.createdAt - b.createdAt;
+}
 
 function firePersist(api: MessagePersistApi | null, msg: Message): void {
   if (!api) return;
@@ -581,6 +611,37 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     );
     messages.set(chatId, merged);
     set({ messages });
+  },
+
+  ingestBackfill(chatId, msgs) {
+    if (msgs.length === 0) return;
+    const messages = new Map(get().messages);
+    const existing = messages.get(chatId) ?? [];
+    // Dedupe by serverSerial against what's already in the slice AND within the
+    // incoming batch (the server pages ascending, but be defensive).
+    const seen = new Set(
+      existing.map((m) => m.serverSerial).filter((s): s is string => s != null),
+    );
+    const additions: Message[] = [];
+    for (const m of msgs) {
+      if (seen.has(m.serverMsgId)) continue;
+      seen.add(m.serverMsgId);
+      additions.push({
+        id: m.serverMsgId,
+        chatId,
+        senderAuthUserId: m.senderAuthUserId,
+        text: m.text,
+        status: "sent",
+        clientMsgId: m.serverMsgId,
+        serverSerial: m.serverMsgId,
+        createdAt: m.ts,
+      });
+    }
+    if (additions.length === 0) return;
+    const merged = [...existing, ...additions].sort(compareBySerial);
+    messages.set(chatId, merged);
+    set({ messages });
+    for (const msg of additions) firePersist(get().persistApi, msg);
   },
 
   reset() {

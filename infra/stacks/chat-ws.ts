@@ -39,6 +39,15 @@ import { databaseUrl } from "./secrets";
 // separate steps; B1.1 provisions the namespace + binding only.
 export const sessionCache = new sst.cloudflare.Kv("SessionCache");
 
+// ── Backfill skip-cache (docs/message-backfill.md) ───────────────────────────
+// Second KV namespace holding per-chat max served serverSerial (`chatmax:{id}`).
+// Chat.flush writes it; UserInbox.handleBackfill reads it to skip a Neon
+// backfill when the client's cursor already covers the tip. Skip-only cache —
+// a stale/missing entry only delays catch-up, never loses a message. Bound raw
+// as `env.CHAT_MAX_CACHE` via transform.worker.bindings, same shape as
+// SessionCache (B1.1). Binding-only change → empty migration + tag bump.
+export const chatMaxCache = new sst.cloudflare.Kv("ChatMaxCache");
+
 export const chatWsWorker = new sst.cloudflare.Worker("ChatWs", {
   handler: "services/chat-ws/src/index.ts",
   url: true,
@@ -71,6 +80,10 @@ export const chatWsWorker = new sst.cloudflare.Worker("ChatWs", {
     // to tally cache hit rate + KV write rate. Keep "0" in prod; flip to "1"
     // (+ redeploy) only for a load-test run, then flip back.
     SESSION_CACHE_METRICS: "1",
+    // Backfill metrics (docs/message-backfill.md). "1" → per-bf "CMC" log for
+    // `wrangler tail` to tally KV-skip vs Neon-read rate. Keep "0" in prod; flip
+    // to "1" (+ redeploy) only for the warm-reconnect acceptance run.
+    CHAT_MAX_CACHE_METRICS: "0",
   },
   transform: {
     worker: (args) => {
@@ -82,7 +95,8 @@ export const chatWsWorker = new sst.cloudflare.Worker("ChatWs", {
       args.bindings = $resolve({
         bindings: args.bindings,
         sessionCacheId: sessionCache.id,
-      }).apply(({ bindings, sessionCacheId }) => [
+        chatMaxCacheId: chatMaxCache.id,
+      }).apply(({ bindings, sessionCacheId, chatMaxCacheId }) => [
         ...(bindings ?? []),
         {
           type: "durable_object_namespace",
@@ -107,6 +121,14 @@ export const chatWsWorker = new sst.cloudflare.Worker("ChatWs", {
           // a namespace_id". tsc does NOT catch it (excess-property check is
           // bypassed through Output.apply). Do not "fix" this back to snake_case.
           namespaceId: sessionCacheId,
+        },
+        {
+          // Backfill skip-cache (docs/message-backfill.md) → env.CHAT_MAX_CACHE.
+          // Same raw KV binding shape as SESSION_CACHE — camelCase `namespaceId`
+          // (see the CF 10021 warning above; do NOT snake_case it).
+          type: "kv_namespace",
+          name: "CHAT_MAX_CACHE",
+          namespaceId: chatMaxCacheId,
         },
       ]);
 
@@ -135,15 +157,18 @@ export const chatWsWorker = new sst.cloudflare.Worker("ChatWs", {
       // (error 10079 "got tag X when expected Y" = oldTag ≠ deployed). Do NOT
       // re-declare Chat/UserInbox in newSqliteClasses (triggers 10074).
       //
-      // ⚠ PRECONDITION — deployed tag. This assumes the prior code-only v1→v2
-      // deploy (commit 265a35c) actually shipped, i.e. deployed tag == v2.
-      // VERIFY with `sst diff` before apply. If the v1→v2 deploy never ran
-      // (e.g. alice/bob was tested on local `wrangler dev`), the deployed tag
-      // is still v1 — in that case set { oldTag: "v1", newTag: "v2" } here and
-      // let the KV binding ride that deploy, rather than jumping to v3.
+      // UPDATE-SHAPE (backfill, docs/message-backfill.md): this deploy adds the
+      // CHAT_MAX_CACHE KV binding — again a binding-only change, empty migration,
+      // tag bump only. Tags below assume B1.1's v7→v8 already deployed, so we go
+      // v8→v9. ⚠ If B1.1 has NOT shipped (deployed tag is still v7), do NOT jump
+      // to v9 — let CHAT_MAX_CACHE ride B1.1's deploy instead: set
+      // { oldTag: "v7", newTag: "v8" } and ship both KV bindings together.
+      //
+      // ⚠ PRECONDITION — deployed tag. VERIFY with `sst diff` before apply; the
+      // oldTag MUST equal the currently deployed tag (error 10079 otherwise).
       args.migrations = {
-        oldTag: "v7",
-        newTag: "v8",
+        oldTag: "v10",
+        newTag: "v11",
       };
 
       // Compatibility date with WebSocket auto-reply-to-close behaviour

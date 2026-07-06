@@ -1,0 +1,46 @@
+# Phase 3 (Bob's device) — relaunch and assert the missed messages caught up.
+#
+# Runs on the BOB simulator after alice-send. Bob's local chat.sqlite never saw
+# these messages (his socket was dead when Alice sent), so they can ONLY appear
+# via backfill: on WS open + after bootstrap the provider issues one `bf` with
+# Bob's per-chat cursor (force=true on the first pass this launch), the Worker
+# reads them membership-gated from Neon, and the store merge-sorts the page in.
+#
+# NB: no clearState — we WANT Bob's real local store (which lacks these rows) so
+# the assertion proves catch-up, not local hydration. If these texts render here
+# yet were dropped on the live path in phase 2, backfill is what delivered them.
+appId: ${MAESTRO_APP_ID}
+env:
+  BOB_EMAIL: bob@example.com
+  BOB_PASSWORD: password123
+  MSG_1: "catch-up 1 of 3"
+  MSG_2: "catch-up 2 of 3"
+  MSG_3: "catch-up 3 of 3"
+---
+- launchApp
+- runFlow:
+    file: _sign-in.yaml
+    env:
+      EMAIL: ${BOB_EMAIL}
+      PASSWORD: ${BOB_PASSWORD}
+
+# Open the shared chat. Opening is not what triggers backfill — WS-open +
+# bootstrap already fired it — but it renders the thread so we can assert.
+- tapOn:
+    id: "chat-row"
+    index: 0
+
+# Backfill is a round-trip (bf → Neon read → bfd → decrypt → merge-sort), so the
+# messages arrive shortly AFTER the thread paints. extendedWaitUntil polls each
+# through that window rather than asserting on the first frame. Incoming bubbles
+# have no self-anchor testID (that tags my own confirmed sends), so match on the
+# received text — which is exactly the catch-up payload under test.
+- extendedWaitUntil:
+    visible: ${MSG_1}
+    timeout: 15000
+- extendedWaitUntil:
+    visible: ${MSG_2}
+    timeout: 15000
+- extendedWaitUntil:
+    visible: ${MSG_3}
+    timeout: 15000

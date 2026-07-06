@@ -6,7 +6,14 @@
 // like useSendMessage can issue sends without the consumer threading the
 // transport through every call site.
 
-import { createContext, useContext, useEffect, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  type ReactNode,
+} from "react";
 
 import { isReactionFrame } from "./crypto-pipe";
 import type { EncryptedChatTransport } from "./encrypted-transport";
@@ -14,9 +21,23 @@ import type { BoundOutboxApi, OutboxWorker } from "./outbox-worker";
 import { useChatStore } from "./store";
 import type { ChatApi, MessagePersistApi } from "./types";
 
+// Injected persistence for backfill cursors (chat-db backfill_cursors table).
+// Kept as an injected port — like MessagePersistApi — so @repo/chat stays free
+// of a chat-db dependency. When absent, backfill is disabled (tests, debug).
+export interface BackfillCursorApi {
+  /** { chatId → lastSerial } for every backfilled chat. */
+  getAll(): Promise<Record<string, string>>;
+  /** Advance a chat's cursor to `upTo` (monotonic guard lives in chat-db). */
+  set(chatId: string, upTo: string): Promise<void>;
+}
+
 const ChatTransportContext = createContext<EncryptedChatTransport | null>(null);
 const OutboxContext = createContext<BoundOutboxApi | null>(null);
 const OutboxWorkerContext = createContext<OutboxWorker | null>(null);
+// Exposes the backfill runner so a platform trigger the package can't own
+// (silent-push wake, explicit foreground) can kick a catch-up pass. Null when
+// no cursor store is wired. See useChatBackfill.
+const BackfillContext = createContext<(() => void) | null>(null);
 
 export function useChatTransport(): EncryptedChatTransport {
   const t = useContext(ChatTransportContext);
@@ -37,6 +58,14 @@ export function useOutboxWorker(): OutboxWorker | null {
   return useContext(OutboxWorkerContext);
 }
 
+// Trigger an offline-backfill pass on demand. Returns a no-op when no cursor
+// store is wired. Intended for the app's silent-push handler / an explicit
+// foreground hook — the WS-open trigger (reconnect, incl. foreground-resume)
+// is handled inside the provider.
+export function useChatBackfill(): () => void {
+  return useContext(BackfillContext) ?? (() => {});
+}
+
 export interface ChatStoreProviderProps {
   api: ChatApi;
   transport: EncryptedChatTransport;
@@ -51,6 +80,10 @@ export interface ChatStoreProviderProps {
    *  triggers, stopped on sign-out and unmount. */
   outbox?: BoundOutboxApi;
   outboxWorker?: OutboxWorker;
+  /** Optional backfill cursor store (chat-db). When supplied, the provider runs
+   *  offline catch-up on WS open + exposes a runner via useChatBackfill. When
+   *  omitted, backfill is disabled. */
+  backfillCursors?: BackfillCursorApi;
   /** True once the user is signed in. Bootstrap waits for this so we don't
    *  fire chatList before auth lands. */
   authenticated: boolean;
@@ -63,6 +96,7 @@ export function ChatStoreProvider({
   messagePersist,
   outbox,
   outboxWorker,
+  backfillCursors,
   authenticated,
   children,
 }: ChatStoreProviderProps) {
@@ -73,11 +107,40 @@ export function ChatStoreProvider({
   const reset = useChatStore((s) => s.reset);
   const addIncomingMessage = useChatStore((s) => s.addIncomingMessage);
   const applyIncomingReaction = useChatStore((s) => s.applyIncomingReaction);
+  const ingestBackfill = useChatStore((s) => s.ingestBackfill);
   const setTyping = useChatStore((s) => s.setTyping);
   const setReadReceipt = useChatStore((s) => s.setReadReceipt);
   const sweepExpiredTyping = useChatStore((s) => s.sweepExpiredTyping);
   const setPersistApi = useChatStore((s) => s.setPersistApi);
   const hydrateMessages = useChatStore((s) => s.hydrateMessages);
+
+  // Drives the `force` flag: the first backfill of a chat each app launch
+  // forces Neon (fresh-login correctness); later same-launch reconnects omit it
+  // and take the server's KV skip (cheap under reconnect storms).
+  const backfilledThisLaunch = useRef<Set<string>>(new Set());
+
+  // Build + fire one batched `bf` covering every known chat's cursor. No-op
+  // without a cursor store or before chats have loaded.
+  const runBackfill = useCallback(() => {
+    if (!backfillCursors) return;
+    const chatIds = Array.from(useChatStore.getState().chats.keys());
+    if (chatIds.length === 0) return;
+    void (async () => {
+      let cursors: Record<string, string> = {};
+      try {
+        cursors = await backfillCursors.getAll();
+      } catch (err) {
+        console.warn("[chat] backfill cursor read failed", err);
+      }
+      const batch = chatIds.map((chatId) => {
+        const after = cursors[chatId] ?? "0";
+        const forced = !backfilledThisLaunch.current.has(chatId);
+        backfilledThisLaunch.current.add(chatId);
+        return forced ? { chatId, after, force: true } : { chatId, after };
+      });
+      transport.sendBackfill(batch);
+    })();
+  }, [backfillCursors, transport]);
 
   // Plug local persistence into the store while the provider is mounted.
   // Decoupled from `authenticated` because reset() preserves the persistApi
@@ -95,24 +158,39 @@ export function ChatStoreProvider({
   useEffect(() => {
     if (!authenticated) {
       reset();
+      // New sign-in should re-force backfill from Neon (fresh-login correctness).
+      backfilledThisLaunch.current.clear();
       return;
     }
     void (async () => {
       await bootstrap(api);
-      if (!messagePersist) return;
-      const chatIds = Array.from(useChatStore.getState().chats.keys());
-      await Promise.all(
-        chatIds.map(async (chatId) => {
-          try {
-            const persisted = await messagePersist.load(chatId);
-            if (persisted.length > 0) hydrateMessages(chatId, persisted);
-          } catch (err) {
-            console.warn("[chat] hydrate failed for", chatId, err);
-          }
-        }),
-      );
+      if (messagePersist) {
+        const chatIds = Array.from(useChatStore.getState().chats.keys());
+        await Promise.all(
+          chatIds.map(async (chatId) => {
+            try {
+              const persisted = await messagePersist.load(chatId);
+              if (persisted.length > 0) hydrateMessages(chatId, persisted);
+            } catch (err) {
+              console.warn("[chat] hydrate failed for", chatId, err);
+            }
+          }),
+        );
+      }
+      // Fresh-login catch-up: now that chats are known, request backfill. If the
+      // socket isn't open yet the frame is dropped and the WS-open trigger below
+      // re-issues it — belt and suspenders.
+      runBackfill();
     })();
-  }, [authenticated, api, bootstrap, hydrateMessages, messagePersist, reset]);
+  }, [
+    authenticated,
+    api,
+    bootstrap,
+    hydrateMessages,
+    messagePersist,
+    reset,
+    runBackfill,
+  ]);
 
   // Refresh on (re)connect — picks up chats created while offline + any
   // changes another device made. Also kick the outbox worker so any queued
@@ -123,9 +201,13 @@ export function ChatStoreProvider({
       if (state === "open") {
         void refresh(api);
         workerApi?.kick();
+        // Catch up on messages missed while the socket was down. Covers cold
+        // connect, reconnect storms, and foreground-resume (the app reconnects
+        // on foreground → this fires).
+        runBackfill();
       }
     });
-  }, [authenticated, api, refresh, transport, workerApi]);
+  }, [authenticated, api, refresh, transport, workerApi, runBackfill]);
 
   // Worker lifecycle — tied to auth, not to mount, so sign-out halts
   // background dispatch even if the provider stays mounted across users.
@@ -171,6 +253,50 @@ export function ChatStoreProvider({
     });
   }, [authenticated, addIncomingMessage, applyIncomingReaction, transport]);
 
+  // Backfill ingestion (docs/message-backfill.md). Each `bfd` page is already
+  // decrypted + split by the transport. Merge messages via the store's
+  // serial-sorted ingest, fold reactions onto their targets (serial-ascending
+  // order guarantees a target lands before its reaction), advance the cursor to
+  // `upTo` (even past undecryptable rows → no refetch loop), and page while more.
+  useEffect(() => {
+    if (!authenticated) return;
+    return transport.onBackfill((page) => {
+      if (page.messages.length > 0) {
+        ingestBackfill(
+          page.chatId,
+          page.messages.map((m) => ({
+            serverMsgId: m.serverMsgId,
+            senderAuthUserId: m.senderId,
+            text: m.frame.text,
+            ts: m.ts,
+          })),
+        );
+      }
+      for (const rx of page.reactions) {
+        applyIncomingReaction({
+          chatId: page.chatId,
+          target: rx.frame.target,
+          emoji: rx.frame.emoji,
+          op: rx.frame.op,
+          senderAuthUserId: rx.senderId,
+        });
+      }
+      void backfillCursors?.set(page.chatId, page.upTo).catch((err) => {
+        console.warn("[chat] backfill cursor write failed", err);
+      });
+      // Same-session paging never re-forces — honor the KV skip on follow-ups.
+      if (page.more) {
+        transport.sendBackfill([{ chatId: page.chatId, after: page.upTo }]);
+      }
+    });
+  }, [
+    authenticated,
+    transport,
+    ingestBackfill,
+    applyIncomingReaction,
+    backfillCursors,
+  ]);
+
   // Live typing + read-receipt ingestion. These are ephemeral/metadata frames
   // (plaintext, not encrypted) fanned out by the Chat DO.
   useEffect(() => {
@@ -200,7 +326,11 @@ export function ChatStoreProvider({
     <ChatTransportContext.Provider value={transport}>
       <OutboxContext.Provider value={outboxApi}>
         <OutboxWorkerContext.Provider value={workerApi}>
-          {children}
+          <BackfillContext.Provider
+            value={backfillCursors ? runBackfill : null}
+          >
+            {children}
+          </BackfillContext.Provider>
         </OutboxWorkerContext.Provider>
       </OutboxContext.Provider>
     </ChatTransportContext.Provider>

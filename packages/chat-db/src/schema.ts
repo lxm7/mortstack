@@ -43,6 +43,14 @@ export interface SyncCursorRow {
   last_synced_at: number;
 }
 
+// Offline backfill cursor (docs/message-backfill.md). One row per chat this
+// device has backfilled. last_serial = greatest serverSerial pulled so far,
+// TEXT because a serverSerial (BigInt) can exceed JS 2^53.
+export interface BackfillCursorRow {
+  chat_id: string;
+  last_serial: string;
+}
+
 export interface PendingOutboxRow {
   id: string;
   chat_id: string;

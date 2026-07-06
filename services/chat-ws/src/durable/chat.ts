@@ -207,6 +207,19 @@ export class Chat extends DurableObject<Env> {
     });
     this.buffer = [];
 
+    // Backfill skip-cache (docs/message-backfill.md): publish this chat's max
+    // served serial so a warm reconnect can skip the Neon backfill read.
+    // Best-effort — mirrors the ADR-017 session-cache write. A dropped write is
+    // absorbed by the backfill invariant (full-range query rewritten by the next
+    // send), so it is non-fatal and deliberately not awaited. No TTL: a
+    // long-lived entry keeps warm skips valid; correctness never depends on it.
+    if (this.env.CHAT_MAX_CACHE) {
+      void this.env.CHAT_MAX_CACHE.put(
+        `chatmax:${chatId}`,
+        (this.nextSerial! - 1n).toString(),
+      ).catch(() => {});
+    }
+
     // ── Fanout (ADR-010, Track C batched) ──────────────────────────────────
     // Collapse N×M individual RPCs into one deliverBatch per recipient.
     const attached = await this.loadAttached();
