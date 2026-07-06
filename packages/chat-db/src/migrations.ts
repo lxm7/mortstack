@@ -137,6 +137,25 @@ const MIGRATIONS: Migration[] = [
       `CREATE INDEX idx_messages_client_msg_id ON messages (client_msg_id)`,
     ],
   },
+  {
+    version: 5,
+    up: [
+      // Offline backfill cursor (docs/message-backfill.md). Per-chat high-water
+      // mark of the greatest serverSerial this device has pulled via `bf`. Sent
+      // back as the `after` cursor on the next backfill; advanced to `bfd.upTo`
+      // with a monotonic guard (setCursor never regresses it).
+      //
+      // NB: distinct from the message-id-based `sync_cursor` (migration 1). This
+      // one is serial-keyed (the DO's monotonic authority, ADR-012), directly
+      // comparable to a message's serverSerial. last_serial is TEXT because a
+      // serverSerial is a BigInt that can exceed JS 2^53; numeric comparisons
+      // CAST it to INTEGER (int64), never lexical (so "9" < "10" holds).
+      `CREATE TABLE backfill_cursors (
+        chat_id TEXT PRIMARY KEY NOT NULL,
+        last_serial TEXT NOT NULL
+      ) WITHOUT ROWID`,
+    ],
+  },
 ];
 
 const LAST = MIGRATIONS[MIGRATIONS.length - 1];

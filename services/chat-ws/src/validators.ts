@@ -90,3 +90,52 @@ export function validateSendFrame(frame: SendShape): ValidateResult {
     reason: `unknown frame version byte: 0x${(version ?? 0).toString(16).padStart(2, "0")}`,
   };
 }
+
+// --- Backfill request (`bf`) ------------------------------------------------
+//
+// One `bf` frame batches every subscribed chat's cursor. Validate shape before
+// UserInbox.handleBackfill touches KV / Neon: cursors bind straight into the
+// `serverSerial > $2` bigint predicate in messagesSince, so a non-numeric
+// `after` must be rejected here rather than blowing up the DB.
+
+/** Cap the batch so one frame can't fan into an unbounded KV/Neon sweep. */
+export const MAX_BACKFILL_CHATS = 500;
+/** Cursors are decimal serverSerial strings ("0" = full history). */
+const SERIAL_CURSOR = /^\d+$/;
+
+export interface BackfillShape {
+  chats: Array<{ chatId: string; after: string; force?: boolean }>;
+}
+
+export function validateBackfillFrame(frame: {
+  chats?: unknown;
+}): ValidateResult {
+  if (!Array.isArray(frame.chats)) {
+    return { ok: false, reason: "chats must be an array" };
+  }
+  if (frame.chats.length === 0) {
+    return { ok: false, reason: "chats empty" };
+  }
+  if (frame.chats.length > MAX_BACKFILL_CHATS) {
+    return {
+      ok: false,
+      reason: `chats exceeds max ${MAX_BACKFILL_CHATS}, got ${frame.chats.length}`,
+    };
+  }
+  for (const entry of frame.chats) {
+    if (typeof entry !== "object" || entry === null) {
+      return { ok: false, reason: "chat entry must be an object" };
+    }
+    const c = entry as Record<string, unknown>;
+    if (typeof c.chatId !== "string" || c.chatId.length === 0) {
+      return { ok: false, reason: "chatId must be a non-empty string" };
+    }
+    if (typeof c.after !== "string" || !SERIAL_CURSOR.test(c.after)) {
+      return { ok: false, reason: "after must be a decimal cursor string" };
+    }
+    if (c.force !== undefined && typeof c.force !== "boolean") {
+      return { ok: false, reason: "force must be a boolean when present" };
+    }
+  }
+  return { ok: true };
+}
