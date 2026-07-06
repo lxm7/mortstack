@@ -1,0 +1,28 @@
+# Reusable sign-in subflow. Invoked via `runFlow: { file: _sign-in.yaml, env: … }`
+# from each phase flow so the credential steps live in one place.
+#
+# Cold-start note (mirrors chat-smoke.yaml): launchApp relaunches the process and
+# the Better Auth session does NOT rehydrate, so every phase lands on the auth
+# gate. Gated on "Login" being visible → a no-op if a session ever does persist.
+# Creds come from the DB seed (packages/database/prisma/seed.ts: SEED_PASSWORD).
+appId: ${MAESTRO_APP_ID}
+---
+- runFlow:
+    when:
+      visible: "Login"
+    commands:
+      - tapOn: "Email Address"
+      - inputText: ${EMAIL}
+      - tapOn: "Password"
+      - inputText: ${PASSWORD}
+      # enterKeyHint="go" + onSubmitEditing → submit via the return key. Avoids
+      # hideKeyboard (unsupported on the RN input) and a Login-button tap the
+      # keyboard can overlap.
+      - pressKey: Enter
+
+# Block until the conversations list paints — the shared anchor every phase
+# needs before it can open the chat.
+- extendedWaitUntil:
+    visible:
+      id: "chat-row"
+    timeout: 20000

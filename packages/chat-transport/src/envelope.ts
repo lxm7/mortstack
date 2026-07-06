@@ -37,6 +37,19 @@ export type ClientToServer =
   // to ChatMember.lastReadSerial and fans out. Gated client-side by the
   // symmetric read-receipts privacy toggle (never emitted when off).
   | { t: "read"; chatId: string; upto: string }
+  // Backfill request — catch up on messages missed while offline. One frame
+  // carries every subscribed chat's cursor so a reconnect is a single WS frame
+  // → N in-DO KV reads, 0 Chat DO wakeups (docs/message-backfill.md).
+  //
+  // `after` = the client's per-chat cursor (greatest serverSerial already held;
+  // "0" = full history). Server returns rows with serverSerial > after.
+  // `force: true` = ignore the KV skip-cache and hit Neon. The client sets it
+  // the first time it backfills a given chat each app launch (fresh-login
+  // correctness); warm same-session reconnects omit it and take the KV skip.
+  | {
+      t: "bf";
+      chats: Array<{ chatId: string; after: string; force?: boolean }>;
+    }
   // Heartbeat — answered with `pong`. Auto-handled when supported by the
   // platform; manual fallback for clients without auto-ping.
   | { t: "ping" };
@@ -76,6 +89,29 @@ export type ServerToClient =
   // `chatId`. Receiver advances that member's watermark; the sender's own
   // outgoing bubbles flip sent → read once a peer's `upto` covers their serial.
   | { t: "read"; chatId: string; userId: string; upto: string }
+  // Backfill done — one page of missed messages for a single chat, in ascending
+  // serverSerial order. The server emits one `bfd` per chat in the originating
+  // `bf` batch (docs/message-backfill.md). Backfill stays distinct from the live
+  // `msg` path so the store can merge-sort a page in one pass.
+  //
+  // `upTo` advances the client cursor even when rows are undecryptable (v=1
+  // sealed to other devices, own sends) → no refetch-loop wedge; it is the
+  // greatest serverSerial served, or the request's `after` when the page is
+  // empty. `more: true` → another page exists; the client re-requests with
+  // `after = upTo`.
+  | {
+      t: "bfd";
+      chatId: string;
+      messages: Array<{
+        serverMsgId: string;
+        senderId: string;
+        ciphertext: Uint8Array;
+        nonce: Uint8Array;
+        ts: number;
+      }>;
+      upTo: string;
+      more: boolean;
+    }
   // Soft error — connection stays open. Use error.code for routing.
   | { t: "err"; code: ChatErrorCode; msg?: string }
   | { t: "pong" };

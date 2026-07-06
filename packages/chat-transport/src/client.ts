@@ -16,6 +16,16 @@ export type IncomingError = Extract<ServerToClient, { t: "err" }>;
 export type IncomingMlsWelcome = Extract<ServerToClient, { t: "mls-welcome" }>;
 export type IncomingTyping = Extract<ServerToClient, { t: "typ" }>;
 export type IncomingRead = Extract<ServerToClient, { t: "read" }>;
+export type IncomingBackfill = Extract<ServerToClient, { t: "bfd" }>;
+
+/** One chat's cursor in a batched backfill request. `after` = greatest
+ *  serverSerial already held ("0" = full history); `force` skips the server's
+ *  KV skip-cache (set on the first backfill of a chat each app launch). */
+export interface BackfillRequestChat {
+  chatId: string;
+  after: string;
+  force?: boolean;
+}
 
 export interface ChatTransportOptions {
   // Cloudflare Worker URL. Use ws:// for local wrangler, wss:// in prod.
@@ -70,12 +80,18 @@ export interface ChatTransport {
    *  reconciles ChatMember.lastReadSerial on next load. `upto` is a
    *  serverMsgId string. */
   sendRead(input: { chatId: string; upto: string }): void;
+  /** Offline backfill request (docs/message-backfill.md). One frame batches
+   *  every chat's cursor. Fire-and-forget — dropped when the socket isn't
+   *  open; the caller re-issues on the next `open`. */
+  sendBackfill(chats: BackfillRequestChat[]): void;
   onMessage(handler: (msg: IncomingMessage) => void): () => void;
   onState(handler: (state: ConnectionState) => void): () => void;
   onError(handler: (err: IncomingError) => void): () => void;
   onMlsWelcome(handler: (m: IncomingMlsWelcome) => void): () => void;
   onTyping(handler: (m: IncomingTyping) => void): () => void;
   onRead(handler: (m: IncomingRead) => void): () => void;
+  /** One `bfd` page (per chat) in response to a `sendBackfill`. */
+  onBackfill(handler: (m: IncomingBackfill) => void): () => void;
 }
 
 interface PendingSend {
@@ -113,6 +129,7 @@ export function createChatTransport(opts: ChatTransportOptions): ChatTransport {
   const mlsWelcomeHandlers = new Set<(m: IncomingMlsWelcome) => void>();
   const typingHandlers = new Set<(m: IncomingTyping) => void>();
   const readHandlers = new Set<(m: IncomingRead) => void>();
+  const backfillHandlers = new Set<(m: IncomingBackfill) => void>();
 
   function setState(next: ConnectionState) {
     if (state === next) return;
@@ -190,6 +207,9 @@ export function createChatTransport(opts: ChatTransportOptions): ChatTransport {
         return;
       case "read":
         for (const h of readHandlers) h(env);
+        return;
+      case "bfd":
+        for (const h of backfillHandlers) h(env);
         return;
       case "mls-welcome":
         for (const h of mlsWelcomeHandlers) h(env);
@@ -363,6 +383,14 @@ export function createChatTransport(opts: ChatTransportOptions): ChatTransport {
     sendFrame({ t: "read", chatId: input.chatId, upto: input.upto });
   }
 
+  // Best-effort like the ephemeral signals: sendFrame no-ops when the socket
+  // isn't open. A backfill lost to a disconnect is re-issued on the next
+  // `open` (the provider re-triggers), so no pending queue is needed.
+  function sendBackfill(chats: BackfillRequestChat[]) {
+    if (chats.length === 0) return;
+    sendFrame({ t: "bf", chats });
+  }
+
   function onTyping(handler: (m: IncomingTyping) => void) {
     typingHandlers.add(handler);
     return () => typingHandlers.delete(handler);
@@ -371,6 +399,11 @@ export function createChatTransport(opts: ChatTransportOptions): ChatTransport {
   function onRead(handler: (m: IncomingRead) => void) {
     readHandlers.add(handler);
     return () => readHandlers.delete(handler);
+  }
+
+  function onBackfill(handler: (m: IncomingBackfill) => void) {
+    backfillHandlers.add(handler);
+    return () => backfillHandlers.delete(handler);
   }
 
   return {
@@ -383,12 +416,14 @@ export function createChatTransport(opts: ChatTransportOptions): ChatTransport {
     send,
     sendTyping,
     sendRead,
+    sendBackfill,
     onMessage,
     onState,
     onError,
     onMlsWelcome,
     onTyping,
     onRead,
+    onBackfill,
   };
 }
 

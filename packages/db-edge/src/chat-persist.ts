@@ -21,6 +21,35 @@ export interface PersistedMessageRow {
   createdAt: Date;
 }
 
+// Row shape returned by messagesSince (offline backfill, docs/message-backfill.md).
+// Raw persisted columns — the wire mapping to a `bfd` frame (serverMsgId, ts)
+// happens in UserInbox, which owns the transport shape.
+export interface BackfilledMessageRow {
+  serverSerial: bigint;
+  senderId: string;
+  ciphertext: Uint8Array;
+  nonce: Uint8Array;
+  createdAt: Date;
+}
+
+// bytea round-trips as a Buffer / Uint8Array on some driver modes and as a
+// Postgres `\x`-hex string on others. Normalise to Uint8Array so the transport
+// layer never has to care which the Neon HTTP driver handed back.
+function toUint8Array(value: unknown): Uint8Array {
+  if (value instanceof Uint8Array) return value;
+  if (value instanceof ArrayBuffer) return new Uint8Array(value);
+  if (Array.isArray(value)) return Uint8Array.from(value as number[]);
+  if (typeof value === "string") {
+    const hex = value.startsWith("\\x") ? value.slice(2) : value;
+    const out = new Uint8Array(hex.length / 2);
+    for (let i = 0; i < out.length; i++) {
+      out[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+    }
+    return out;
+  }
+  throw new Error(`bytea column not decodable to bytes: ${typeof value}`);
+}
+
 // Thin wrapper around @neondatabase/serverless. One instance per Worker
 // invocation (or cached on the DO if the DO is hot). The neon() factory is
 // cheap — no connection is opened until the first query, and queries are
@@ -28,11 +57,17 @@ export interface PersistedMessageRow {
 export class ChatPersistClient {
   private readonly sql: NeonQueryFunction<false, false>;
 
-  constructor(connectionString: string) {
-    if (!connectionString) {
-      throw new Error("ChatPersistClient: connectionString is required");
+  // Accepts a connection string (production) or a pre-built query function
+  // (tests inject a fake tagged-template executor — no Neon round-trip).
+  constructor(connection: string | NeonQueryFunction<false, false>) {
+    if (typeof connection === "string") {
+      if (!connection) {
+        throw new Error("ChatPersistClient: connectionString is required");
+      }
+      this.sql = neon(connection);
+    } else {
+      this.sql = connection;
     }
-    this.sql = neon(connectionString);
   }
 
   // Insert a single message row. Uses ON CONFLICT on the PK so a counter
@@ -65,6 +100,45 @@ export class ChatPersistClient {
     `) as Array<{ max: string | number | bigint }>;
     if (!rows.length) return 0n;
     return BigInt(rows[0]!.max);
+  }
+
+  // Offline backfill (docs/message-backfill.md): rows with serverSerial > after,
+  // ascending, capped at `limit`. Membership is enforced INSIDE the query — the
+  // EXISTS gate is the authorization boundary, so a non-member (or a stranger
+  // guessing a chatId) gets an empty result with zero metadata leak and no
+  // separate check / Chat DO wakeup. Neon-authoritative read; the caller passes
+  // limit+1 to detect whether another page exists.
+  async messagesSince(
+    chatId: string,
+    userId: string,
+    after: bigint,
+    limit: number,
+  ): Promise<BackfilledMessageRow[]> {
+    const rows = (await this.sql`
+      SELECT "serverSerial", "senderId", "ciphertext", "nonce", "createdAt"
+      FROM "ChatMessage"
+      WHERE "chatId" = ${chatId} AND "serverSerial" > ${after}
+        AND EXISTS (
+          SELECT 1 FROM "ChatMember"
+          WHERE "chatId" = ${chatId} AND "userId" = ${userId}
+        )
+      ORDER BY "serverSerial" ASC
+      LIMIT ${limit}
+    `) as Array<{
+      serverSerial: string | number | bigint;
+      senderId: string;
+      ciphertext: unknown;
+      nonce: unknown;
+      createdAt: string | Date;
+    }>;
+    return rows.map((r) => ({
+      serverSerial: BigInt(r.serverSerial),
+      senderId: r.senderId,
+      ciphertext: toUint8Array(r.ciphertext),
+      nonce: toUint8Array(r.nonce),
+      createdAt:
+        r.createdAt instanceof Date ? r.createdAt : new Date(r.createdAt),
+    }));
   }
 
   // All chat members. Caller filters out the sender(s) per message — one

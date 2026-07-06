@@ -107,6 +107,82 @@ describe("typing reducers", () => {
   });
 });
 
+describe("ingestBackfill (offline catch-up)", () => {
+  const bf = (serverMsgId: string, text: string, ts = Number(serverMsgId)) => ({
+    serverMsgId,
+    senderAuthUserId: "u2",
+    text,
+    ts,
+  });
+
+  it("merges a page sorted by serverSerial (numeric, not lexical)", () => {
+    // Deliberately out of order + a lexical trap ("9" vs "10").
+    s().ingestBackfill(CHAT, [bf("10", "j"), bf("9", "i"), bf("2", "b")]);
+    const list = s().messages.get(CHAT)!;
+    expect(list.map((m) => m.serverSerial)).toEqual(["2", "9", "10"]);
+    expect(list.map((m) => m.text)).toEqual(["b", "i", "j"]);
+    expect(list.every((m) => m.status === "sent")).toBe(true);
+  });
+
+  it("dedupes by serverSerial against existing rows and within the batch", () => {
+    s().addIncomingMessage({
+      chatId: CHAT,
+      serverMsgId: "5",
+      senderAuthUserId: "u2",
+      text: "live-5",
+      ts: 5,
+    });
+    // "5" already present (live); "7" duplicated within the batch.
+    s().ingestBackfill(CHAT, [
+      bf("5", "dup"),
+      bf("7", "g"),
+      bf("7", "g-again"),
+    ]);
+    const list = s().messages.get(CHAT)!;
+    expect(list.map((m) => m.serverSerial)).toEqual(["5", "7"]);
+    // The existing live row is not overwritten by the backfill dup.
+    expect(list.find((m) => m.serverSerial === "5")?.text).toBe("live-5");
+  });
+
+  it("interleaves a live send into correct serial order after backfill", () => {
+    s().ingestBackfill(CHAT, [bf("2", "b"), bf("4", "d")]);
+    // A live message with a serial BETWEEN the backfilled ones lands sorted.
+    s().addIncomingMessage({
+      chatId: CHAT,
+      serverMsgId: "3",
+      senderAuthUserId: "u2",
+      text: "c",
+      ts: 3,
+    });
+    // A later backfill page arrives out of order relative to the live insert.
+    s().ingestBackfill(CHAT, [bf("1", "a"), bf("5", "e")]);
+    expect(
+      s()
+        .messages.get(CHAT)!
+        .map((m) => m.serverSerial),
+    ).toEqual(["1", "2", "3", "4", "5"]);
+  });
+
+  it("keeps an optimistic (unsent) message at the tail", () => {
+    s().addOptimisticMessage({
+      chatId: CHAT,
+      clientMsgId: "opt-1",
+      senderAuthUserId: "me",
+      text: "typing…",
+    });
+    s().ingestBackfill(CHAT, [bf("8", "h"), bf("6", "f")]);
+    const list = s().messages.get(CHAT)!;
+    // Confirmed history sorts by serial; the unsent optimistic row tail-sorts.
+    expect(list.map((m) => m.serverSerial ?? "opt")).toEqual(["6", "8", "opt"]);
+    expect(list[list.length - 1]!.status).toBe("sending");
+  });
+
+  it("no-ops on an empty page", () => {
+    s().ingestBackfill(CHAT, []);
+    expect(s().messages.get(CHAT)).toBeUndefined();
+  });
+});
+
 describe("read-receipt reducer (monotonic)", () => {
   it("advances forward and ignores regressions", () => {
     s().setReadReceipt({ chatId: CHAT, userId: "u2", upto: "10" });

@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "126132110239",
+    "project_id": "sessions-dev-96fd0",
+    "storage_bucket": "sessions-dev-96fd0.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:126132110239:android:fda8152291630d9a8033aa",
+        "android_client_info": {
+          "package_name": "io.sessions.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "126132110239-179kfjdtq3b9u5p62sve6bm9agtcnpa7.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDlQv42C_Ht3opaEvNp6yPSqGDhr34ljGA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "126132110239-179kfjdtq3b9u5p62sve6bm9agtcnpa7.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "126132110239-cepnoht7hnhnq3ollbphkf2laccjs32t.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "io.sessions.app"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
