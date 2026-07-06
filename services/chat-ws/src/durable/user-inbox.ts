@@ -9,6 +9,7 @@ import {
 
 import { getPersistClient } from "../persist";
 import { validateBackfillFrame, validateSendFrame } from "../validators";
+import { resolveBackfillPage } from "./backfill";
 
 // Per-user inbox DO. Holds 1..N device WebSocket connections for a single user
 // and acts as the routing point between devices and Chat DOs the user is a
@@ -36,10 +37,6 @@ interface SocketAttachment {
 }
 
 const SUB_KEY = "subscriptions";
-
-// Backfill page size (docs/message-backfill.md). Server fetches PAGE_SIZE+1 to
-// detect whether another page exists; drop to 50–100 if ciphertexts grow large.
-const BACKFILL_PAGE_SIZE = 200;
 
 type MsgFrame = Extract<ServerToClient, { t: "msg" }>;
 type AckFrame = Extract<ServerToClient, { t: "ack" }>;
@@ -265,62 +262,18 @@ export class UserInbox extends DurableObject<Env> {
     userId: string,
     c: { chatId: string; after: string; force?: boolean },
   ): Promise<Extract<ServerToClient, { t: "bfd" }>> {
-    const after = BigInt(c.after);
-
-    // KV skip: the client's cursor already covers the chat's max serial → no
-    // Neon, no rows. Safe by the core invariant — a stale-low/missing KV entry
-    // only delays catch-up (the next send rewrites chatmax and the full-range
-    // query returns the gap). A fresh login sets force:true to bypass it.
-    let skipped = false;
-    if (!c.force && this.env.CHAT_MAX_CACHE) {
-      try {
-        const kvMax = await this.env.CHAT_MAX_CACHE.get(`chatmax:${c.chatId}`);
-        if (kvMax !== null && BigInt(kvMax) <= after) skipped = true;
-      } catch {
-        // KV read failed — fall through to Neon (never skip on uncertainty).
-      }
-    }
-    if (skipped) {
-      this.logBackfill(c.chatId, true, 0);
-      return {
-        t: "bfd",
-        chatId: c.chatId,
-        messages: [],
-        upTo: c.after,
-        more: false,
-      };
-    }
-
-    // Membership-gated read. Fetch PAGE+1 to detect a further page.
-    const rows = await db.messagesSince(
-      c.chatId,
+    const cache = this.env.CHAT_MAX_CACHE;
+    const { frame, skipped, rows } = await resolveBackfillPage(
+      {
+        kvGet: cache ? (key) => cache.get(key) : null,
+        messagesSince: (chatId, uid, after, limit) =>
+          db.messagesSince(chatId, uid, after, limit),
+      },
       userId,
-      after,
-      BACKFILL_PAGE_SIZE + 1,
+      c,
     );
-    const more = rows.length > BACKFILL_PAGE_SIZE;
-    const served = more ? rows.slice(0, BACKFILL_PAGE_SIZE) : rows;
-    // upTo advances the cursor even on an empty page (or undecryptable rows on
-    // the client) → no refetch-loop wedge.
-    const upTo =
-      served.length > 0
-        ? served[served.length - 1]!.serverSerial.toString()
-        : c.after;
-    this.logBackfill(c.chatId, false, served.length);
-
-    return {
-      t: "bfd",
-      chatId: c.chatId,
-      messages: served.map((r) => ({
-        serverMsgId: r.serverSerial.toString(),
-        senderId: r.senderId,
-        ciphertext: r.ciphertext,
-        nonce: r.nonce,
-        ts: r.createdAt.getTime(),
-      })),
-      upTo,
-      more,
-    };
+    this.logBackfill(c.chatId, skipped, rows);
+    return frame;
   }
 
   // Per-chat backfill tally for a wrangler-tail run (acceptance: warm reconnect
