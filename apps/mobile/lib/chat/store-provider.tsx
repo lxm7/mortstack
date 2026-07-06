@@ -10,6 +10,7 @@ import {
   ChatStoreProvider,
   createOutboxWorker,
   useChatStore,
+  type BackfillCursorApi,
   type BoundOutboxApi,
   type ChatApi,
   type MessagePersistApi,
@@ -19,6 +20,7 @@ import {
 import {
   getChatDb,
   createBoundMessageStore,
+  backfillCursors as backfillCursorsDb,
   mls as mlsStore,
   outbox as outboxDb,
   type ChatDbHandle,
@@ -85,6 +87,15 @@ function createTrpcChatApi(): ChatApi {
   };
 }
 
+// Curry chat-db's backfill_cursors helpers onto a handle → the injected
+// BackfillCursorApi the store provider drives (docs/message-backfill.md).
+function bindBackfillCursors(handle: ChatDbHandle): BackfillCursorApi {
+  return {
+    getAll: () => backfillCursorsDb.getAllCursors(handle.db),
+    set: (chatId, upTo) => backfillCursorsDb.setCursor(handle.db, chatId, upTo),
+  };
+}
+
 // Curry the chat-db outbox namespace onto a single ChatDbHandle so the
 // shared @repo/chat outbox worker doesn't need to know about op-sqlite.
 function bindOutbox(handle: ChatDbHandle): BoundOutboxApi {
@@ -127,6 +138,9 @@ export function MobileChatStoreProvider({ children }: { children: ReactNode }) {
       }
     | undefined
   >(undefined);
+  const [backfillApi, setBackfillApi] = useState<BackfillCursorApi | undefined>(
+    undefined,
+  );
 
   useEffect(() => {
     let active = true;
@@ -135,6 +149,7 @@ export function MobileChatStoreProvider({ children }: { children: ReactNode }) {
         const handle: ChatDbHandle = await getChatDb();
         if (!active) return;
         setPersistApi(createBoundMessageStore(handle));
+        setBackfillApi(bindBackfillCursors(handle));
         const bound = bindOutbox(handle);
         const store: OutboxWorkerStoreApi = {
           confirmOptimisticMessage,
@@ -182,6 +197,7 @@ export function MobileChatStoreProvider({ children }: { children: ReactNode }) {
       messagePersist={persistApi}
       outbox={outboxBindings?.outbox}
       outboxWorker={outboxBindings?.worker}
+      backfillCursors={backfillApi}
       authenticated={authenticated}
     >
       {children}

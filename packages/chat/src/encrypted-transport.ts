@@ -1,6 +1,8 @@
 import type {
+  BackfillRequestChat,
   ChatTransport,
   ConnectionState,
+  IncomingBackfill,
   IncomingError,
   IncomingMessage,
   IncomingRead,
@@ -13,8 +15,11 @@ import {
   encryptOutbound,
   encryptOutboundMls,
   FRAME_VERSION_V2,
+  isReactionFrame,
   type ChatFrame,
   type ChatFrameBody,
+  type ChatMsgFrame,
+  type ChatReactionFrame,
   type FanoutTarget,
   type MlsApi,
 } from "./crypto-pipe";
@@ -64,6 +69,37 @@ export interface EncryptedIncomingMessage {
   ts: number;
 }
 
+// One decrypted backfilled row. Split by frame kind so the caller can route
+// messages vs reactions without re-narrowing (docs/message-backfill.md §6).
+export interface BackfilledMessage {
+  chatId: string;
+  serverMsgId: string;
+  senderId: string;
+  frame: ChatMsgFrame;
+  frameVersion: 1 | 2;
+  ts: number;
+}
+export interface BackfilledReaction {
+  chatId: string;
+  serverMsgId: string;
+  senderId: string;
+  frame: ChatReactionFrame;
+  frameVersion: 1 | 2;
+  ts: number;
+}
+
+// A decrypted backfill page for one chat. `messages` + `reactions` are in
+// ascending serverSerial order (the server pages ascending). Undecryptable rows
+// are dropped from both — but `upTo` still advances past them, so the caller
+// advances the cursor and never refetch-loops on a permanently-sealed row.
+export interface DecryptedBackfill {
+  chatId: string;
+  messages: BackfilledMessage[];
+  reactions: BackfilledReaction[];
+  upTo: string;
+  more: boolean;
+}
+
 export interface EncryptedChatTransport {
   readonly state: ConnectionState;
   connect(): void;
@@ -75,6 +111,8 @@ export interface EncryptedChatTransport {
   sendTyping(input: { chatId: string; on: boolean }): void;
   /** Read watermark — plaintext metadata (a serverMsgId), bypasses crypto. */
   sendRead(input: { chatId: string; upto: string }): void;
+  /** Offline backfill request — plaintext cursors, bypasses crypto. */
+  sendBackfill(chats: BackfillRequestChat[]): void;
   onMessage(handler: (msg: EncryptedIncomingMessage) => void): () => void;
   onState(handler: (state: ConnectionState) => void): () => void;
   onError(handler: (err: IncomingError) => void): () => void;
@@ -82,6 +120,8 @@ export interface EncryptedChatTransport {
   onTyping(handler: (m: IncomingTyping) => void): () => void;
   /** Inbound read fanout (peer advanced their read watermark). */
   onRead(handler: (m: IncomingRead) => void): () => void;
+  /** Decrypted backfill page (one per chat) for a prior sendBackfill. */
+  onBackfill(handler: (b: DecryptedBackfill) => void): () => void;
   /** Server-pushed MLS Welcome wake-up. Caller should call
    *  MlsClient.pollPendingWelcomes() immediately. Best-effort: the 30s
    *  background poll remains the correctness fallback. */
@@ -143,12 +183,19 @@ export function createEncryptedTransport(
     });
   }
 
-  async function handleInbound(msg: IncomingMessage) {
+  // Decrypt a single inbound row (live `msg` or a backfilled `bfd` row — both
+  // carry the same fields). Returns the decrypted frame + version, or null on
+  // any failure (empty/unknown/undecryptable), having already reported it via
+  // onDecryptFailure. Shared by the live path and backfill so both stay in
+  // lock-step on v=1/v=2 handling.
+  async function decryptOne(
+    msg: IncomingMessage,
+  ): Promise<{ frame: ChatFrame; frameVersion: 1 | 2 } | null> {
     // Peek the version byte before doing any lookups — v=2 skips the v=1
     // peer-pub directory hit entirely.
     if (msg.ciphertext.length === 0) {
       opts.onDecryptFailure?.(msg, "empty ciphertext");
-      return;
+      return null;
     }
     const version = msg.ciphertext[0];
 
@@ -158,21 +205,21 @@ export function createEncryptedTransport(
           msg,
           "v=2 frame received but no MLS engine configured",
         );
-        return;
+        return null;
       }
       let groupId: Uint8Array | null;
       try {
         groupId = await opts.resolveChatGroupId(msg.chatId);
       } catch (err) {
         opts.onDecryptFailure?.(msg, `groupId lookup failed: ${String(err)}`);
-        return;
+        return null;
       }
       if (!groupId) {
         opts.onDecryptFailure?.(
           msg,
           `v=2 frame for chat ${msg.chatId} but no mls_group_id locally`,
         );
-        return;
+        return null;
       }
       try {
         const result = decryptInbound({
@@ -189,11 +236,11 @@ export function createEncryptedTransport(
         if (result.frameVersion !== 2) {
           throw new Error("expected v=2 result for v=2 ciphertext");
         }
-        dispatch(msg, result.frame, 2);
+        return { frame: result.frame, frameVersion: 2 };
       } catch (err) {
         opts.onDecryptFailure?.(msg, String(err));
+        return null;
       }
-      return;
     }
 
     // v=1 libsodium path.
@@ -204,7 +251,7 @@ export function createEncryptedTransport(
       candidates = await opts.resolveSenderX25519Pubs(msg.senderId);
     } catch (err) {
       opts.onDecryptFailure?.(msg, `pre-decrypt lookup failed: ${String(err)}`);
-      return;
+      return null;
     }
     try {
       const result = decryptInbound({
@@ -217,10 +264,59 @@ export function createEncryptedTransport(
       if (result.frameVersion !== 1) {
         throw new Error("expected v=1 result for v=1 ciphertext");
       }
-      dispatch(msg, result.frame, 1);
+      return { frame: result.frame, frameVersion: 1 };
     } catch (err) {
       opts.onDecryptFailure?.(msg, String(err));
+      return null;
     }
+  }
+
+  async function handleInbound(msg: IncomingMessage) {
+    const res = await decryptOne(msg);
+    if (res) dispatch(msg, res.frame, res.frameVersion);
+  }
+
+  // Decrypt one `bfd` page: map each row through decryptOne (dropping the ones
+  // that fail), split messages from reactions. Ordering is preserved from the
+  // server's ascending-serial page. `upTo`/`more` pass through untouched so the
+  // caller advances its cursor even past undecryptable rows.
+  async function decryptBackfill(
+    bfd: IncomingBackfill,
+  ): Promise<DecryptedBackfill> {
+    const messages: BackfilledMessage[] = [];
+    const reactions: BackfilledReaction[] = [];
+    for (const row of bfd.messages) {
+      const asMsg: IncomingMessage = {
+        t: "msg",
+        chatId: bfd.chatId,
+        serverMsgId: row.serverMsgId,
+        senderId: row.senderId,
+        ciphertext: row.ciphertext,
+        nonce: row.nonce,
+        ts: row.ts,
+      };
+      const res = await decryptOne(asMsg);
+      if (!res) continue;
+      const base = {
+        chatId: bfd.chatId,
+        serverMsgId: row.serverMsgId,
+        senderId: row.senderId,
+        frameVersion: res.frameVersion,
+        ts: row.ts,
+      };
+      if (isReactionFrame(res.frame)) {
+        reactions.push({ ...base, frame: res.frame });
+      } else {
+        messages.push({ ...base, frame: res.frame });
+      }
+    }
+    return {
+      chatId: bfd.chatId,
+      messages,
+      reactions,
+      upTo: bfd.upTo,
+      more: bfd.more,
+    };
   }
 
   function dispatch(msg: IncomingMessage, frame: ChatFrame, version: 1 | 2) {
@@ -342,14 +438,20 @@ export function createEncryptedTransport(
     close: () => underlying.close(),
     subscribe: (chatIds) => underlying.subscribe(chatIds),
     send,
-    // Ephemeral signals delegate straight through — no encryption.
+    // Ephemeral signals + backfill cursors delegate straight through — no
+    // encryption (they carry only plaintext metadata / serial cursors).
     sendTyping: (input) => underlying.sendTyping(input),
     sendRead: (input) => underlying.sendRead(input),
+    sendBackfill: (chats) => underlying.sendBackfill(chats),
     onMessage,
     onState: (handler) => underlying.onState(handler),
     onError: (handler) => underlying.onError(handler),
     onTyping: (handler) => underlying.onTyping(handler),
     onRead: (handler) => underlying.onRead(handler),
+    onBackfill: (handler) =>
+      underlying.onBackfill((bfd) => {
+        void decryptBackfill(bfd).then(handler);
+      }),
     onMlsWelcome: (handler) =>
       underlying.onMlsWelcome((env) => handler(env.ts)),
   };
