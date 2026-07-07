@@ -126,8 +126,13 @@ jobs:
           echo "POOLED_DATABASE_URL=$POOLED" >> "$GITHUB_ENV"
 
       - name: Migrate + seed database
+        # Schema declares both url=env(DATABASE_URL) and directUrl=env(DIRECT_URL).
+        # Migrate + seed run over the DIRECT (unpooled) url on both — migrations
+        # require it, and seeding over the pooler risks prepared-statement quirks.
+        # Runtime api/chat-ws use the POOLED url (Neon HTTP driver) below.
         env:
           DATABASE_URL: ${{ env.DIRECT_DATABASE_URL }}
+          DIRECT_URL: ${{ env.DIRECT_DATABASE_URL }}
         run: |
           pnpm --filter @repo/database db:migrate:deploy
           pnpm --filter @repo/database db:seed
