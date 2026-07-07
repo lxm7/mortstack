@@ -1,0 +1,250 @@
+# Phase-0 iOS E2E harness (Maestro launch smoke).
+#
+# Proves end-to-end: EAS dev-client build → macOS runner → booted sim → hermetic
+# backend on localhost (api-server + chat-ws + fresh Neon branch + seed) → auth →
+# chat-list mounts. See apps/mobile/.maestro/launch-smoke.yaml for what it asserts
+# and why it stops at the empty list (E2EE chats can't be seeded — Phase 1 adds an
+# on-device chat-establishment flow before chat-smoke can run).
+#
+# ── Why hermetic, not staging ────────────────────────────────────────────────
+# The app resolves its backend from BUILD-TIME EXPO_PUBLIC_API_URL /
+# EXPO_PUBLIC_CHAT_WS_URL, falling back to http://localhost:3001 / ws://localhost:8787
+# (apps/mobile/lib/api/url.ts). We build the dev artifact with NO env baked, so at
+# runtime the app hits localhost — which on the sim maps to the runner host, where
+# we boot the backend. Deterministic, disposable, no shared-env pollution.
+#
+# ── Required repo secrets (this stays red until all are set) ──────────────────
+#   EXPO_TOKEN        — EAS build auth. Also run `eas init` once so app.json gets
+#                       extra.eas.projectId (not present yet — prerequisite).
+#   NEON_API_KEY      — provision/destroy the per-run Neon branch.
+#   NEON_PROJECT_ID   — the Neon project to branch from.
+# The chat-ws↔api HMAC is generated per-run below and shared between both
+# processes, so it needs no secret.
+#
+# ── UNVERIFIED from authoring env — confirm on first real run ────────────────
+#   1. SST `Resource.ChatWsHmacSecret.value` under bare `wrangler dev` / `tsx`:
+#      the sst SDK reads process.env.SST_RESOURCE_<Name> (JSON). We inject that
+#      for both processes below. If the SDK also demands SST_RESOURCE_App, add it.
+#   2. Neon pooled vs direct URL: migrate/seed use the DIRECT url (Prisma binary
+#      engine, TCP); api/chat-ws use the POOLED url (Neon HTTP driver). Verify the
+#      neonctl connection-string flags below return the shapes your driver expects.
+#   3. Neon default database-name/role-name — set explicitly if your project's
+#      defaults differ from what neonctl infers.
+#   4. api-server extra env (BETTER_AUTH_SECRET etc.): the .env is not in CI, so
+#      we pass a minimal dev env inline. Add any var services/api/src/lib/auth.ts
+#      requires at boot that isn't here.
+
+name: E2E iOS (Maestro)
+
+on:
+  workflow_dispatch:
+  # Cost-gated: macOS minutes + EAS build. Only on PRs that touch the app or the
+  # backend surface the smoke exercises. Widen once it's proven stable.
+  pull_request:
+    paths:
+      - "apps/mobile/**"
+      - "services/api/**"
+      - "services/chat-ws/**"
+      - "packages/database/**"
+      - ".github/workflows/e2e-ios.yml"
+
+concurrency:
+  group: e2e-ios-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TURBO_TELEMETRY_DISABLED: 1
+  APP_ID: io.sessions.app # app.json ios.bundleIdentifier
+  API_PORT: "3001"
+  WS_PORT: "8787"
+
+jobs:
+  e2e-ios:
+    name: Launch smoke
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # api-server imports @repo/chat-mls-core (mlsRouter), whose native binding
+      # is loaded at module init — the server will not boot without index.node.
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: packages/chat-mls-core/node
+
+      - name: Build MLS native core
+        run: pnpm --filter @repo/chat-mls-core build:node
+
+      # ── Shared per-run HMAC (chat-ws → api /internal/chat/verify-session) ─────
+      # Both processes read Resource.ChatWsHmacSecret.value via the sst SDK, which
+      # resolves from SST_RESOURCE_ChatWsHmacSecret (JSON). Same value → the
+      # verify-session callback authenticates.
+      - name: Generate dev HMAC secret
+        run: |
+          HMAC="$(openssl rand -hex 32)"
+          echo "::add-mask::$HMAC"
+          echo "SST_RESOURCE_ChatWsHmacSecret={\"value\":\"$HMAC\"}" >> "$GITHUB_ENV"
+
+      # ── Neon: fresh branch per run ────────────────────────────────────────────
+      - name: Provision Neon branch
+        id: neon
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ secrets.NEON_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          BRANCH="ci-e2e-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          npx neonctl branches create \
+            --project-id "$NEON_PROJECT_ID" \
+            --name "$BRANCH" --output json > /dev/null
+          # Direct (TCP) for Prisma migrate/seed; pooled (HTTP driver) for runtime.
+          DIRECT="$(npx neonctl connection-string "$BRANCH" --project-id "$NEON_PROJECT_ID")"
+          POOLED="$(npx neonctl connection-string "$BRANCH" --project-id "$NEON_PROJECT_ID" --pooled)"
+          echo "::add-mask::$DIRECT"
+          echo "::add-mask::$POOLED"
+          echo "DIRECT_DATABASE_URL=$DIRECT" >> "$GITHUB_ENV"
+          echo "POOLED_DATABASE_URL=$POOLED" >> "$GITHUB_ENV"
+
+      - name: Migrate + seed database
+        env:
+          DATABASE_URL: ${{ env.DIRECT_DATABASE_URL }}
+        run: |
+          pnpm --filter @repo/database db:migrate:deploy
+          pnpm --filter @repo/database db:seed
+
+      # ── Backend on localhost (same host the sim resolves to) ──────────────────
+      - name: Start api-server
+        env:
+          PORT: ${{ env.API_PORT }}
+          NODE_ENV: development
+          DATABASE_URL: ${{ env.POOLED_DATABASE_URL }}
+          BETTER_AUTH_URL: http://localhost:3001
+          BETTER_AUTH_SECRET: ci-dev-better-auth-secret-not-a-real-secret
+          TRUSTED_ORIGINS: http://localhost:3001
+          # SST_RESOURCE_ChatWsHmacSecret is already in $GITHUB_ENV (masked).
+        run: |
+          # Bypass the package "dev" script (--env-file=.env, which doesn't exist
+          # in CI) and run the entrypoint directly with the env above.
+          nohup pnpm --filter @repo/api-server exec tsx src/server.ts > api.log 2>&1 &
+          echo "api started (pid $!)"
+
+      - name: Start chat-ws (wrangler dev)
+        env:
+          POOLED_DATABASE_URL: ${{ env.POOLED_DATABASE_URL }}
+        run: |
+          # wrangler dev reads secrets from .dev.vars (gitignored; CI-only here).
+          # DATABASE_URL → Neon HTTP driver; SST_RESOURCE_* → sst SDK Resource proxy.
+          cat > services/chat-ws/.dev.vars <<EOF
+          DATABASE_URL=${POOLED_DATABASE_URL}
+          SST_RESOURCE_ChatWsHmacSecret=${SST_RESOURCE_ChatWsHmacSecret}
+          EOF
+          ( cd services/chat-ws && nohup pnpm exec wrangler dev --local \
+              --port "${WS_PORT}" --persist-to .wrangler/state > ../../ws.log 2>&1 & )
+          echo "chat-ws starting"
+
+      - name: Wait for backend
+        run: |
+          set -e
+          for name_port in "api:${API_PORT}" "ws:${WS_PORT}"; do
+            name="${name_port%%:*}"; port="${name_port##*:}"
+            echo "waiting for $name on :$port"
+            for i in $(seq 1 60); do
+              if nc -z localhost "$port"; then echo "$name up"; break; fi
+              if [ "$i" = "60" ]; then
+                echo "::error::$name never came up on :$port"; cat api.log ws.log || true; exit 1
+              fi
+              sleep 2
+            done
+          done
+
+      # ── EAS dev-client simulator build (cloud) → download .app ────────────────
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Build iOS simulator dev client (EAS)
+        id: build
+        working-directory: apps/mobile
+        run: |
+          set -euo pipefail
+          # No EXPO_PUBLIC_* baked → app falls back to localhost at runtime.
+          META="$(eas build --profile development-simulator --platform ios \
+                    --non-interactive --wait --json)"
+          URL="$(echo "$META" | jq -r '.[0].artifacts.applicationArchiveUrl')"
+          echo "artifact=$URL" >> "$GITHUB_OUTPUT"
+
+      - name: Download + extract app
+        run: |
+          set -euo pipefail
+          curl -L -o build.tar.gz "${{ steps.build.outputs.artifact }}"
+          mkdir -p build && tar -xzf build.tar.gz -C build
+          APP_PATH="$(find build -maxdepth 2 -name '*.app' -type d | head -n1)"
+          echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+
+      # ── Boot sim, install, run Maestro ────────────────────────────────────────
+      - name: Boot simulator + install app
+        run: |
+          set -euo pipefail
+          UDID="$(xcrun simctl list devices available | grep -m1 'iPhone 16' \
+                    | grep -oE '[0-9A-F-]{36}')"
+          echo "SIM_UDID=$UDID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl install "$UDID" "$APP_PATH"
+
+      - name: Install Maestro
+        run: |
+          curl -Ls "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+
+      - name: Run launch smoke
+        env:
+          MAESTRO_APP_ID: ${{ env.APP_ID }}
+        run: |
+          maestro --device "$SIM_UDID" test \
+            apps/mobile/.maestro/launch-smoke.yaml \
+            --format junit --output maestro-report.xml
+
+      - name: Upload Maestro artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: maestro-e2e
+          path: |
+            maestro-report.xml
+            ~/.maestro/tests/**
+            api.log
+            ws.log
+          if-no-files-found: ignore
+
+      # ── Teardown ──────────────────────────────────────────────────────────────
+      - name: Destroy Neon branch
+        if: always()
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ secrets.NEON_PROJECT_ID }}
+        run: |
+          npx neonctl branches delete "${{ steps.neon.outputs.branch }}" \
+            --project-id "$NEON_PROJECT_ID" || true

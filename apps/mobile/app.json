@@ -57,8 +57,15 @@
     "extra": {
       "_complianceTodos": [
         "Before first App Store / Play public submission:",
+        "1. iOS: set ios.config.usesNonExemptEncryption = true. SQLCipher + libsodium → ECCN 5D002 (mass-market via License Exception ENC). US entity → file annual BIS self-classification (CSV to crypt-supp8@bis.doc.gov by Feb 1). Non-US entity → check national regime (UK ECJU / EU dual-use), usually no filing.",
+        "Before first App Store / Play public submission:",
         "1. iOS: set ios.config.usesNonExemptEncryption = true. SQLCipher + libsodium → ECCN 5D002 (mass-market via License Exception ENC). US entity → file annual BIS self-classification (CSV to crypt-supp8@bis.doc.gov by Feb 1). Non-US entity → check national regime (UK ECJU / EU dual-use), usually no filing."
-      ]
-    }
+      ],
+      "router": {},
+      "eas": {
+        "projectId": "88084928-70f3-4f8c-987f-e5bbee6779cf"
+      }
+    },
+    "owner": "lxm7"
   }
 }
