@@ -151,7 +151,7 @@ const monoFont = createFont({
 // ── Raw palette ─────────────────────────────────────────────────────────────
 // THEME §2 hexes. Themes map these to semantic slots below; components never
 // reference raw hex — they use the semantic theme tokens ($primary, $surface…).
-const palette = {
+export const palette = {
   // Shared accent ramp (§2.1)
   ice100: "#e6f7ff",
   ice300: "#7dd3fc",
@@ -179,6 +179,13 @@ const palette = {
   onError: "#ffffff",
   errorContainer: "#ffdad6",
   success: "#0f7a5a",
+
+  // Reveal / glow (THEME §2.3, §5) — the primary hue at alpha for tinted panels
+  // and ownership glows. `reveal-glow` in the doc is realised as these slots.
+  revealFill: "rgba(0,105,110,0.06)", // emphasized inspector panel fill
+  revealBorder: "rgba(0,105,110,0.25)", // emphasized inspector panel border
+  primaryTint: "rgba(0,105,110,0.12)", // active/pressed primary affordance fill
+  ownGlow: "#007a74", // outgoing-bubble ownership glow (shadow hue)
 
   black: "#000000",
   white: "#ffffff",
@@ -223,6 +230,7 @@ export const tokens = createTokens({
     lg: 40,
     xl: 64,
     gutter: 16,
+    screen: 20, // THEME §4 margin.mobile — outer screen gutter
   },
   radius: {
     0: 0,
@@ -279,6 +287,12 @@ const light = {
   plaintext: palette.onSurface,
   verified: palette.success,
   tamper: palette.error,
+
+  // Reveal / glow slots (THEME §2.3, §5) — see palette above.
+  revealFill: palette.revealFill,
+  revealBorder: palette.revealBorder,
+  primaryTint: palette.primaryTint,
+  ownGlow: palette.ownGlow,
 
   // Tamagui built-in interaction slots
   backgroundHover: palette.surfaceContainerLow,

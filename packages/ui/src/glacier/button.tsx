@@ -1,11 +1,16 @@
 // Glacier Button (components/Button.md). Three variants share one shape
-// language; sizes sm/md/lg all meet the 44pt tap-target floor. Icon-agnostic:
-// pass rendered icon nodes via `icon` / `iconAfter` (screens own the icon set).
+// language. md/lg are ≥44pt tall; sm is a compact 36pt but reaches the 44pt
+// tap-target floor (THEME §8) via hitSlop, so the touch area is always ≥44.
+// Icon-agnostic: pass rendered icon nodes via `icon` / `iconAfter` (screens
+// own the icon set).
 import type { ReactNode } from "react";
-import { styled, Text, YStack, type GetProps } from "tamagui";
+import { styled, YStack, type GetProps } from "tamagui";
+
+import { Label } from "./typography";
 
 const ButtonFrame = styled(YStack, {
   name: "GlacierButton",
+  accessibilityRole: "button",
   flexDirection: "row",
   alignItems: "center",
   justifyContent: "center",
@@ -47,13 +52,10 @@ const ButtonFrame = styled(YStack, {
   defaultVariants: { variant: "primary", size: "md" },
 });
 
-const ButtonLabel = styled(Text, {
+// Composes the Label preset (THEME §3.1 label: body 13/16/500) — only the
+// per-variant colour differs.
+const ButtonLabel = styled(Label, {
   name: "GlacierButtonLabel",
-  fontFamily: "$body",
-  fontSize: 13,
-  lineHeight: 16,
-  fontWeight: "500",
-  letterSpacing: 0.26,
 
   variants: {
     variant: {
@@ -85,10 +87,21 @@ export function Button({
   icon,
   iconAfter,
   children,
+  disabled,
   ...rest
 }: ButtonProps) {
+  // sm is 36pt tall; extend the touch area by 4pt top/bottom so it meets the
+  // 44pt floor (THEME §8) without changing the visual size.
+  const hitSlop = size === "sm" ? { top: 4, bottom: 4 } : undefined;
   return (
-    <ButtonFrame variant={variant} size={size} {...rest}>
+    <ButtonFrame
+      variant={variant}
+      size={size}
+      disabled={disabled}
+      hitSlop={hitSlop}
+      accessibilityState={{ disabled: !!disabled }}
+      {...rest}
+    >
       {icon}
       {typeof children === "string" ? (
         <ButtonLabel variant={variant}>{children}</ButtonLabel>
