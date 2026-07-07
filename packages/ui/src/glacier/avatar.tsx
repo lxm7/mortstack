@@ -3,13 +3,20 @@
 // accent palette; fill is that hue at 15%, initials at full opacity.
 import { Image, Text, YStack, styled } from "tamagui";
 
+import { palette } from "../tamagui.config";
+
 type Size = "sm" | "md" | "lg";
 type Status = "online" | "away" | "offline";
 
 const DIAMETER: Record<Size, number> = { sm: 32, md: 40, lg: 48 };
 
-// Fixed accent palette (THEME §2): primary teal, secondary violet, slate.
-const HUES = ["#00696e", "#5400c3", "#3a494a"] as const;
+// Fixed accent palette (THEME §2): primary teal, secondary violet, slate —
+// sourced from the token palette so a §2 recolour propagates here.
+const HUES = [
+  palette.ice700,
+  palette.violet500,
+  palette.onSurfaceVariant,
+] as const;
 
 function hueFor(seed: string): string {
   let h = 0;

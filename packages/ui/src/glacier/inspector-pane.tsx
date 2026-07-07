@@ -6,6 +6,8 @@
 import type { ReactNode } from "react";
 import { Text, XStack, YStack, styled } from "tamagui";
 
+import { BodyLg, Meta, MonoMd } from "./typography";
+
 const PaneFrame = styled(YStack, {
   name: "GlacierInspectorPane",
   borderRadius: "$lg",
@@ -20,9 +22,9 @@ const PaneFrame = styled(YStack, {
         borderColor: "$outlineVariant",
       },
       emphasized: {
-        backgroundColor: "rgba(0,105,110,0.06)",
+        backgroundColor: "$revealFill",
         borderWidth: 0.5,
-        borderColor: "rgba(0,105,110,0.25)",
+        borderColor: "$revealBorder",
         shadowColor: "$primary",
         shadowOpacity: 0.1,
         shadowRadius: 20,
@@ -32,15 +34,10 @@ const PaneFrame = styled(YStack, {
   defaultVariants: { tone: "recessed" },
 });
 
-const PaneLabel = styled(Text, {
+// Composes the Meta preset (THEME §3.1 meta: 12/16/500, uppercase, tabular) —
+// only the tone colour differs.
+const PaneLabel = styled(Meta, {
   name: "GlacierPaneLabel",
-  fontFamily: "$body",
-  fontSize: 12,
-  lineHeight: 16,
-  fontWeight: "500",
-  letterSpacing: 0.96,
-  textTransform: "uppercase",
-  fontVariant: ["tabular-nums"],
 
   variants: {
     tone: {
@@ -50,22 +47,16 @@ const PaneLabel = styled(Text, {
   } as const,
 });
 
-// Ciphertext / hexdump — dim, recessed, machine.
-export const PaneMonoContent = styled(Text, {
+// Ciphertext / hexdump — dim, recessed, machine. Composes MonoMd (THEME §3.1
+// mono-md: mono 13/20/500, tabular).
+export const PaneMonoContent = styled(MonoMd, {
   name: "GlacierPaneMono",
-  fontFamily: "$mono",
-  fontSize: 13,
-  lineHeight: 20,
-  color: "$onSurfaceVariant",
-  fontVariant: ["tabular-nums"],
 });
 
-// Plaintext — bright, forward, human.
-export const PanePlaintext = styled(Text, {
+// Plaintext — bright, forward, human. Composes BodyLg (18/28) + the forward
+// emphasis (weight 600, on-primary-container ink).
+export const PanePlaintext = styled(BodyLg, {
   name: "GlacierPanePlaintext",
-  fontFamily: "$body",
-  fontSize: 18,
-  lineHeight: 28,
   fontWeight: "600",
   color: "$onPrimaryContainer",
 });

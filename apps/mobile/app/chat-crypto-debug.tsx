@@ -194,7 +194,7 @@ export default function ChatCryptoDebug() {
           device identity
         </Text>
         {identityError ? (
-          <Text color="red" fontSize="$2">
+          <Text color="$error" fontSize="$2">
             {identityError}
           </Text>
         ) : identity ? (

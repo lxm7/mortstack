@@ -47,6 +47,7 @@ const ComposerPill = styled(XStack, {
 
 const SendButton = styled(YStack, {
   name: "GlacierSendButton",
+  accessibilityRole: "button",
   width: 44,
   height: 44,
   borderRadius: "$md",
@@ -55,7 +56,7 @@ const SendButton = styled(YStack, {
 
   variants: {
     active: {
-      true: { backgroundColor: "rgba(0,105,110,0.12)" },
+      true: { backgroundColor: "$primaryTint" },
       false: { backgroundColor: "$surfaceContainerLow" },
     },
   } as const,
@@ -118,6 +119,8 @@ export function Composer({
       <SendButton
         testID="composer-send"
         active={active}
+        accessibilityLabel="Send message"
+        accessibilityState={{ disabled: !active }}
         onPress={active ? onSend : undefined}
         pressStyle={active ? { opacity: 0.85 } : undefined}
       >

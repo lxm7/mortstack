@@ -192,8 +192,8 @@ export default function InspectScreen() {
       >
         <XStack alignItems="center" gap="$xs">
           <YStack
-            width={40}
-            height={40}
+            width={44}
+            height={44}
             alignItems="center"
             justifyContent="center"
             borderRadius="$full"
@@ -205,8 +205,8 @@ export default function InspectScreen() {
           </YStack>
           <HeadlineMd flex={1}>Inspect encryption</HeadlineMd>
           <YStack
-            width={40}
-            height={40}
+            width={44}
+            height={44}
             alignItems="center"
             justifyContent="center"
             borderRadius="$full"
