@@ -58,7 +58,7 @@ function Dot({
 export function TypingIndicator() {
   const theme = useTheme();
   const reduced = useReducedMotion();
-  const dotColor = theme.onSurfaceVariant?.val ?? "#888";
+  const dotColor = theme.onSurfaceVariant?.val ?? "#3a494a";
 
   return (
     <YStack
