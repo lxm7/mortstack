@@ -1,0 +1,37 @@
+{
+  "cli": {
+    "version": ">= 18.7.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "R2_PUBLIC_BASE_URL": "https://pub-2ffb489eefe84de8b9b32e409fd30957.r2.dev"
+      }
+    },
+    "development-simulator": {
+      "extends": "development",
+      "ios": {
+        "simulator": true
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "env": {
+        "R2_PUBLIC_BASE_URL": "https://pub-2ffb489eefe84de8b9b32e409fd30957.r2.dev"
+      }
+    },
+    "preview-simulator": {
+      "extends": "preview",
+      "ios": { "simulator": true }
+    },
+    "production": {
+      "autoIncrement": true
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}

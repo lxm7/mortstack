@@ -94,7 +94,7 @@ export default function BlocksScreen() {
             No blocked accounts
           </Text>
           {error && (
-            <Text fontSize="$2" color="#dc2626">
+            <Text fontSize="$2" color="$error">
               {error}
             </Text>
           )}

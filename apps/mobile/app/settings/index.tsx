@@ -9,8 +9,6 @@ import { Button, Switch, Text, View, XStack, YStack } from "tamagui";
 
 import { useSettingsStore } from "@/store/settings";
 
-const DESTRUCTIVE = "#dc2626";
-
 export default function SettingsScreen() {
   const router = useRouter();
   const readReceipts = useSettingsStore((s) => s.readReceipts);
@@ -56,7 +54,7 @@ export default function SettingsScreen() {
         </Text>
         <SettingsRow
           label="Delete account"
-          color={DESTRUCTIVE}
+          color="$error"
           onPress={() => router.push("/settings/delete-account" as never)}
         />
       </YStack>

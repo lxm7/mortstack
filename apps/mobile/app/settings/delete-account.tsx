@@ -16,8 +16,6 @@ import { authClient } from "@/lib/auth/client";
 import { useAuthStore } from "@/store/auth";
 import { clearSessionToken } from "@/lib/auth/session";
 
-const DESTRUCTIVE = "#dc2626";
-
 export default function DeleteAccountScreen() {
   const router = useRouter();
   const clearSession = useAuthStore((s) => s.clearSession);
@@ -83,7 +81,7 @@ export default function DeleteAccountScreen() {
       </XStack>
 
       <YStack px="$4" py="$3" gap="$4">
-        <Text fontSize="$5" fontWeight="700" color={DESTRUCTIVE}>
+        <Text fontSize="$5" fontWeight="700" color="$error">
           This cannot be undone.
         </Text>
 
@@ -124,7 +122,7 @@ export default function DeleteAccountScreen() {
         </YStack>
 
         {error && (
-          <Text fontSize="$2" color={DESTRUCTIVE}>
+          <Text fontSize="$2" color="$error">
             {error}
           </Text>
         )}
@@ -134,12 +132,12 @@ export default function DeleteAccountScreen() {
           disabled={!canSubmit}
           opacity={canSubmit ? 1 : 0.5}
           onPress={onDelete}
-          style={{ backgroundColor: DESTRUCTIVE }}
+          backgroundColor="$error"
         >
           {busy ? (
             <Spinner size="small" />
           ) : (
-            <Text color="white" fontWeight="700">
+            <Text color="$onError" fontWeight="700">
               Delete my account
             </Text>
           )}

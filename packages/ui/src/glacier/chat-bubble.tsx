@@ -4,7 +4,7 @@
 // inside. Presentational only — the screen wraps it in a Pressable for
 // long-press (→ the crypto inspector).
 import type { ReactNode } from "react";
-import { Text, XStack, YStack, styled } from "tamagui";
+import { XStack, YStack, styled } from "tamagui";
 import { LinearGradient } from "@tamagui/linear-gradient";
 
 import { BodyMd, BodySm, Meta } from "./typography";
@@ -83,7 +83,7 @@ export function ChatBubble({
           borderWidth={failed ? 1 : 0}
           borderColor={failed ? "$error" : "transparent"}
           // soft ownership glow (THEME §5 — interactive/owned only)
-          shadowColor="#007a74"
+          shadowColor="$ownGlow"
           shadowOpacity={0.2}
           shadowRadius={10}
           shadowOffset={{ width: 0, height: 4 }}
@@ -158,18 +158,7 @@ export function DayDivider({ label }: { label: string }) {
         paddingHorizontal="$sm"
         paddingVertical={6}
       >
-        <Text
-          fontFamily="$body"
-          fontSize={12}
-          lineHeight={16}
-          fontWeight="500"
-          letterSpacing={0.96}
-          textTransform="uppercase"
-          color="$onSurfaceVariant"
-          fontVariant={["tabular-nums"]}
-        >
-          {label}
-        </Text>
+        <Meta>{label}</Meta>
       </YStack>
     </YStack>
   );
