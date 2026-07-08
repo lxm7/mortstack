@@ -19,6 +19,7 @@
     },
     "preview": {
       "distribution": "internal",
+      "android": { "buildType": "apk" },
       "env": {
         "R2_PUBLIC_BASE_URL": "https://pub-2ffb489eefe84de8b9b32e409fd30957.r2.dev"
       }
