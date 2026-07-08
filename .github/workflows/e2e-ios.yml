@@ -239,7 +239,11 @@ jobs:
         env:
           MAESTRO_APP_ID: ${{ env.APP_ID }}
         run: |
+          # Pass MAESTRO_APP_ID via --env, not the process environment: pinned
+          # Maestro (1.39.0) does not interpolate `appId: ${MAESTRO_APP_ID}`
+          # from the OS env, so it resolved to null ("Unable to launch app null").
           maestro --device "$SIM_UDID" test \
+            --env MAESTRO_APP_ID="$MAESTRO_APP_ID" \
             apps/mobile/.maestro/launch-smoke.yaml \
             --format junit --output maestro-report.xml
 
