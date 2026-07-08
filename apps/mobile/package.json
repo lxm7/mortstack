@@ -7,6 +7,7 @@
     "sqlcipher": true
   },
   "scripts": {
+    "eas-build-pre-install": "bash ../../scripts/fetch-native-artifacts.sh \"${EAS_BUILD_PLATFORM:-ios}\"",
     "dev": "expo start --dev-client",
     "start": "expo start --dev-client -c",
     "ios": "expo start --dev-client -c --ios",

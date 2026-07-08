@@ -1,0 +1,50 @@
+# Phase-0 launch smoke — proves the whole E2E harness end to end WITHOUT a chat.
+#
+# What it asserts: the built dev-client boots, the auth gate renders, a seeded
+# credential sign-in reaches the backend (Better Auth over the API), and the
+# app lands on the conversation list. It deliberately stops at the EMPTY list —
+# a fresh CI backend has zero chats (the Prisma seed creates accounts/profiles
+# only; E2EE chats are provisioned on-device at create-time and can't be
+# seeded). Asserting a chat/send/react is Phase 1, which needs an on-device
+# chat-establishment flow first (see .maestro/README.md).
+#
+# So a green run here means: EAS build OK → sim boot OK → api-server + chat-ws
+# reachable on localhost → auth OK → chat-list route mounts. That covers the
+# large majority of "did we break the app/backend contract" breakage.
+#
+# Preconditions: app installed on a booted sim; api-server (:3001) + chat-ws
+# (:8787) up on the runner; DB seeded with alice (packages/database/prisma/
+# seed.ts, SEED_PASSWORD). Set MAESTRO_APP_ID (e.g. io.sessions.app).
+appId: ${MAESTRO_APP_ID}
+---
+- launchApp
+
+# Cold-start sign-in. Mirrors chat-smoke.yaml: launchApp relaunches the process
+# and the Better Auth session does not rehydrate, so we land on the auth gate.
+# Gated on "Login" being visible — a no-op if a session ever does persist.
+# Creds come from the DB seed (SEED_PASSWORD = "password123").
+- runFlow:
+    when:
+      visible: "Login"
+    commands:
+      - tapOn: "Email Address"
+      - inputText: "alice@example.com"
+      - tapOn: "Password"
+      - inputText: "password123"
+      # Password field has enterKeyHint="go" + onSubmitEditing → submit via the
+      # keyboard return key (same rationale as chat-smoke: avoids hideKeyboard
+      # and a Login-button tap the keyboard can overlap).
+      - pressKey: Enter
+
+# Landed on the conversation list. Anchor on the empty-state headline the
+# chat-list renders when alice has no chats ("No chats yet", apps/mobile/app/
+# (tabs)/index.tsx). This is the Phase-0 success signal: auth cleared and the
+# authed route mounted against a live backend.
+- extendedWaitUntil:
+    visible: "No chats yet"
+    timeout: 20000
+
+# Belt-and-braces: the sticky New Chat action bar is always present on the list
+# screen. Asserting it too guards against a future empty-state copy change
+# silently passing on a half-rendered screen.
+- assertVisible: "New Chat"

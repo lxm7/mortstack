@@ -6,9 +6,11 @@ import { Text, XStack, YStack, styled } from "tamagui";
 
 import { Avatar, type AvatarProps } from "./avatar";
 import { Badge } from "./badge";
+import { Meta } from "./typography";
 
 const RowFrame = styled(XStack, {
   name: "GlacierListRow",
+  accessibilityRole: "button",
   alignItems: "center",
   gap: "$sm",
   paddingHorizontal: "$sm",
@@ -20,7 +22,7 @@ const RowFrame = styled(XStack, {
 const RowTitle = styled(Text, {
   name: "RowTitle",
   fontFamily: "$body",
-  fontSize: 15,
+  fontSize: 16, // body-md (was off-scale 15) — THEME §3.1
   lineHeight: 20,
   color: "$onSurface",
   numberOfLines: 1,
@@ -46,14 +48,10 @@ const RowPreview = styled(Text, {
   } as const,
 });
 
-const RowTimestamp = styled(Text, {
+// Composes the Meta preset (THEME §3.1 meta: 12/16/500, uppercase, tabular) —
+// only the unread emphasis (primary + 600) differs.
+const RowTimestamp = styled(Meta, {
   name: "RowTimestamp",
-  fontFamily: "$body",
-  fontSize: 12,
-  lineHeight: 16,
-  letterSpacing: 0.96,
-  textTransform: "uppercase",
-  fontVariant: ["tabular-nums"],
   variants: {
     unread: {
       true: { color: "$primary", fontWeight: "600" },

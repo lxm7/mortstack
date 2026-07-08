@@ -127,7 +127,7 @@ export default function ChatListScreen() {
       >
         <XStack
           height={64}
-          px={20}
+          px="$screen"
           alignItems="center"
           justifyContent="space-between"
         >
@@ -158,7 +158,7 @@ export default function ChatListScreen() {
 
       {/* Section title */}
       <XStack
-        px={20}
+        px="$screen"
         pt="$md"
         pb="$xs"
         alignItems="center"
@@ -233,7 +233,7 @@ export default function ChatListScreen() {
         borderTopColor="$outlineVariant"
         paddingTop={12}
         paddingBottom={insets.bottom + 12}
-        px={20}
+        px="$screen"
       >
         <Button
           variant="primary"
