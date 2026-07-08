@@ -90,6 +90,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: packages/chat-mls-core/node
+          cache-on-failure: true
 
       - name: Build MLS native core
         run: pnpm --filter @repo/chat-mls-core build:node
@@ -182,20 +183,23 @@ jobs:
             done
           done
 
-      # ── EAS dev-client simulator build (cloud) → download .app ────────────────
+      # ── EAS simulator build (cloud) → download .app ──────────────────────────
       - name: Setup EAS
         uses: expo/expo-github-action@v8
         with:
-          eas-version: latest
+          eas-version: 20.5.1
           token: ${{ secrets.EXPO_TOKEN }}
 
-      - name: Build iOS simulator dev client (EAS)
+      - name: Build iOS simulator app (EAS)
         id: build
         working-directory: apps/mobile
         run: |
           set -euo pipefail
-          # No EXPO_PUBLIC_* baked → app falls back to localhost at runtime.
-          META="$(eas build --profile development-simulator --platform ios \
+          # preview-simulator = RELEASE build with the JS bundle EMBEDDED — no
+          # dev-client launcher, no Metro needed (a dev-client build boots to
+          # "No development servers found" in CI). No EXPO_PUBLIC_* baked → the
+          # `??` fallback in lib/api/url.ts hands back localhost at runtime.
+          META="$(eas build --profile preview-simulator --platform ios \
                     --non-interactive --wait --json)"
           URL="$(echo "$META" | jq -r '.[0].artifacts.applicationArchiveUrl')"
           echo "artifact=$URL" >> "$GITHUB_OUTPUT"
@@ -219,11 +223,18 @@ jobs:
           xcrun simctl bootstatus "$UDID" -b
           xcrun simctl install "$UDID" "$APP_PATH"
 
+      - name: Cache Maestro
+        uses: actions/cache@v4
+        with:
+          path: ~/.maestro
+          key: maestro-${{ runner.os }}-1.39.0 # pin your version
       - name: Install Maestro
         run: |
-          curl -Ls "https://get.maestro.mobile.dev" | bash
+          if [ ! -x "$HOME/.maestro/bin/maestro" ]; then
+            export MAESTRO_VERSION=1.39.0
+            curl -Ls "https://get.maestro.mobile.dev" | bash
+          fi
           echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
-
       - name: Run launch smoke
         env:
           MAESTRO_APP_ID: ${{ env.APP_ID }}

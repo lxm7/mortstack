@@ -20,7 +20,8 @@
         "com.apple.security.application-groups": ["group.io.sessions.shared"]
       },
       "infoPlist": {
-        "UIBackgroundModes": ["remote-notification"]
+        "UIBackgroundModes": ["remote-notification"],
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
