@@ -1,27 +1,27 @@
 #!/usr/bin/env bash
-# Restore a package's gitignored native binary from R2 and verify it against the
-# committed checksum manifest. Runs as the EAS `eas-build-pre-install` hook (on
-# Expo's builder, before `pod install`) and anywhere else the xcframework binary
-# is needed but not in git.
+# Restore a package's gitignored native binaries from R2 and verify them against
+# the committed checksum manifest. Runs as the EAS `eas-build-pre-install` hook
+# (on Expo's builder, before pod install / gradle) and anywhere else the
+# binaries are needed but not in git.
 #
-# Contract (see docs/adr — non-reproducible binaries → CI is the sole builder):
-#   * The Mach-O binary inside chat_mls_coreFFI.xcframework is gitignored (too
-#     large + non-reproducible). Headers/plist/modulemap + the .sha256 manifest
-#     + .artifact-key ARE committed.
-#   * The producer workflow (native-artifacts.yml) builds the xcframework,
-#     uploads it to R2 keyed by the source fingerprint, and commits the
-#     refreshed manifest + .artifact-key. That published asset is what this
-#     script fetches, so asset ↔ manifest always match.
+# Contract (non-reproducible binaries → CI is the sole builder):
+#   * The compiled binaries are gitignored (large + non-reproducible). Their
+#     containing dir's headers/metadata + the .sha256 manifest ARE committed.
+#     iOS  → chat_mls_coreFFI.xcframework/**/chat_mls_coreFFI (the Mach-O)
+#     Android → android/src/main/jniLibs/*/libchat_mls_core.so
+#   * The producer workflow (native-artifacts.yml) builds them, uploads to R2
+#     keyed by the source fingerprint, and commits the refreshed manifest. So
+#     the published asset always matches the committed manifest verified here.
 #
 # Usage:  scripts/fetch-native-artifacts.sh <ios|android>
 #
 # Env:
-#   R2_PUBLIC_BASE_URL   (required) public-read base, e.g.
-#                        https://native.example.com/mortstack — asset is
-#                        fetched from "$R2_PUBLIC_BASE_URL/<asset>".
+#   R2_PUBLIC_BASE_URL   (required on cache-miss) public-read base, e.g.
+#                        https://pub-xxxx.r2.dev — asset fetched from
+#                        "$R2_PUBLIC_BASE_URL/<asset>".
 #   ALLOW_BUILD=1        (optional) on cache-miss, compile from source instead
-#                        of failing. For local dev only — the EAS builder has no
-#                        Rust toolchain, so it must hit the fast fetch path.
+#                        of failing. Local dev only — the EAS builder has no
+#                        Rust/NDK toolchain, so it must hit the fetch path.
 set -euo pipefail
 
 TARGET="${1:?usage: fetch-native-artifacts.sh <ios|android>}"
@@ -30,22 +30,24 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 # ── Artifact registry ─────────────────────────────────────────────────────────
-# Extend with new rows as android AAR / chat-crypto SignalFfi come online.
+# Each row: a directory of gitignored binaries ($ART_DIR) under $DEST_DIR,
+# verified against a committed $MANIFEST sitting next to it, published to R2 as
+# <ASSET_PREFIX>-<source-key>.tar.gz (tar rooted at $DEST_DIR so it unpacks
+# straight back into place).
 case "$TARGET" in
   ios)
     PKG="packages/chat-mls-core"
     DEST_DIR="$PKG/ios"
-    XCF="chat_mls_coreFFI.xcframework"
-    MANIFEST="$XCF.sha256"                 # relative to $DEST_DIR
+    ART_DIR="chat_mls_coreFFI.xcframework"
+    MANIFEST="chat_mls_coreFFI.xcframework.sha256"
     ASSET_PREFIX="chat_mls_coreFFI-ios"
-    BUILD_SCRIPT_TARGET="ios"
     ;;
   android)
-    # TODO: android jniLibs (*.so) are gitignored too — same trap, not yet
-    # published to R2. Soft no-op so android EAS builds aren't blocked by this
-    # hook until the AAR pipeline is wired. Wire it here when ready.
-    echo "native(android): AAR pipeline not yet published via R2 — skipping"
-    exit 0
+    PKG="packages/chat-mls-core"
+    DEST_DIR="$PKG/android/src/main"
+    ART_DIR="jniLibs"
+    MANIFEST="jniLibs.sha256"
+    ASSET_PREFIX="chat_mls_core-android"
     ;;
   *)
     echo "fetch-native-artifacts: unsupported target '$TARGET'" >&2
@@ -53,15 +55,15 @@ case "$TARGET" in
     ;;
 esac
 
-# Verify the extracted tree against the committed manifest. hash_dir wrote paths
-# relative to the xcframework dir, so we cd into it and point at ../<manifest>.
+# hash_dir wrote manifest paths relative to $ART_DIR, so verify from inside it
+# against ../<manifest>. cd-fail (dir absent) → non-zero → treated as "absent".
 verify() {
-  ( cd "$DEST_DIR/$XCF" && shasum -a 256 -c "../$MANIFEST" ) >/dev/null 2>&1
+  ( cd "$DEST_DIR/$ART_DIR" 2>/dev/null && shasum -a 256 -c "../$MANIFEST" ) >/dev/null 2>&1
 }
 
-# Already present and valid (warm builder / re-run)? Nothing to do.
-if [ -f "$DEST_DIR/$XCF/Info.plist" ] && verify; then
-  echo "native($TARGET): $XCF present + verified — skip"
+# Already present + valid (warm builder / re-run)? Nothing to do.
+if verify; then
+  echo "native($TARGET): $ART_DIR present + verified — skip"
   exit 0
 fi
 
@@ -83,14 +85,14 @@ if fetch && verify; then
 fi
 
 # Extracted but checksum failed = corruption/tamper or stale asset ≠ manifest.
-if [ -f "$DEST_DIR/$XCF/Info.plist" ] && ! verify; then
+if [ -d "$DEST_DIR/$ART_DIR" ] && ! verify; then
   echo "native($TARGET): CHECKSUM MISMATCH — $ASSET does not match committed $MANIFEST" >&2
 fi
 
 # ── Fallback ──────────────────────────────────────────────────────────────────
 if [ "${ALLOW_BUILD:-0}" = "1" ]; then
   echo "native($TARGET): asset missing/invalid — building from source (ALLOW_BUILD=1)"
-  pnpm --filter @repo/chat-mls-core "build:${BUILD_SCRIPT_TARGET}"
+  pnpm --filter @repo/chat-mls-core "build:${TARGET}"
   verify && { echo "native($TARGET): built + verified"; exit 0; }
   echo "native($TARGET): local build produced a tree that fails $MANIFEST" >&2
   exit 1
@@ -102,8 +104,8 @@ native($TARGET): artifact not available.
   key   : $KEY   (source fingerprint of $PKG)
   base  : ${R2_PUBLIC_BASE_URL:-<unset>}
 
-The prebuilt xcframework for this source revision has not been published.
+The prebuilt native artifact for this source revision has not been published.
   → Run the 'Native artifacts' workflow (Actions ▸ workflow_dispatch), or
-  → re-run locally with ALLOW_BUILD=1 to compile from source (needs Rust + Xcode).
+  → re-run locally with ALLOW_BUILD=1 to compile from source (needs Rust; Android also NDK).
 EOF
 exit 1
