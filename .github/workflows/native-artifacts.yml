@@ -1,0 +1,138 @@
+# Producer for gitignored native binaries (Rust → xcframework), consumed by
+# scripts/fetch-native-artifacts.sh (EAS eas-build-pre-install hook + CI).
+#
+# Model — the compiled xcframework is non-reproducible (embedded timestamps +
+# build paths, see .gitignore), so CI is the SOLE builder/publisher: it builds,
+# uploads the asset to R2 keyed by the Rust SOURCE fingerprint, and commits the
+# refreshed checksum manifest + .artifact-key. That published asset therefore
+# always matches the committed manifest the consumer verifies against.
+#
+# Idempotent: if the asset for the current source key already exists on R2, the
+# expensive Rust/iOS build is skipped — reruns and non-Rust PR syncs are cheap.
+#
+# ── Required config ───────────────────────────────────────────────────────────
+#   secrets.R2_ACCOUNT_ID          Cloudflare account id (R2 S3 endpoint host)
+#   secrets.R2_ACCESS_KEY_ID       R2 access key (Object Read & Write)
+#   secrets.R2_SECRET_ACCESS_KEY   R2 secret key
+#   vars.R2_BUCKET                 bucket name, e.g. mortstack-native
+#   vars.R2_PUBLIC_BASE_URL        public-read base, e.g. https://native.<zone>/mortstack
+name: Native artifacts
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "packages/chat-mls-core/Cargo.toml"
+      - "packages/chat-mls-core/Cargo.lock"
+      - "packages/chat-mls-core/src/**"
+      - "packages/chat-mls-core/scripts/build-mls.sh"
+      - ".github/workflows/native-artifacts.yml"
+  pull_request:
+    paths:
+      - "packages/chat-mls-core/Cargo.toml"
+      - "packages/chat-mls-core/Cargo.lock"
+      - "packages/chat-mls-core/src/**"
+      - "packages/chat-mls-core/scripts/build-mls.sh"
+      - ".github/workflows/native-artifacts.yml"
+
+concurrency:
+  group: native-artifacts-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write # commit refreshed manifest + .artifact-key back
+
+jobs:
+  ios:
+    name: chat_mls_coreFFI (iOS)
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      PKG: packages/chat-mls-core
+      R2_PUBLIC_BASE_URL: ${{ vars.R2_PUBLIC_BASE_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          # Push commits back to the PR/main branch, not a detached HEAD.
+          ref: ${{ github.head_ref || github.ref_name }}
+
+      - name: Compute artifact key
+        id: key
+        run: |
+          KEY="$(bash scripts/artifact-key.sh "$PKG" ios)"
+          echo "key=$KEY" >> "$GITHUB_OUTPUT"
+          echo "asset=chat_mls_coreFFI-ios-$KEY.tar.gz" >> "$GITHUB_OUTPUT"
+
+      - name: Already published?
+        id: exists
+        run: |
+          URL="${R2_PUBLIC_BASE_URL%/}/${{ steps.key.outputs.asset }}"
+          if curl -fsI "$URL" >/dev/null 2>&1; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "✓ $URL already published — skipping build"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Select full Xcode
+        if: steps.exists.outputs.found != 'true'
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+
+      - name: Setup Rust + iOS targets
+        if: steps.exists.outputs.found != 'true'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
+
+      - name: Cache Rust build
+        if: steps.exists.outputs.found != 'true'
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: packages/chat-mls-core
+
+      - name: Build iOS xcframework
+        if: steps.exists.outputs.found != 'true'
+        run: bash "$PKG/scripts/build-mls.sh" ios
+
+      - name: Package
+        if: steps.exists.outputs.found != 'true'
+        run: |
+          tar czf "${{ steps.key.outputs.asset }}" \
+            -C "$PKG/ios" chat_mls_coreFFI.xcframework
+
+      - name: Upload to R2
+        if: steps.exists.outputs.found != 'true'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ vars.R2_BUCKET }}
+        run: |
+          aws s3 cp "${{ steps.key.outputs.asset }}" \
+            "s3://${R2_BUCKET}/${{ steps.key.outputs.asset }}" \
+            --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" \
+            --only-show-errors
+          echo "→ uploaded ${{ steps.key.outputs.asset }}"
+
+      # The build refreshes ios/*.sha256 + ios/Sources/ and we stamp the key.
+      # Committing them (only when changed) keeps the consumer's verify gate in
+      # lockstep with the asset just published.
+      - name: Commit refreshed manifest + key
+        if: steps.exists.outputs.found != 'true' && github.event_name != 'pull_request' || (steps.exists.outputs.found != 'true' && github.event.pull_request.head.repo.full_name == github.repository)
+        run: |
+          echo "${{ steps.key.outputs.key }}" > "$PKG/ios/.artifact-key"
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$PKG/ios/chat_mls_coreFFI.xcframework.sha256" \
+                  "$PKG/ios/Sources.sha256" \
+                  "$PKG/ios/Sources" \
+                  "$PKG/ios/.artifact-key"
+          if git diff --cached --quiet; then
+            echo "nothing to commit"
+          else
+            git commit -m "chore(native): publish chat_mls_coreFFI ios (${{ steps.key.outputs.key }})"
+            git push
+          fi
