@@ -8,14 +8,16 @@
   },
   "scripts": {
     "eas-build-pre-install": "bash ../../scripts/fetch-native-artifacts.sh \"${EAS_BUILD_PLATFORM:-ios}\"",
+    "fetch:native:ios": "R2_PUBLIC_BASE_URL=https://pub-2ffb489eefe84de8b9b32e409fd30957.r2.dev bash ../../scripts/fetch-native-artifacts.sh ios",
+    "fetch:native:android": "R2_PUBLIC_BASE_URL=https://pub-2ffb489eefe84de8b9b32e409fd30957.r2.dev bash ../../scripts/fetch-native-artifacts.sh android",
     "dev": "expo start --dev-client",
     "start": "expo start --dev-client -c",
     "ios": "expo start --dev-client -c --ios",
     "android": "expo start --dev-client -c --android",
     "prebuild": "expo prebuild",
     "prebuild-clean": "expo prebuild --clean",
-    "rebuild-ios": "expo prebuild --clean && expo run:ios",
-    "rebuild-android": "expo prebuild --clean && expo run:android",
+    "rebuild-ios": "pnpm fetch:native:ios && expo prebuild --clean && expo run:ios",
+    "rebuild-android": "pnpm fetch:native:android && expo prebuild --clean && expo run:android",
     "lint": "eslint .",
     "check-types": "tsc --noEmit",
     "test": "echo \"no tests yet\" && exit 0"

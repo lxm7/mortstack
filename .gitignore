@@ -84,3 +84,7 @@ packages/chat-crypto/ios/SignalFfi.xcframework.sha256
 packages/chat-crypto/android/libs/*.aar
 packages/chat-crypto/android/libs/*.aar.sha256
 packages/chat-mls-core/ios/chat_mls_coreFFI.xcframework/**/chat_mls_coreFFI
+
+# native-artifact bootstrap/build tarballs (published to R2, not build inputs)
+/chat_mls_core*-*.tar.gz
+/apps/mobile/build-*.tar.gz

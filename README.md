@@ -8,6 +8,19 @@ real group E2EE via **OpenMLS (RFC 9420)**, a **Cloudflare Durable Object**
 realtime transport, and a **content-blind push pipeline** where the server never
 sees plaintext.
 
+# Dummy users:
+
+| Email             | Tier    | Profiles                               |
+| ----------------- | ------- | -------------------------------------- |
+| alice@example.com | ARTIST  | alice-music, alice-studio              |
+| bob@example.com   | CREATOR | bob-beats, the-collective (owner)      |
+| carol@example.com | CREATOR | carol-creates, the-collective (member) |
+| dave@example.com  | BASIC   | fabric-london                          |
+| eve@example.com   | BASIC   | warehouse-events                       |
+| frank@example.com | NONE    | none (new user edge case)              |
+
+---
+
 The infrastructure is deliberately staged (see [Scaling phases](#scaling-phases)):
 what runs today carries the app from zero to ~10k DAU on roughly \$5–10/mo, and
 the scale primitives are documented with the concrete signal that triggers each.
@@ -211,7 +224,9 @@ Key model groups in `packages/database/prisma/schema.prisma`:
 
 - Node.js >= 22 (CI runs 22; repo `engines` allows >= 18)
 - pnpm (`corepack use pnpm@latest`) — this is a pnpm workspace, do not use npm/yarn
-- Rust toolchain (stable) — required to build the MLS native core
+- Rust toolchain (stable) — only to build the MLS native core _from source_; the
+  default setup fetches prebuilt binaries from R2 (Android also needs the NDK to
+  build from source)
 - Neon account (free) — https://neon.tech
 - AWS account — SNS + SQS + Lambda (free tier: 1M requests/mo each)
 - Cloudflare account (Workers Paid, ~\$5/mo) — for the DO transport
@@ -219,9 +234,11 @@ Key model groups in `packages/database/prisma/schema.prisma`:
 
 ## Setup
 
-### 1. Install dependencies
+### 1. Clone & install dependencies
 
 ```bash
+git clone https://github.com/lxm7/mortstack.git
+cd mortstack
 pnpm install
 ```
 
@@ -267,11 +284,35 @@ pnpm --filter @repo/api-server dev   # or: pnpm api
 
 Runs at http://localhost:3001 — tRPC at `/trpc`, Better Auth at `/auth`.
 
-### 6. Start the mobile app
+### 6. Build the app (first run)
+
+The MLS core ships as **prebuilt native binaries** (a Rust core exposed via
+UniFFI) that are gitignored. The `rebuild-*` scripts fetch them from R2, run
+`expo prebuild`, then compile and install a **dev client** onto your
+simulator/device. Boot an emulator/simulator first.
 
 ```bash
 cd apps/mobile
-npx expo start --dev-client
+
+# Android — emulator or device must be running
+pnpm rebuild-android
+
+# iOS — installs CocoaPods during the build
+pnpm rebuild-ios
+```
+
+> First build compiles native code and is slow. It installs the dev client and
+> launches Metro. Do **not** call `npx expo run:*` directly — it skips the R2
+> fetch and the app crashes at login with `UnsatisfiedLinkError` (missing
+> `libchat_mls_core.so` / `chat_mls_coreFFI`).
+
+### 7. Later launches (native unchanged)
+
+Once the dev client is installed, skip the native build — just start Metro:
+
+```bash
+cd apps/mobile
+pnpm start   # expo start --dev-client -c
 ```
 
 > RN/Expo stdout doesn't surface when started from the repo root via pnpm — run
@@ -296,15 +337,24 @@ pnpm --filter mobile exec expo start --clear
 xcrun simctl list devices available
 xcrun simctl boot <UDID-1> && xcrun simctl boot <UDID-2>
 open -a Simulator
+pnpm --filter mobile fetch:native:ios   # restore prebuilt binaries before building
 pnpm --filter mobile exec expo run:ios --device
 ```
 
 ### Native rebuilds
 
+Rebuild when native code or the MLS core changes. These fetch the prebuilt
+binaries from R2, regenerate the native project, then compile:
+
 ```bash
 cd apps/mobile
-pnpm prebuild-clean && npx expo run:android   # or run:ios
+pnpm rebuild-android   # or: pnpm rebuild-ios
 ```
+
+> Always go through `pnpm rebuild-*`. Calling `npx expo run:*` directly skips the
+> R2 fetch, leaving `jniLibs`/xcframework empty → `UnsatisfiedLinkError` at login.
+> To compile the core from source instead of fetching, set `ALLOW_BUILD=1` (needs
+> Rust; Android also the NDK).
 
 ---
 
@@ -337,17 +387,6 @@ curl -X POST http://localhost:3001/auth/sign-up/email \
 The seed creates test accounts, profiles, posts, follows, comments, and likes for
 exercising feed rendering and data relationships. Seed accounts have placeholder
 password hashes and **cannot log in via Better Auth** — sign up fresh instead.
-
-| Email             | Tier    | Profiles                               |
-| ----------------- | ------- | -------------------------------------- |
-| alice@example.com | ARTIST  | alice-music, alice-studio              |
-| bob@example.com   | CREATOR | bob-beats, the-collective (owner)      |
-| carol@example.com | CREATOR | carol-creates, the-collective (member) |
-| dave@example.com  | BASIC   | fabric-london                          |
-| eve@example.com   | BASIC   | warehouse-events                       |
-| frank@example.com | NONE    | none (new user edge case)              |
-
----
 
 ## RN device debugging
 
