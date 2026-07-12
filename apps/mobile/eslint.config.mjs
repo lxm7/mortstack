@@ -5,6 +5,6 @@ export default [
   ...expo,
   eslintConfigPrettier,
   {
-    ignores: ["dist/**", "android/**", "ios/**", ".expo/**"],
+    ignores: ["dist/**", "android/**", "ios/**", ".expo/**", "sst-env.d.ts"],
   },
 ];
