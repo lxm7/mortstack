@@ -88,11 +88,13 @@ export function ChatTransportProvider({ children }: { children: ReactNode }) {
       } satisfies MlsApi,
       onDecryptFailure: (msg, reason) => {
         console.warn(
-          "[chat/transport] decrypt failed",
+          "[DEBUG-bkfl] decrypt failed",
           {
             chatId: msg.chatId,
             serverMsgId: msg.serverMsgId,
             senderId: msg.senderId,
+            // version byte: 2 = MLS (v=2), anything else = v=1 libsodium.
+            v: msg.ciphertext.length > 0 ? msg.ciphertext[0] : -1,
           },
           reason,
         );

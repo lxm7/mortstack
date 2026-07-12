@@ -285,6 +285,7 @@ export function createEncryptedTransport(
   ): Promise<DecryptedBackfill> {
     const messages: BackfilledMessage[] = [];
     const reactions: BackfilledReaction[] = [];
+    let dropped = 0;
     for (const row of bfd.messages) {
       const asMsg: IncomingMessage = {
         t: "msg",
@@ -296,7 +297,10 @@ export function createEncryptedTransport(
         ts: row.ts,
       };
       const res = await decryptOne(asMsg);
-      if (!res) continue;
+      if (!res) {
+        dropped++;
+        continue;
+      }
       const base = {
         chatId: bfd.chatId,
         serverMsgId: row.serverMsgId,
@@ -310,6 +314,20 @@ export function createEncryptedTransport(
         messages.push({ ...base, frame: res.frame });
       }
     }
+    // [DEBUG-bkfl] The decisive probe: fetched>0 & dropped==fetched → wholesale
+    // decrypt-drop; fetched==0 → fetch/identity/cursor gap upstream.
+    console.log(
+      "[DEBUG-bkfl] page",
+      JSON.stringify({
+        chatId: bfd.chatId,
+        fetched: bfd.messages.length,
+        decryptedMsgs: messages.length,
+        decryptedRx: reactions.length,
+        dropped,
+        upTo: bfd.upTo,
+        more: bfd.more,
+      }),
+    );
     return {
       chatId: bfd.chatId,
       messages,

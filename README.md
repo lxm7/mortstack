@@ -107,22 +107,22 @@ instance without a lookup table.
 
 ```mermaid
 sequenceDiagram
-  participant A as Sender device
-  participant IA as UserInbox sender
-  participant C as Chat chatId
-  participant N as Neon
-  participant IB as UserInbox recipient
-  participant B as Recipient device
+participant A as Sender device
+participant IA as UserInbox sender
+participant C as Chat chatId
+participant N as Neon
+participant IB as UserInbox recipient
+participant B as Recipient device
 
-  A->>IA: send · MLS ciphertext (msgpack)
-  IA->>C: RPC forward
-  Note over C: buffer ~100ms<br/>assign monotonic serverSerial
-  C->>N: batch INSERT over HTTP
-  C-->>IA: ack (serverSerial)
-  IA-->>A: ack
-  C->>IB: msg (ciphertext)
-  IB-->>B: WS deliver → MLS decrypt → SQLite
-  Note over C,B: recipient offline →<br/>SNS ChatDelivered → SQS → chat-push → APNs/FCM
+A->>IA: send · MLS ciphertext (msgpack)
+IA->>C: RPC forward
+Note over C: buffer ~100ms<br/>assign monotonic serverSerial
+C->>N: batch INSERT over HTTP
+C-->>IA: ack (serverSerial)
+IA-->>A: ack
+C->>IB: msg (ciphertext)
+IB-->>B: WS deliver → MLS decrypt → SQLite
+Note over C,B: recipient offline →<br/>SNS ChatDelivered → SQS → chat-push → APNs/FCM
 ```
 
 ### Trust boundary

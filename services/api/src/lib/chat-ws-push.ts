@@ -30,7 +30,16 @@ const SECRET_HEADER = "x-chat-ws-secret";
 // Until that's done the secret resolves to an empty string and push becomes
 // a no-op — the 30s client poll remains the correctness fallback.
 function chatWsUrl(): string | null {
-  const v = Resource.ChatWsInternalUrl.value;
+  // Resolves to "" when the secret is declared-but-unset (push no-op), and
+  // THROWS when SST links aren't active at all (a bare `pnpm api` outside the
+  // sst dev multiplexer). Both must degrade to a no-op — push is best-effort and
+  // must never crash the request/process (the 30s client poll is the fallback).
+  let v: string;
+  try {
+    v = Resource.ChatWsInternalUrl.value;
+  } catch {
+    return null;
+  }
   if (!v) return null;
   return v.replace(/\/$/, "");
 }

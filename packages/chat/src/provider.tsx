@@ -122,9 +122,15 @@ export function ChatStoreProvider({
   // Build + fire one batched `bf` covering every known chat's cursor. No-op
   // without a cursor store or before chats have loaded.
   const runBackfill = useCallback(() => {
-    if (!backfillCursors) return;
+    if (!backfillCursors) {
+      console.log("[DEBUG-bkfl] runBackfill skipped — no backfillCursors");
+      return;
+    }
     const chatIds = Array.from(useChatStore.getState().chats.keys());
-    if (chatIds.length === 0) return;
+    if (chatIds.length === 0) {
+      console.log("[DEBUG-bkfl] runBackfill skipped — 0 chats in store");
+      return;
+    }
     void (async () => {
       let cursors: Record<string, string> = {};
       try {
@@ -138,6 +144,16 @@ export function ChatStoreProvider({
         backfilledThisLaunch.current.add(chatId);
         return forced ? { chatId, after, force: true } : { chatId, after };
       });
+      console.log(
+        "[DEBUG-bkfl] sendBackfill",
+        JSON.stringify(
+          batch.map((b) => ({
+            chatId: b.chatId,
+            after: b.after,
+            force: "force" in b ? !!b.force : false,
+          })),
+        ),
+      );
       transport.sendBackfill(batch);
     })();
   }, [backfillCursors, transport]);
