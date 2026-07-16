@@ -10,6 +10,9 @@
 #
 # Idempotent: if the asset for the current source key already exists on R2, the
 # expensive Rust build is skipped — reruns and non-Rust PR syncs are cheap.
+# Dispatch with force=true to override that skip and rebuild + republish a key
+# whose published asset has drifted from the committed manifest (e.g. a local
+# build was uploaded over a CI-published one — the consumer can't verify then).
 #
 # ── Required config ───────────────────────────────────────────────────────────
 #   secrets.R2_ACCOUNT_ID          Cloudflare account id (R2 S3 endpoint host)
@@ -21,6 +24,11 @@ name: Native artifacts
 
 on:
   workflow_dispatch:
+    inputs:
+      force:
+        description: "Rebuild + republish even if the asset for this key already exists. Use to repair a key whose published asset no longer matches the committed manifest."
+        type: boolean
+        default: false
   push:
     branches: [main]
     paths:
@@ -67,9 +75,15 @@ jobs:
 
       - name: Already published?
         id: exists
+        env:
+          FORCE: ${{ inputs.force }}
+          ASSET: ${{ steps.key.outputs.asset }}
         run: |
-          URL="${R2_PUBLIC_BASE_URL%/}/${{ steps.key.outputs.asset }}"
-          if curl -fsI "$URL" >/dev/null 2>&1; then
+          URL="${R2_PUBLIC_BASE_URL%/}/${ASSET}"
+          if [ "$FORCE" = "true" ]; then
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "⟳ force — rebuilding + republishing $URL"
+          elif curl -fsI "$URL" >/dev/null 2>&1; then
             echo "found=true" >> "$GITHUB_OUTPUT"
             echo "✓ $URL already published — skipping build"
           else
@@ -157,9 +171,15 @@ jobs:
 
       - name: Already published?
         id: exists
+        env:
+          FORCE: ${{ inputs.force }}
+          ASSET: ${{ steps.key.outputs.asset }}
         run: |
-          URL="${R2_PUBLIC_BASE_URL%/}/${{ steps.key.outputs.asset }}"
-          if curl -fsI "$URL" >/dev/null 2>&1; then
+          URL="${R2_PUBLIC_BASE_URL%/}/${ASSET}"
+          if [ "$FORCE" = "true" ]; then
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "⟳ force — rebuilding + republishing $URL"
+          elif curl -fsI "$URL" >/dev/null 2>&1; then
             echo "found=true" >> "$GITHUB_OUTPUT"
             echo "✓ $URL already published — skipping build"
           else
