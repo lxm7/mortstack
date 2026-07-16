@@ -134,3 +134,124 @@ describe("decryptBackfill — undecryptable rows advance the cursor (ADR-0020 §
     expect(onDecryptFailure).toHaveBeenCalledTimes(1);
   });
 });
+
+// An engine that holds no state for the group — throws the same shape the
+// native ChatMlsCore surfaces when the device never processed a Welcome —
+// but only for a sentinel ciphertext, so a page can mix healthy + blocked rows.
+const GNF_SENTINEL = 0x99;
+const gnfMls: MlsApi = {
+  encryptApp: (_g, plaintext) => plaintext,
+  processMessage: (_g, bytes) => {
+    if (bytes.length <= 2 && bytes[bytes.length - 1] === GNF_SENTINEL) {
+      throw new Error('ChatMlsError.Internal("group not found")');
+    }
+    return { kind: "application", plaintext: bytes };
+  },
+};
+
+function gnfRowCiphertext(): Uint8Array {
+  return new Uint8Array([FRAME_VERSION_V2, GNF_SENTINEL]);
+}
+
+describe("decryptBackfill — recoverable failures pin the cursor", () => {
+  it("caps upTo below a 'group not found' row and stops paging", async () => {
+    const { push, page } = harness({
+      mls: gnfMls,
+      resolveChatGroupId: async () => GID,
+    });
+
+    const good = encryptOutboundMls({
+      body: { text: "hello" },
+      groupId: GID,
+      mls: gnfMls,
+    });
+
+    push({
+      t: "bfd",
+      chatId: "chat-1",
+      messages: [
+        bfdRow("8", good.ciphertext), // decrypts
+        bfdRow("9", gnfRowCiphertext()), // group not found → recoverable
+        bfdRow("10", good.ciphertext), // still delivered (dedupe on refetch)
+      ],
+      upTo: "10",
+      more: true,
+    });
+
+    const result = await page;
+    expect(result.messages.map((m) => m.serverMsgId)).toEqual(["8", "10"]);
+    // Cursor pinned just below the blocked serial → 9 is refetched after the
+    // Welcome lands, instead of being skipped forever.
+    expect(result.upTo).toBe("8");
+    // Same-session paging stops — otherwise the next page re-serves 9+ in a loop.
+    expect(result.more).toBe(false);
+  });
+
+  it("caps at serial-1 even for the first row of history", async () => {
+    const { push, page } = harness({
+      mls: gnfMls,
+      resolveChatGroupId: async () => GID,
+    });
+
+    push({
+      t: "bfd",
+      chatId: "chat-1",
+      messages: [bfdRow("1", gnfRowCiphertext())],
+      upTo: "1",
+      more: false,
+    });
+
+    const result = await page;
+    expect(result.upTo).toBe("0");
+    expect(result.more).toBe(false);
+  });
+
+  it("treats a not-yet-initialised engine as recoverable (init race on account switch)", async () => {
+    // Exact shape the native module surfaces when a backfill page races
+    // initEngine(accountId) — the 2026-07-16 alice regression.
+    const bootingMls: MlsApi = {
+      encryptApp: (_g, plaintext) => plaintext,
+      processMessage: () => {
+        throw new Error(
+          "UnexpectedException: ChatMlsCore: engine not initialised — call initEngine(accountId) first",
+        );
+      },
+    };
+    const { push, page } = harness({
+      mls: bootingMls,
+      resolveChatGroupId: async () => GID,
+    });
+
+    push({
+      t: "bfd",
+      chatId: "chat-1",
+      messages: [bfdRow("3", gnfRowCiphertext())],
+      upTo: "3",
+      more: false,
+    });
+
+    const result = await page;
+    expect(result.upTo).toBe("2");
+    expect(result.more).toBe(false);
+  });
+
+  it("treats a missing local chat↔group link as recoverable too", async () => {
+    // chat.list mirror hasn't landed yet → resolveChatGroupId yields null.
+    const { push, page, onDecryptFailure } = harness({
+      mls: gnfMls,
+      resolveChatGroupId: async () => null,
+    });
+
+    push({
+      t: "bfd",
+      chatId: "chat-1",
+      messages: [bfdRow("5", gnfRowCiphertext())],
+      upTo: "5",
+      more: false,
+    });
+
+    const result = await page;
+    expect(result.upTo).toBe("4");
+    expect(onDecryptFailure).toHaveBeenCalledTimes(1);
+  });
+});

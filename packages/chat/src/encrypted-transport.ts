@@ -31,6 +31,26 @@ export interface ReactionInput {
   op: "add" | "del";
 }
 
+// Outcome of a single-row decrypt. Failures carry the reason so the backfill
+// path can distinguish recoverable ones (cursor must not advance) from
+// expected-permanent ones (cursor advances, per ADR-0020 §5).
+type DecryptOutcome =
+  | { ok: true; frame: ChatFrame; frameVersion: 1 | 2 }
+  | { ok: false; reason: string };
+
+// Decrypt failures a later state change can cure: the engine gaining the
+// group from a pending Welcome ("group not found"), the chat.list mirror
+// landing the local chat↔group link ("no mls_group_id locally"), or the
+// native engine still booting ("engine not initialised" — a backfill page
+// that races initEngine(accountId), seen on account switch). If the backfill
+// cursor advances past such a row it is never refetched — the message is
+// lost even after the state heals.
+export function isRecoverableDecryptReason(reason: string): boolean {
+  return /group not found|no mls_group_id locally|engine not initialised/i.test(
+    reason,
+  );
+}
+
 // Discriminated on payload: exactly one of `text` (a message) or `reaction`
 // (a reaction that rides the same encrypted frame — Option A). Both share the
 // routing fields below.
@@ -184,42 +204,37 @@ export function createEncryptedTransport(
   }
 
   // Decrypt a single inbound row (live `msg` or a backfilled `bfd` row — both
-  // carry the same fields). Returns the decrypted frame + version, or null on
-  // any failure (empty/unknown/undecryptable), having already reported it via
-  // onDecryptFailure. Shared by the live path and backfill so both stay in
-  // lock-step on v=1/v=2 handling.
-  async function decryptOne(
-    msg: IncomingMessage,
-  ): Promise<{ frame: ChatFrame; frameVersion: 1 | 2 } | null> {
+  // carry the same fields). Failures are reported via onDecryptFailure AND
+  // surfaced in the outcome so decryptBackfill can classify them (recoverable
+  // failures must not advance the cursor). Shared by the live path and
+  // backfill so both stay in lock-step on v=1/v=2 handling.
+  async function decryptOne(msg: IncomingMessage): Promise<DecryptOutcome> {
+    const fail = (reason: string): DecryptOutcome => {
+      opts.onDecryptFailure?.(msg, reason);
+      return { ok: false, reason };
+    };
+
     // Peek the version byte before doing any lookups — v=2 skips the v=1
     // peer-pub directory hit entirely.
     if (msg.ciphertext.length === 0) {
-      opts.onDecryptFailure?.(msg, "empty ciphertext");
-      return null;
+      return fail("empty ciphertext");
     }
     const version = msg.ciphertext[0];
 
     if (version === FRAME_VERSION_V2) {
       if (!opts.mls || !opts.resolveChatGroupId) {
-        opts.onDecryptFailure?.(
-          msg,
-          "v=2 frame received but no MLS engine configured",
-        );
-        return null;
+        return fail("v=2 frame received but no MLS engine configured");
       }
       let groupId: Uint8Array | null;
       try {
         groupId = await opts.resolveChatGroupId(msg.chatId);
       } catch (err) {
-        opts.onDecryptFailure?.(msg, `groupId lookup failed: ${String(err)}`);
-        return null;
+        return fail(`groupId lookup failed: ${String(err)}`);
       }
       if (!groupId) {
-        opts.onDecryptFailure?.(
-          msg,
+        return fail(
           `v=2 frame for chat ${msg.chatId} but no mls_group_id locally`,
         );
-        return null;
       }
       try {
         const result = decryptInbound({
@@ -236,10 +251,9 @@ export function createEncryptedTransport(
         if (result.frameVersion !== 2) {
           throw new Error("expected v=2 result for v=2 ciphertext");
         }
-        return { frame: result.frame, frameVersion: 2 };
+        return { ok: true, frame: result.frame, frameVersion: 2 };
       } catch (err) {
-        opts.onDecryptFailure?.(msg, String(err));
-        return null;
+        return fail(String(err));
       }
     }
 
@@ -250,8 +264,7 @@ export function createEncryptedTransport(
       seed = await opts.getMySeed();
       candidates = await opts.resolveSenderX25519Pubs(msg.senderId);
     } catch (err) {
-      opts.onDecryptFailure?.(msg, `pre-decrypt lookup failed: ${String(err)}`);
-      return null;
+      return fail(`pre-decrypt lookup failed: ${String(err)}`);
     }
     try {
       const result = decryptInbound({
@@ -264,28 +277,31 @@ export function createEncryptedTransport(
       if (result.frameVersion !== 1) {
         throw new Error("expected v=1 result for v=1 ciphertext");
       }
-      return { frame: result.frame, frameVersion: 1 };
+      return { ok: true, frame: result.frame, frameVersion: 1 };
     } catch (err) {
-      opts.onDecryptFailure?.(msg, String(err));
-      return null;
+      return fail(String(err));
     }
   }
 
   async function handleInbound(msg: IncomingMessage) {
     const res = await decryptOne(msg);
-    if (res) dispatch(msg, res.frame, res.frameVersion);
+    if (res.ok) dispatch(msg, res.frame, res.frameVersion);
   }
 
   // Decrypt one `bfd` page: map each row through decryptOne (dropping the ones
   // that fail), split messages from reactions. Ordering is preserved from the
-  // server's ascending-serial page. `upTo`/`more` pass through untouched so the
-  // caller advances its cursor even past undecryptable rows.
+  // server's ascending-serial page. `upTo`/`more` pass through for
+  // expected-permanent drops (cursor advances, no refetch loop), but a
+  // RECOVERABLE drop (see isRecoverableDecryptReason) caps `upTo` below the
+  // failing serial + forces more:false so the row is refetched after heal.
   async function decryptBackfill(
     bfd: IncomingBackfill,
   ): Promise<DecryptedBackfill> {
     const messages: BackfilledMessage[] = [];
     const reactions: BackfilledReaction[] = [];
     let dropped = 0;
+    // serverMsgId of the first recoverably-undecryptable row, if any.
+    let blockedAt: string | null = null;
     for (const row of bfd.messages) {
       const asMsg: IncomingMessage = {
         t: "msg",
@@ -297,8 +313,15 @@ export function createEncryptedTransport(
         ts: row.ts,
       };
       const res = await decryptOne(asMsg);
-      if (!res) {
+      if (!res.ok) {
         dropped++;
+        // First RECOVERABLE failure pins the cursor: the row will decrypt
+        // once the pending Welcome / chat-link lands, but only if we refetch
+        // it. Later rows still process — the store dedupes the overlap by
+        // serverMsgId on the post-heal refetch.
+        if (blockedAt === null && isRecoverableDecryptReason(res.reason)) {
+          blockedAt = row.serverMsgId;
+        }
         continue;
       }
       const base = {
@@ -314,6 +337,20 @@ export function createEncryptedTransport(
         messages.push({ ...base, frame: res.frame });
       }
     }
+
+    // Non-recoverable drops (own v=2 sends, v=1 sealed to other devices)
+    // advance the cursor as before (ADR-0020 §5 — no refetch loop). A
+    // recoverable drop caps upTo just below the failing serial so the next
+    // backfill re-requests it, and stops same-session paging (more:false) —
+    // otherwise the follow-up page would re-serve the same rows in a loop.
+    let upTo = bfd.upTo;
+    let more = bfd.more;
+    if (blockedAt !== null) {
+      const capped = (BigInt(blockedAt) - 1n).toString();
+      if (BigInt(capped) < BigInt(bfd.upTo)) upTo = capped;
+      more = false;
+    }
+
     // [DEBUG-bkfl] The decisive probe: fetched>0 & dropped==fetched → wholesale
     // decrypt-drop; fetched==0 → fetch/identity/cursor gap upstream.
     console.log(
@@ -324,16 +361,17 @@ export function createEncryptedTransport(
         decryptedMsgs: messages.length,
         decryptedRx: reactions.length,
         dropped,
-        upTo: bfd.upTo,
-        more: bfd.more,
+        blockedAt,
+        upTo,
+        more,
       }),
     );
     return {
       chatId: bfd.chatId,
       messages,
       reactions,
-      upTo: bfd.upTo,
-      more: bfd.more,
+      upTo,
+      more,
     };
   }
 

@@ -66,9 +66,12 @@ getOrCreateChatIdentity()
     console.error("[chat-mvp/M3] chat-identity init failed", err);
   });
 
+// chat-db is per-account (chat-<userId>.sqlite) and opens only once the auth
+// store pushes a signed-in user — this boot probe resolves after the first
+// sign-in rather than at launch, and stays pending on a signed-out cold boot.
 getChatDb()
   .then((handle) => {
-    console.log("[chat-mvp/M2] chat-db ready", {
+    console.log("[chat-mvp/M2] chat-db ready (post-auth)", {
       schemaVersion: handle.version,
       keySource: handle.keySource,
     });

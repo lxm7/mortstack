@@ -87,6 +87,17 @@ const BACKOFFS_MS = [5_000, 30_000, 120_000, 600_000];
 const TICK_LIMIT = 20;
 const PERIODIC_TICK_MS = 30_000;
 
+// "group not found" = the MLS engine holds no state for this chat's group
+// (crypto-membership gap — the device never processed a Welcome). No retry
+// can fix it: the ratchet the ciphertext needs doesn't exist on this device.
+// Retrying used to leave the bubble at "sending" (opacity < 1) forever;
+// terminal-failing flips it to "failed" so the user sees the truth.
+const TERMINAL_REASONS = /group not found/i;
+
+export function isTerminalSendReason(reason: string): boolean {
+  return TERMINAL_REASONS.test(reason);
+}
+
 function backoffFor(attemptsAfter: number): number {
   const idx = Math.max(0, Math.min(attemptsAfter - 1, BACKOFFS_MS.length - 1));
   return BACKOFFS_MS[idx]!;
@@ -157,7 +168,7 @@ export function createOutboxWorker(deps: OutboxWorkerDeps): OutboxWorker {
       } catch (err) {
         const reason = err instanceof Error ? err.message : String(err);
         const attemptsAfter = row.attempts + 1;
-        if (attemptsAfter >= MAX_ATTEMPTS) {
+        if (attemptsAfter >= MAX_ATTEMPTS || isTerminalSendReason(reason)) {
           await deps.outbox.markPermanentlyFailed(row.id, reason);
           deps.store.failReaction?.({
             chatId: row.chat_id,
@@ -216,7 +227,7 @@ export function createOutboxWorker(deps: OutboxWorkerDeps): OutboxWorker {
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       const attemptsAfter = row.attempts + 1;
-      if (attemptsAfter >= MAX_ATTEMPTS) {
+      if (attemptsAfter >= MAX_ATTEMPTS || isTerminalSendReason(reason)) {
         await deps.outbox.markPermanentlyFailed(row.id, reason);
         deps.store.failOptimisticMessage({
           chatId: row.chat_id,

@@ -9,6 +9,7 @@ import { AppState } from "react-native";
 import {
   ChatStoreProvider,
   createOutboxWorker,
+  useChatBackfill,
   useChatStore,
   type BackfillCursorApi,
   type BoundOutboxApi,
@@ -66,7 +67,9 @@ async function mirrorChatsToLocalDb(
   }
 }
 
-function createTrpcChatApi(): ChatApi {
+// Exported for non-React callers that need a one-off store refresh with the
+// same list→local-mirror semantics the provider uses (e.g. create-chat).
+export function createTrpcChatApi(): ChatApi {
   return {
     chatList: async (input) => {
       const res = await trpc.chat.list.query(input);
@@ -85,6 +88,30 @@ function createTrpcChatApi(): ChatApi {
     chatRemoveMembers: (input) => trpc.chat.removeMembers.mutate(input),
     userSearch: (input) => trpc.user.search.query(input),
   };
+}
+
+// Module-level bridge so non-React code (the MLS auto-publish loop) can kick
+// a backfill pass. The decisive consumer: a backfill page that raced
+// initEngine(accountId) drops its rows recoverably and caps the cursor — the
+// engine-ready kick is what re-requests those rows once decrypt can succeed.
+// Mirrors the getCurrentChatTransport() singleton pattern (transport.tsx).
+let backfillKicker: (() => void) | null = null;
+
+export function kickChatBackfill(): void {
+  backfillKicker?.();
+}
+
+// Rendered inside ChatStoreProvider so useChatBackfill is in scope; registers
+// the provider's runner into the module-level bridge above.
+function BackfillKickBridge() {
+  const kick = useChatBackfill();
+  useEffect(() => {
+    backfillKicker = kick;
+    return () => {
+      if (backfillKicker === kick) backfillKicker = null;
+    };
+  }, [kick]);
+  return null;
 }
 
 // Curry chat-db's backfill_cursors helpers onto a handle → the injected
@@ -113,6 +140,9 @@ function bindOutbox(handle: ChatDbHandle): BoundOutboxApi {
 
 export function MobileChatStoreProvider({ children }: { children: ReactNode }) {
   const authenticated = useAuthStore((s) => !!s.session);
+  // chat-db is per-account (chat-<userId>.sqlite) — bindings must be rebuilt
+  // when the signed-in user changes, not once per mount.
+  const userId = useAuthStore((s) => s.session?.user.id ?? null);
   const transport = useChatTransport();
   const api = useMemo(createTrpcChatApi, []);
 
@@ -143,6 +173,14 @@ export function MobileChatStoreProvider({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
+    if (!userId) {
+      // Signed out (or not yet in) — detach the previous account's bindings
+      // so nothing keeps writing through a closed/foreign handle.
+      setPersistApi(undefined);
+      setBackfillApi(undefined);
+      setOutboxBindings(undefined);
+      return;
+    }
     let active = true;
     (async () => {
       try {
@@ -175,7 +213,7 @@ export function MobileChatStoreProvider({ children }: { children: ReactNode }) {
     return () => {
       active = false;
     };
-  }, [confirmOptimisticMessage, failOptimisticMessage, transport]);
+  }, [userId, confirmOptimisticMessage, failOptimisticMessage, transport]);
 
   // AppState foreground kick. The chat-store provider already wires
   // worker.kick on transport.onState("open"), and the worker runs a 30s
@@ -200,6 +238,7 @@ export function MobileChatStoreProvider({ children }: { children: ReactNode }) {
       backfillCursors={backfillApi}
       authenticated={authenticated}
     >
+      <BackfillKickBridge />
       {children}
     </ChatStoreProvider>
   );

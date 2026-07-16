@@ -156,6 +156,17 @@ const MIGRATIONS: Migration[] = [
       ) WITHOUT ROWID`,
     ],
   },
+  {
+    version: 6,
+    up: [
+      // Data repair, not schema: cursors written before 2026-07-16 could
+      // advance past rows dropped with "engine not initialised" (a backfill
+      // page racing initEngine on account switch) — those serials were
+      // skipped forever. Wiping cursors is always safe: the next backfill
+      // force-refetches from 0 and the store dedupes by serverMsgId.
+      `DELETE FROM backfill_cursors`,
+    ],
+  },
 ];
 
 const LAST = MIGRATIONS[MIGRATIONS.length - 1];

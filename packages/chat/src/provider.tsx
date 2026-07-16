@@ -273,7 +273,10 @@ export function ChatStoreProvider({
   // decrypted + split by the transport. Merge messages via the store's
   // serial-sorted ingest, fold reactions onto their targets (serial-ascending
   // order guarantees a target lands before its reaction), advance the cursor to
-  // `upTo` (even past undecryptable rows → no refetch loop), and page while more.
+  // `upTo`, and page while more. The transport advances `upTo` past
+  // expected-permanent drops (no refetch loop) but caps it below a RECOVERABLE
+  // drop (e.g. "group not found" before the Welcome lands) so that row is
+  // refetched — never silently lost — once the group state heals.
   useEffect(() => {
     if (!authenticated) return;
     return transport.onBackfill((page) => {
