@@ -12,6 +12,7 @@ import { trpc } from "@/lib/trpc/client";
 import { loadSessionToken } from "@/lib/auth/session";
 import { useAuthStore } from "@/store/auth";
 import { getOrCreateChatIdentity } from "./identity";
+import { kickChatBackfill } from "./store-provider";
 import { publishMyChatDevice } from "./publish";
 import { getCurrentChatTransport } from "./transport";
 import { clearChatGroupCache } from "./group-resolver";
@@ -196,6 +197,10 @@ async function tick(reason: string): Promise<void> {
           hexStr += (gid[i] ?? 0).toString(16).padStart(2, "0");
         clearChatGroupCache(`mls-${hexStr}`);
       }
+      // Newly-joined groups may have backfill rows sitting behind a capped
+      // cursor (dropped recoverably before the join) — re-request them now
+      // that the engine holds the group.
+      kickChatBackfill();
     }
 
     // Poll commits for every locally-known group. At Phase 1 scale the
@@ -267,6 +272,12 @@ async function onAuthChange(reason: string): Promise<void> {
 
   await tick(reason);
   startTimer();
+
+  // Engine is initialised for this account only from here on. Any backfill
+  // page that arrived earlier (WS open races bootstrap, esp. on account
+  // switch) dropped its rows with "engine not initialised" and capped the
+  // cursor — re-request those rows now that decrypt can succeed.
+  kickChatBackfill();
 }
 
 // Foreground transitions trigger an immediate catch-up tick. Saves the user

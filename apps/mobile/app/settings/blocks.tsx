@@ -104,7 +104,7 @@ export default function BlocksScreen() {
           data={rows}
           keyExtractor={(r) => r.accountId}
           renderItem={({ item }) => (
-            <BlockedRow
+            <BlockedRowItem
               row={item}
               isPending={unblocking === item.accountId}
               onUnblock={() => onUnblock(item)}
@@ -117,7 +117,7 @@ export default function BlocksScreen() {
   );
 }
 
-function BlockedRow({
+function BlockedRowItem({
   row,
   isPending,
   onUnblock,

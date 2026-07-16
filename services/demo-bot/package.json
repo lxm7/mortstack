@@ -1,0 +1,23 @@
+{
+  "name": "@repo/demo-bot",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Headless MLS 'concierge' bot — founds demo groups and adds new signups (real Add+Welcome) so a fresh user has a working two-way E2EE chat. Tracer-bullet (local Node); productionises to an SST Lambda later.",
+  "scripts": {
+    "bot": "tsx src/index.ts",
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@noble/ed25519": "^2.3.0",
+    "@repo/chat-mls-core": "workspace:*",
+    "@repo/chat-mls-core-node": "file:../../packages/chat-mls-core/node",
+    "@trpc/client": "^11.17.0"
+  },
+  "devDependencies": {
+    "@repo/api-server": "workspace:*",
+    "@types/node": "^22.10.0",
+    "tsx": "^4.21.0",
+    "typescript": "5.9.2"
+  }
+}

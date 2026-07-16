@@ -6,10 +6,20 @@
 // step fails (e.g. peer has 0 KeyPackages right now), the chat row + member
 // rows still exist on the server. UI surfaces the failure; user can retry.
 
+import { useChatStore } from "@repo/chat";
 import { getChatDb, mls as mlsStore } from "@repo/chat-db";
 import { trpc } from "@/lib/trpc/client";
 import { getMlsClient } from "@/lib/chat/mls-auto-publish";
 import { clearChatGroupCache } from "./group-resolver";
+import { createTrpcChatApi } from "./store-provider";
+
+// The chat screen renders from the zustand store, and nothing refreshes the
+// store after a create — the WS `open` refresh fired long before this chat
+// existed. Without this pull the freshly-created chat has no store record and
+// /chat/[chatId] shows an indefinite spinner. refresh() merges + never throws.
+async function syncChatStore(): Promise<void> {
+  await useChatStore.getState().refresh(createTrpcChatApi());
+}
 
 // GroupId (Uint8Array) → base64 for the linkMlsGroup wire. Mirrors the encoder
 // in publish.ts (Hermes provides global btoa); avoids a Buffer polyfill dep.
@@ -58,6 +68,7 @@ export async function createNewChat(
   if (created.existing) {
     const chat = await trpc.chat.get.query({ chatId: created.chatId });
     if (chat.mlsGroupIdB64) {
+      await syncChatStore();
       return {
         chatId: created.chatId,
         existing: true,
@@ -114,6 +125,8 @@ export async function createNewChat(
       );
     }
   }
+
+  await syncChatStore();
 
   return {
     chatId: created.chatId,

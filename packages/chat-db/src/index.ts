@@ -1,4 +1,9 @@
-export { getChatDb, closeChatDb, type ChatDbHandle } from "./client";
+export {
+  getChatDb,
+  closeChatDb,
+  setActiveChatDbUser,
+  type ChatDbHandle,
+} from "./client";
 export { LATEST_VERSION as SCHEMA_VERSION } from "./migrations";
 export * as outbox from "./outbox";
 export * as peerKeys from "./peer-keys";
